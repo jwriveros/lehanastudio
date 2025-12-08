@@ -244,29 +244,32 @@ export function AgendaBoard() {
         </div>
       ) : (
         <>
-          <div className="flex border-b border-zinc-300 bg-white/90 pl-16 text-center text-zinc-700 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            {days.map((day, idx) => (
-              <div
-                key={day.iso}
-                className={`flex-1 min-w-[140px] py-3 border-r border-zinc-300 last:border-r-0 ${idx === 0 ? "bg-indigo-50 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
-              >
-                <span className="text-[11px] font-bold uppercase text-zinc-400">{day.label}</span>
-                <div className={`text-lg font-bold leading-none ${idx === 0 ? "text-indigo-700 dark:text-indigo-200" : "text-zinc-800 dark:text-zinc-100"}`}>
-                  {day.dayNumber}
-                </div>
-                <p className="text-[10px] text-zinc-400">{day.date.toLocaleString("es", { month: "short" })}</p>
-              </div>
-            ))}
-          </div>
-
           <div className="relative flex-1 overflow-auto bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-950 dark:to-zinc-900">
-            <div className="min-w-[1400px]">
+            <div className="min-w-[1700px]">
+              <div className="sticky top-0 z-20 flex border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+                <div className="w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-[11px] font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/95">
+                  Hora
+                </div>
+                {days.map((day, idx) => (
+                  <div
+                    key={day.iso}
+                    className={`flex min-w-[190px] flex-1 flex-col border-r border-zinc-300 px-3 py-3 last:border-r-0 ${idx === 0 ? "bg-indigo-50 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
+                  >
+                    <span className="text-[11px] font-bold uppercase text-zinc-400">{day.label}</span>
+                    <div className={`text-lg font-bold leading-none ${idx === 0 ? "text-indigo-700 dark:text-indigo-200" : "text-zinc-800 dark:text-zinc-100"}`}>
+                      {day.dayNumber}
+                    </div>
+                    <p className="text-[10px] text-zinc-400">{day.date.toLocaleString("es", { month: "short" })}</p>
+                  </div>
+                ))}
+              </div>
+
               {slots.map((slot) => (
                 <div
                   key={slot.minutes}
-                  className={`flex min-h-[88px] border-b border-zinc-300 ${slot.dashed ? "border-dashed" : "border-solid"}`}
+                  className={`flex min-h-[96px] border-b border-zinc-300 ${slot.dashed ? "border-dashed" : "border-solid"}`}
                 >
-                  <div className="sticky left-0 z-10 flex w-16 flex-shrink-0 items-center justify-center bg-white/95 px-1 text-center text-[11px] font-medium leading-none text-zinc-500 backdrop-blur dark:bg-zinc-900/90 dark:text-zinc-400">
+                  <div className="sticky left-0 z-10 flex w-16 flex-shrink-0 items-center justify-center border-r border-zinc-300 bg-white/95 px-1 text-center text-[11px] font-medium leading-none text-zinc-500 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/90 dark:text-zinc-400">
                     {slot.label}
                   </div>
 
@@ -280,12 +283,12 @@ export function AgendaBoard() {
                     return (
                       <div
                         key={`${day.iso}-${slot.minutes}`}
-                        className="relative flex min-w-[180px] flex-1 gap-1 overflow-hidden border-r border-zinc-300 p-1.5 transition-colors hover:bg-indigo-50/40 dark:border-zinc-800 dark:hover:bg-indigo-900/30"
+                        className="relative flex min-w-[190px] flex-1 gap-1 overflow-hidden border-r border-zinc-300 p-1.5 transition-colors hover:bg-indigo-50/40 dark:border-zinc-800 dark:hover:bg-indigo-900/30"
                       >
                         {cellAppointments.map((appt) => (
                           <div
                             key={appt.id}
-                            className="flex-1 min-w-[120px] truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:translate-y-0.5"
+                            className="flex-1 min-w-[140px] truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:translate-y-0.5"
                             style={{ backgroundColor: appt.bg_color }}
                             title={`${appt.servicio} · ${appt.cliente}`}
                           >
