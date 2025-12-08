@@ -105,7 +105,7 @@ export function AgendaBoard() {
   };
 
   return (
-    <div className="flex h-full min-h-[520px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="flex h-full min-h-[600px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-gradient-to-r from-white via-indigo-50 to-white px-4 py-3 text-sm dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900/60 dark:to-zinc-900">
         <div className="flex items-center gap-2">
           <button
@@ -260,11 +260,11 @@ export function AgendaBoard() {
           </div>
 
           <div className="relative flex-1 overflow-auto bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-950 dark:to-zinc-900">
-            <div className="min-w-[1100px]">
+            <div className="min-w-[1400px]">
               {slots.map((slot) => (
                 <div
                   key={slot.minutes}
-                  className={`flex border-b border-zinc-300 ${slot.dashed ? "border-dashed" : "border-solid"}`}
+                  className={`flex min-h-[88px] border-b border-zinc-300 ${slot.dashed ? "border-dashed" : "border-solid"}`}
                 >
                   <div className="sticky left-0 z-10 flex w-16 flex-shrink-0 items-center justify-center bg-white/95 px-1 text-center text-[11px] font-medium leading-none text-zinc-500 backdrop-blur dark:bg-zinc-900/90 dark:text-zinc-400">
                     {slot.label}
@@ -280,7 +280,7 @@ export function AgendaBoard() {
                     return (
                       <div
                         key={`${day.iso}-${slot.minutes}`}
-                        className="relative flex min-w-[150px] flex-1 gap-1 overflow-hidden border-r border-zinc-300 p-1 transition-colors hover:bg-indigo-50/40 dark:border-zinc-800 dark:hover:bg-indigo-900/30"
+                        className="relative flex min-w-[180px] flex-1 gap-1 overflow-hidden border-r border-zinc-300 p-1.5 transition-colors hover:bg-indigo-50/40 dark:border-zinc-800 dark:hover:bg-indigo-900/30"
                       >
                         {cellAppointments.map((appt) => (
                           <div

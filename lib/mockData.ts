@@ -125,6 +125,7 @@ export const chatThreads = [
     lastMessage: "Gracias por la confirmación",
     unread: 2,
     status: "active" as const,
+    startedAt: "07:55",
     history: [
       { from: "client", text: "Hola, ¿pueden confirmar la hora de mañana?", at: "08:01" },
       { from: "staff", text: "Hola Ana, quedamos 9:00 am en Miraflores", at: "08:05" },
@@ -139,6 +140,7 @@ export const chatThreads = [
     lastMessage: "Me avisan si hay algo antes",
     unread: 0,
     status: "active" as const,
+    startedAt: "09:40",
     history: [
       { from: "client", text: "¿Pueden mover mi cita a las 10am?", at: "10:20" },
       { from: "staff", text: "Sí, reprogramado a las 10am en San Isidro", at: "10:25" },
@@ -147,14 +149,29 @@ export const chatThreads = [
   {
     id: "chat-3",
     numberc: "C003",
-    cliente: "Gina", 
+    cliente: "Gina",
     phone: "+51987654321",
     lastMessage: "No voy a poder llegar",
     unread: 1,
     status: "abandoned" as const,
+    startedAt: "07:30",
     history: [
       { from: "client", text: "No voy a poder llegar", at: "07:40" },
       { from: "staff", text: "¿Deseas reprogramar?", at: "07:45" },
+    ],
+  },
+  {
+    id: "chat-4",
+    numberc: "C004",
+    cliente: "Reserva web",
+    phone: "+51999000111",
+    lastMessage: "Solicitud de depilación láser",
+    unread: 3,
+    status: "reservation" as const,
+    startedAt: "06:50",
+    history: [
+      { from: "client", text: "Quiero reservar depilación láser", at: "06:50" },
+      { from: "staff", text: "¡Hola! Te ayudo a agendar, ¿qué día prefieres?", at: "06:55" },
     ],
   },
 ];
