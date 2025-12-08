@@ -15,6 +15,7 @@ export const sampleUsers = [
     email: "admin@lizto.demo",
     avatar_url: "https://i.pravatar.cc/80?img=65",
     color: "#6b4eff",
+    password: "admin123",
   },
   {
     id: "2",
@@ -23,6 +24,7 @@ export const sampleUsers = [
     email: "rivera@lizto.demo",
     avatar_url: "https://i.pravatar.cc/80?img=32",
     color: "#10b981",
+    password: "especialista123",
   },
 ];
 

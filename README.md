@@ -2,8 +2,10 @@ Lizto-style CRM demo ready to connect with Supabase tables (`app_users`, `appoin
 
 ## Features
 
-- Dashboard con KPIs, ventas por mes y ranking de servicios.
-- Agenda semanal con estados PENDING / CONFIRMED / CANCELLED / NO SHOW / COMPLETED.
+- PWA lista para instalar en móvil con menú inferior fijo (Soporte, Agenda, Mi negocio, Dashboard, Ajustes) y vista full-screen.
+- Login separado para Administrador y Especialista con contraseñas demo; el rol de especialista muestra solo Soporte y Agenda.
+- Dashboard con KPIs, encuestas y progreso clínico conectado a mocks de Supabase.
+- Agenda semanal con estados PENDING / CONFIRMED / CANCELLED / NO SHOW / COMPLETED; calendario colapsable.
 - Ficha de clientes con historial, encuestas y últimos mensajes.
 - Administración de servicios y especialistas (colores para calendario).
 - Progreso clínico con fotos antes/después y notas listas para tabla `client_progress`.

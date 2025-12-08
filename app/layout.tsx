@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   title: "Lizto-style CRM | Lehana Studio",
   description:
     "CRM demo with dashboards, agenda, WhatsApp inbox, Supabase-ready APIs, and n8n-friendly webhooks",
+  applicationName: "Lizto CRM PWA",
+  manifest: "/manifest.json",
+  themeColor: "#4f46e5",
 };
 
 export default function RootLayout({
@@ -25,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

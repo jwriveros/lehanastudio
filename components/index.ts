@@ -8,3 +8,4 @@ export { SettingsPanel } from "./SettingsPanel";
 export { SpecialistsPanel } from "./SpecialistsPanel";
 export { SurveysPanel } from "./SurveysPanel";
 export { Sidebar } from "./Sidebar";
+export { BottomNav } from "./BottomNav";
