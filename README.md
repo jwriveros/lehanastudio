@@ -1,36 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Lizto-style CRM demo ready to connect with Supabase tables (`app_users`, `appointments`, `booking_requests`, `clients`, `services`, `mensajes`, `n8n_chat_histories`, `encuestas`) and n8n webhooks.
 
-## Getting Started
+## Features
 
-First, run the development server:
+- PWA lista para instalar en móvil con menú inferior fijo (Soporte, Agenda, Mi negocio, Dashboard, Ajustes) y vista full-screen.
+- Login separado para Administrador y Especialista con contraseñas demo; el rol de especialista muestra solo Soporte y Agenda.
+- Dashboard con KPIs, encuestas y progreso clínico conectado a mocks de Supabase.
+- Agenda semanal con estados PENDING / CONFIRMED / CANCELLED / NO SHOW / COMPLETED; calendario colapsable.
+- Ficha de clientes con historial, encuestas y últimos mensajes.
+- Administración de servicios y especialistas (colores para calendario).
+- Progreso clínico con fotos antes/después y notas listas para tabla `client_progress`.
+- Chat interno tipo WhatsApp con endpoints `/api/whatsapp/incoming` y `/api/whatsapp/outgoing` listos para n8n.
+- Endpoints de reservas `/api/bookings/create` y `/api/bookings/confirm` para automatizar confirmaciones.
+
+## Ejecutar
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+La UI vive en `app/page.tsx` y usa únicamente dependencias incluidas en el proyecto base de Next.js, por lo que funciona sin configuración adicional. Conecta tus claves de Supabase y n8n en las variables de entorno y extiende los endpoints con tus consultas.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Nota sobre importaciones
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Todos los paneles del CRM se exportan desde `components/index.ts`. Usa importaciones como `import { DashboardCards } from "@/components"` para evitar duplicados o rutas relativas inconsistentes al trabajar con Turbopack o editores como VS Code.
