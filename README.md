@@ -17,3 +17,7 @@ npm run dev
 ```
 
 La UI vive en `app/page.tsx` y usa únicamente dependencias incluidas en el proyecto base de Next.js, por lo que funciona sin configuración adicional. Conecta tus claves de Supabase y n8n en las variables de entorno y extiende los endpoints con tus consultas.
+
+### Nota sobre importaciones
+
+Todos los paneles del CRM se exportan desde `components/index.ts`. Usa importaciones como `import { DashboardCards } from "@/components"` para evitar duplicados o rutas relativas inconsistentes al trabajar con Turbopack o editores como VS Code.
