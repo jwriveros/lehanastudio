@@ -1,6 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import {
+  AgendaBoard,
+  ChatPanel,
+  ClientsPanel,
+  DashboardCards,
+  ProgressPanel,
+  ServicesPanel,
+  SettingsPanel,
+  SpecialistsPanel,
+  SurveysPanel,
+  Sidebar,
+} from "@/components";
 import { AgendaBoard } from "@/components/AgendaBoard";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ClientsPanel } from "@/components/ClientsPanel";
