@@ -20,7 +20,7 @@ export function BottomNav({ currentPath, items }: Props) {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-200 bg-white/95 backdrop-blur shadow-lg shadow-indigo-200/30 dark:border-zinc-800 dark:bg-zinc-900/90">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3 text-xs font-medium text-zinc-600 dark:text-zinc-300">
         {normalized.map((item) => {
           const isActive = currentPath.startsWith(item.href);
           return (
