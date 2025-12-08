@@ -1,31 +1,32 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 
-type BottomNavItem = {
+export type BottomNavItem = {
   id: string;
   label: string;
   emoji?: string;
+  href: string;
 };
 
 type Props = {
-  current: string;
+  currentPath: string;
   items: BottomNavItem[];
-  onNavigate: (id: string) => void;
 };
 
-export function BottomNav({ current, items, onNavigate }: Props) {
+export function BottomNav({ currentPath, items }: Props) {
   const normalized = useMemo(() => items.filter(Boolean), [items]);
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-200 bg-white/95 backdrop-blur shadow-lg shadow-indigo-200/30 dark:border-zinc-800 dark:bg-zinc-900/90">
-      <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 text-xs font-medium text-zinc-600 dark:text-zinc-300">
         {normalized.map((item) => {
-          const isActive = item.id === current;
+          const isActive = currentPath.startsWith(item.href);
           return (
-            <button
+            <Link
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              href={item.href}
               className={`flex flex-1 flex-col items-center gap-1 rounded-xl px-2 py-1 transition ${
                 isActive
                   ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200"
@@ -35,7 +36,7 @@ export function BottomNav({ current, items, onNavigate }: Props) {
             >
               <span className="text-base">{item.emoji ?? "•"}</span>
               <span>{item.label}</span>
-            </button>
+            </Link>
           );
         })}
       </div>
