@@ -47,14 +47,14 @@ export default function AgendaPage() {
       </button>
 
       {showCalendar ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowCalendar(false)} aria-hidden />
-          <div className="relative z-10 flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowCalendar(false)} aria-hidden />
+          <div className="relative z-10 flex h-[92vh] w-full max-w-[1400px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
               <div className="flex items-center gap-3">
                 <button
                   className="bg-gray-900 text-white p-3.5 rounded-full shadow-xl hover:bg-black transition active:scale-95 flex items-center justify-center"
-                  title="Ver como lista"
+                  title="Ver como Lista"
                   type="button"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-list" aria-hidden="true">
@@ -68,7 +68,7 @@ export default function AgendaPage() {
                 </button>
                 <div>
                   <p className="text-xs uppercase tracking-wide text-indigo-500">Calendario</p>
-                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Vista semanal con horarios</h3>
+                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Vista en rejilla al estilo Google Calendar</h3>
                 </div>
               </div>
               <button
@@ -79,7 +79,7 @@ export default function AgendaPage() {
                 Cerrar calendario
               </button>
             </div>
-            <div className="flex-1 overflow-hidden p-3">
+            <div className="flex-1 overflow-hidden p-3 sm:p-4">
               <AgendaBoard />
             </div>
           </div>
