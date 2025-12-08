@@ -67,24 +67,27 @@ export function ChatPanel() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_1.8fr]">
-        <div className="rounded-2xl border border-zinc-100 bg-white/90 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="mb-3 flex items-center justify-between text-sm text-zinc-500">
-            <span>{tab === "abandoned" ? "Chats que necesitan rescate" : "Chats en curso"}</span>
+      <div className="grid gap-4 lg:grid-cols-[1fr_1.3fr]">
+        <div className="space-y-2 rounded-2xl border border-zinc-100 bg-white/90 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex items-center justify-between text-sm text-zinc-500">
+            <span>{tab === "abandoned" ? "Abandonados" : "Chats en curso"}</span>
             <span className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-200">
               {visibleThreads.length} abiertos
             </span>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
             {visibleThreads.map((chat) => (
-              <article
+              <div
                 key={chat.id}
-                className={`rounded-2xl border p-3 text-sm transition hover:border-indigo-200 dark:border-zinc-800 dark:hover:border-indigo-500 ${
+                className={`flex flex-col gap-2 rounded-xl border p-3 text-sm transition hover:border-indigo-200 dark:border-zinc-800 dark:hover:border-indigo-500 ${
                   currentChat?.id === chat.id ? "border-indigo-400 shadow" : "border-zinc-200"
                 }`}
               >
-                <div className="flex items-start justify-between gap-2">
+                <button
+                  className="flex items-start justify-between gap-3 text-left"
+                  onClick={() => selectChat(chat.id)}
+                >
                   <div>
                     <div className="font-semibold text-zinc-900 dark:text-zinc-50">{chat.cliente}</div>
                     <div className="text-xs text-zinc-500">{chat.phone}</div>
@@ -95,15 +98,9 @@ export function ChatPanel() {
                       {chat.unread}
                     </span>
                   ) : null}
-                </div>
+                </button>
 
-                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  <button
-                    onClick={() => selectChat(chat.id)}
-                    className="rounded-full bg-indigo-50 px-3 py-1 font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-200"
-                  >
-                    Abrir chat
-                  </button>
+                <div className="flex flex-wrap gap-2 text-xs">
                   <a
                     href={`https://wa.me/${chat.phone.replace(/[^\d]/g, "")}`}
                     target="_blank"
@@ -119,7 +116,7 @@ export function ChatPanel() {
                     Cerrar
                   </button>
                 </div>
-              </article>
+              </div>
             ))}
           </div>
         </div>
