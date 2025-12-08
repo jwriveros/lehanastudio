@@ -18,7 +18,16 @@ Lizto-style CRM demo ready to connect with Supabase tables (`app_users`, `appoin
 npm run dev
 ```
 
-La UI vive en `app/page.tsx` y usa únicamente dependencias incluidas en el proyecto base de Next.js, por lo que funciona sin configuración adicional. Conecta tus claves de Supabase y n8n en las variables de entorno y extiende los endpoints con tus consultas.
+Flujo:
+
+- `app/page.tsx`: login por rol con autocompletado demo.
+- `app/(app)/support`: zona de soporte/WhatsApp.
+- `app/(app)/agenda`: calendario colapsable y chat de reservas.
+- `app/(app)/business`: clientes, servicios y especialistas.
+- `app/(app)/dashboard`: KPIs, encuestas y progreso.
+- `app/(app)/settings`: ajustes rápidos y cierre de sesión.
+
+La UI usa las dependencias incluidas en el proyecto base de Next.js. Conecta tus claves de Supabase y n8n en las variables de entorno y extiende los endpoints con tus consultas.
 
 ### Nota sobre importaciones
 

@@ -1,5 +1,5 @@
 import type React from "react";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -19,6 +19,9 @@ export const metadata: Metadata = {
     "CRM demo with dashboards, agenda, WhatsApp inbox, Supabase-ready APIs, and n8n-friendly webhooks",
   applicationName: "Lizto CRM PWA",
   manifest: "/manifest.json",
+};
+
+export const viewport: Viewport = {
   themeColor: "#4f46e5",
 };
 
