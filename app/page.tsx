@@ -1,6 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { AgendaBoard } from "@/components/AgendaBoard";
+import { ChatPanel } from "@/components/ChatPanel";
+import { ClientsPanel } from "@/components/ClientsPanel";
+import { DashboardCards } from "@/components/DashboardCards";
+import { ProgressPanel } from "@/components/ProgressPanel";
+import { ServicesPanel } from "@/components/ServicesPanel";
+import { SettingsPanel } from "@/components/SettingsPanel";
+import { SpecialistsPanel } from "@/components/SpecialistsPanel";
+import { SurveysPanel } from "@/components/SurveysPanel";
+import { Sidebar } from "@/components/Sidebar";
 import { AgendaBoard } from "../components/AgendaBoard";
 import { ChatPanel } from "../components/ChatPanel";
 import { ClientsPanel } from "../components/ClientsPanel";
