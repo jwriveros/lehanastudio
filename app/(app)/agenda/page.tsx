@@ -17,22 +17,6 @@ export default function AgendaPage() {
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold">
           <button
-            className="bg-gray-900 text-white p-3.5 rounded-full shadow-xl hover:bg-black transition active:scale-95 flex items-center justify-center"
-            title="Abrir calendario"
-            type="button"
-            onClick={() => setShowCalendar(true)}
-            aria-label="Abrir calendario"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="lucide lucide-list">
-              <path d="M3 5h.01"></path>
-              <path d="M3 12h.01"></path>
-              <path d="M3 19h.01"></path>
-              <path d="M8 5h13"></path>
-              <path d="M8 12h13"></path>
-              <path d="M8 19h13"></path>
-            </svg>
-          </button>
-          <button
             className="rounded-full border border-zinc-200 px-3 py-2 text-zinc-700 transition hover:border-indigo-300 hover:text-indigo-700 dark:border-zinc-700 dark:text-zinc-200"
             type="button"
             aria-label="Crear nueva reserva"
