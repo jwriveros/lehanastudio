@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { chatThreads } from "../lib/mockData";
+import { chatThreads } from "@/lib/mockData";
 
 export function ChatPanel() {
   const [activeChat, setActiveChat] = useState(chatThreads[0]);

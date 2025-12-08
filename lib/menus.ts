@@ -1,4 +1,4 @@
-import { Role } from "./mockData";
+import { Role } from "@/lib/mockData";
 
 export type NavItem = {
   href: string;

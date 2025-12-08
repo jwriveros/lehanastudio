@@ -1,4 +1,4 @@
-import { dashboardStats } from "../lib/mockData";
+import { dashboardStats } from "@/lib/mockData";
 
 const kpiCards = [
   { label: "Citas hoy", value: dashboardStats.dailyStatus.citasHoy, hint: "Agenda confirmada" },

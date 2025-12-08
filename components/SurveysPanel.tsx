@@ -1,4 +1,4 @@
-import { surveys } from "../lib/mockData";
+import { surveys } from "@/lib/mockData";
 
 export function SurveysPanel() {
   const average = (

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { roleMenus } from "../lib/menus";
-import { Role, sampleUsers } from "../lib/mockData";
+import { roleMenus } from "@/lib/menus";
+import { Role, sampleUsers } from "@/lib/mockData";
 import { useState } from "react";
 
 type Props = {

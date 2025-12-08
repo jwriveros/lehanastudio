@@ -1,4 +1,4 @@
-import { appointments, clients, surveys } from "../lib/mockData";
+import { appointments, clients, surveys } from "@/lib/mockData";
 
 export function ClientsPanel() {
   return (

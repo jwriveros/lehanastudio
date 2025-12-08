@@ -11,7 +11,7 @@ import { SettingsPanel } from "../components/SettingsPanel";
 import { SpecialistsPanel } from "../components/SpecialistsPanel";
 import { SurveysPanel } from "../components/SurveysPanel";
 import { Sidebar } from "../components/Sidebar";
-import { Role } from "../lib/mockData";
+import { Role } from "@/lib/mockData";
 
 export default function Home() {
   const [role, setRole] = useState<Role>("ADMIN");

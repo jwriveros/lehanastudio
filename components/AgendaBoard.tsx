@@ -1,4 +1,4 @@
-import { appointments, appointmentStatuses } from "../lib/mockData";
+import { appointments, appointmentStatuses } from "@/lib/mockData";
 
 export function AgendaBoard() {
   return (
