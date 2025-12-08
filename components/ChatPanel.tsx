@@ -1,36 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { chatThreads } from "@/lib/mockData";
 
-type Tab = "active" | "abandoned";
-type Chat = (typeof chatThreads)[number];
+type Tab = "active" | "abandoned" | "reservations";
 
 export function ChatPanel() {
   const [tab, setTab] = useState<Tab>("active");
   const [threads, setThreads] = useState(chatThreads);
+  const [activeId, setActiveId] = useState<string | null>(chatThreads[0]?.id ?? null);
 
-  const visibleThreads = threads.filter((chat) =>
-    tab === "abandoned" ? chat.status === "abandoned" : chat.status !== "abandoned",
+  const visibleThreads = useMemo(() => {
+    const filtered = threads.filter((chat) => {
+      if (tab === "abandoned") return chat.status === "abandoned";
+      if (tab === "reservations") return chat.status === "reservation";
+      return chat.status === "active";
+    });
+
+    return filtered.sort((a, b) => (a.startedAt ?? "") > (b.startedAt ?? "") ? 1 : -1);
+  }, [tab, threads]);
+
+  const currentChat = useMemo(
+    () => visibleThreads.find((chat) => chat.id === activeId) ?? visibleThreads[0] ?? null,
+    [activeId, visibleThreads],
   );
-  const [activeChat, setActiveChat] = useState<Chat | null>(visibleThreads[0] ?? threads[0] ?? null);
-  const currentChat = activeChat && visibleThreads.some((chat) => chat.id === activeChat.id)
-    ? activeChat
-    : visibleThreads[0] ?? null;
 
   const selectChat = (id: string) => {
     const found = threads.find((chat) => chat.id === id);
-    if (found) setActiveChat(found);
+    if (found) setActiveId(found.id);
   };
 
   const closeChat = (id: string) => {
     setThreads((prev) => {
       const next = prev.filter((chat) => chat.id !== id);
       if (currentChat?.id === id) {
-        const remaining = next.filter((chat) =>
-          tab === "abandoned" ? chat.status === "abandoned" : chat.status !== "abandoned",
-        );
-        setActiveChat(remaining[0] ?? null);
+        const remaining = next.filter((chat) => {
+          if (tab === "abandoned") return chat.status === "abandoned";
+          if (tab === "reservations") return chat.status === "reservation";
+          return chat.status === "active";
+        });
+        setActiveId(remaining[0]?.id ?? null);
       }
       return next;
     });
@@ -47,7 +56,17 @@ export function ChatPanel() {
               : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200"
           }`}
         >
-          Chats ({threads.filter((c) => c.status !== "abandoned").length})
+          Chats ({threads.filter((c) => c.status === "active").length})
+        </button>
+        <button
+          onClick={() => setTab("reservations")}
+          className={`rounded-full px-3 py-1 font-semibold ${
+            tab === "reservations"
+              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+              : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200"
+          }`}
+        >
+          Reservas ({threads.filter((c) => c.status === "reservation").length})
         </button>
         <button
           onClick={() => setTab("abandoned")}
@@ -85,6 +104,7 @@ export function ChatPanel() {
                     <span className="truncate text-[11px] text-zinc-500">{chat.phone}</span>
                   </div>
                   <div className="mt-1 truncate text-sm text-zinc-700 dark:text-zinc-200">“{chat.lastMessage}”</div>
+                  <div className="text-[11px] text-zinc-400">Inició {chat.startedAt ?? "--:--"}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <a
