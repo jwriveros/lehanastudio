@@ -21,7 +21,7 @@ export default function AgendaPage() {
         <ChatPanel />
       </div>
 
-      <div className="fixed bottom-24 right-4 z-30 flex flex-col items-end gap-3">
+      <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-3">
         <button
           type="button"
           title="Nueva reserva"
@@ -50,9 +50,9 @@ export default function AgendaPage() {
       </div>
 
       {showCalendar ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowCalendar(false)} aria-hidden />
-          <div className="relative z-10 flex h-[94vh] w-full max-w-[1600px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="relative z-10 flex h-[96vh] w-full max-w-[1900px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
               <div className="flex items-center gap-3">
                 <button
