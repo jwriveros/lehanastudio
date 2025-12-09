@@ -14,8 +14,13 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "settings", label: "Ajustes", emoji: "⚙️", href: "/settings" },
 ];
 
-export const navByRole: Record<Role, NavItem[]> = {
-  ADMIN: NAV_ITEMS,
-  SPECIALIST: NAV_ITEMS.filter((item) => item.id === "support"),
-  STAFF: NAV_ITEMS.filter((item) => ["support", "dashboard"].includes(item.id)),
-};
+export const navByRole = {
+    ADMIN: NAV_ITEMS, // El administrador ve todo
+    ESPECIALISTA: [ // Rutas para especialistas
+        NAV_ITEMS.find(item => item.href === '/dashboard')!,
+        NAV_ITEMS.find(item => item.href === '/agenda')!,
+        NAV_ITEMS.find(item => item.href === '/support')!,
+        // ... (otras rutas que quieras)
+    ],
+    STAFF: NAV_ITEMS.filter((item) => ["support", "dashboard"].includes(item.id)),
+  }

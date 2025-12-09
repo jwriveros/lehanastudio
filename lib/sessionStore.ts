@@ -1,10 +1,10 @@
-// jwriveros/lehanastudio/lehanastudio-a8a570c007a1557a6ccd13baa5a39a3fe79a534a/lib/sessionStore.ts
+// jwriveros/lehanastudio/lehanastudio-a2625e82f4ecf3eda68513f691355d3accd1f4cd/lib/sessionStore.ts
 
 import { create } from "./zustand";
 import { supabase } from "./supabaseClient";
 
-// Definimos los roles que maneja tu app
-export type Role = "ADMIN" | "SPECIALIST" | "STAFF";
+// CORRECCIÓN: Aseguramos que el tipo Role incluye todos los valores de la DB
+export type Role = "ADMIN" | "SPECIALIST" | "STAFF" | "ESPECIALISTA"; // Agregamos ESPECIALISTA
 
 type Session = {
   id: string;     // ID de autenticación (UUID)
@@ -58,7 +58,7 @@ export const useSessionStore = create<SessionState>((set) => ({
         id: authData.user.id,
         email: userData.email,
         name: userData.name || "Usuario",
-        role: (userData.role as Role) || "STAFF",
+        role: (userData.role as Role) || "ESPECIALISTA",
         color: userData.color
       };
 
