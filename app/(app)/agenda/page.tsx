@@ -6,7 +6,7 @@ import { AgendaBoard, ChatPanel } from "@/components";
 
 export default function AgendaPage() {
   const [showCalendar, setShowCalendar] = useState(false);
-  const [bookingSignal, setBookingSignal] = useState(0);
+  const [bookingSignal, setBookingSignal] = useState<number | null>(null);
 
   return (
     <section className="relative space-y-4 pb-24">
@@ -30,7 +30,7 @@ export default function AgendaPage() {
           aria-label="Crear nueva reserva"
           onClick={() => {
             setShowCalendar(true);
-            setBookingSignal((value) => value + 1);
+            setBookingSignal(Date.now());
           }}
         >
           +

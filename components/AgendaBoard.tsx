@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { appointments, appointmentStatuses, services, sampleUsers } from "@/lib/mockData";
 
 type AgendaBoardProps = {
-  externalBookingSignal?: number;
+  externalBookingSignal?: number | null;
 };
 
 const MINUTES_START = 7 * 60; // 07:00
@@ -55,7 +55,7 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
   });
 
   useEffect(() => {
-    if (externalBookingSignal === undefined) return;
+    if (externalBookingSignal === null || externalBookingSignal === undefined) return;
     openBooking(formatDateISO(baseDate));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalBookingSignal]);
@@ -252,7 +252,7 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
 
       {viewMode === "month" ? (
         <div className="flex-1 overflow-auto">
-          <div className="grid min-h-[520px] min-w-[1200px] grid-cols-7 gap-3 p-4 sm:p-6">
+          <div className="grid min-h-[520px] min-w-[1100px] sm:min-w-full grid-cols-7 gap-3 p-4 sm:p-6">
             {days.map((day, idx) => {
               const dayAppointments = filteredAppointments.filter((appt) => appt.fecha === day.iso);
               return (
@@ -302,7 +302,7 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
       ) : (
         <>
           <div className="relative flex-1 overflow-auto bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-950 dark:to-zinc-900">
-            <div className="min-w-[1900px]">
+            <div className="min-w-[900px] sm:min-w-full">
               <div className="sticky top-0 z-20 flex border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
                 <div className="w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-[11px] font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/95">
                   Hora
@@ -310,7 +310,7 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
                 {days.map((day, idx) => (
                   <div
                     key={day.iso}
-                    className={`flex min-w-[190px] flex-1 flex-col border-r border-zinc-300 px-3 py-3 last:border-r-0 ${idx === 0 ? "bg-indigo-50 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
+                    className={`flex min-w-[160px] sm:min-w-0 flex-1 flex-col border-r border-zinc-300 px-3 py-3 last:border-r-0 ${idx === 0 ? "bg-indigo-50 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
                   >
                     <span className="text-[11px] font-bold uppercase text-zinc-400">{day.label}</span>
                     <div className={`text-lg font-bold leading-none ${idx === 0 ? "text-indigo-700 dark:text-indigo-200" : "text-zinc-800 dark:text-zinc-100"}`}>
@@ -341,7 +341,7 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
                       <div
                         key={`${day.iso}-${slot.minutes}`}
                         onClick={() => openBooking(day.iso, minutesToTime(slot.minutes))}
-                        className="relative flex min-w-[190px] flex-1 gap-1 overflow-hidden border-r border-zinc-300 p-1.5 transition-colors hover:bg-indigo-50/40 dark:border-zinc-800 dark:hover:bg-indigo-900/30"
+                        className="relative flex min-w-[160px] sm:min-w-0 flex-1 gap-1 overflow-hidden border-r border-zinc-300 p-1.5 transition-colors hover:bg-indigo-50/40 dark:border-zinc-800 dark:hover:bg-indigo-900/30"
                       >
                         {cellAppointments.map((appt) => (
                           <div
