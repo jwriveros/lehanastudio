@@ -482,7 +482,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
       ) : null}
 
       {selectedAppointment ? (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[95] flex min-h-screen items-center justify-center overflow-y-auto p-4 sm:p-8">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedAppointment(null)} aria-hidden />
           <div className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
             <div className="flex items-center justify-between gap-2 bg-zinc-900 px-5 py-4 text-white dark:bg-zinc-800">
@@ -676,7 +676,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
       ) : null}
 
       {bookingForm.open ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[90] flex min-h-screen items-center justify-center overflow-y-auto p-4 sm:p-8">
           <div className="absolute inset-0 bg-black/50" onClick={closeBooking} aria-hidden />
           <div className="relative z-10 w-full max-w-xl animate-[fade-in-up_0.25s_ease] overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
             <div className="flex items-center justify-between bg-indigo-600 p-4 text-white">

@@ -574,7 +574,7 @@ function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:p-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex min-h-screen items-center justify-center overflow-y-auto bg-black/40 px-4 py-8 sm:px-6 sm:py-10 backdrop-blur-sm">
       <div className="relative flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
         <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-zinc-100 bg-white/95 px-6 py-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
           <div>
