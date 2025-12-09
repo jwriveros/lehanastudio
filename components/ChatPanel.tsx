@@ -91,9 +91,14 @@ export function ChatPanel() {
 
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {visibleThreads.map((chat) => (
-              <button
+              <div
                 key={chat.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => selectChat(chat.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") selectChat(chat.id);
+                }}
                 className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-indigo-50 dark:hover:bg-indigo-950/30 ${
                   currentChat?.id === chat.id ? "bg-indigo-50 dark:bg-indigo-950/20" : ""
                 }`}
@@ -112,10 +117,12 @@ export function ChatPanel() {
                     target="_blank"
                     rel="noreferrer"
                     className="rounded-full border border-zinc-200 px-3 py-1 text-[11px] font-semibold text-zinc-700 hover:border-indigo-300 hover:text-indigo-700 dark:border-zinc-700 dark:text-zinc-200"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     WhatsApp
                   </a>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       closeChat(chat.id);
@@ -130,7 +137,7 @@ export function ChatPanel() {
                     </span>
                   ) : null}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </div>
