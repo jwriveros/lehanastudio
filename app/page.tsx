@@ -35,8 +35,7 @@ export default function Home() {
           <p className="text-xs uppercase tracking-wide text-indigo-500">PWA lista para instalar</p>
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Inicia sesión</h1>
           <p className="text-sm text-zinc-600 dark:text-zinc-300">
-            Admin y Especialista ingresan con su contraseña. Cada rol ve un menú inferior diferente (Soporte, Agenda, Mi negocio,
-            Dashboard, Ajustes).
+            Admin y Especialista ingresan con su contraseña. El menú inferior incluye Soporte, Mi negocio, Dashboard y Ajustes.
           </p>
         </header>
 
