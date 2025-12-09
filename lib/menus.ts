@@ -9,7 +9,6 @@ export type NavItem = {
 export const roleMenus: Record<Role, NavItem[]> = {
   ADMIN: [
     { href: "#dashboard", label: "Dashboard", description: "KPIs y estado del día" },
-    { href: "#agenda", label: "Agenda", description: "Calendario semanal" },
     { href: "#clients", label: "Clientes", description: "Búsquedas y fichas" },
     { href: "#services", label: "Servicios", description: "Catálogo y precios" },
     { href: "#specialists", label: "Especialistas", description: "Roles y colores" },
@@ -18,7 +17,6 @@ export const roleMenus: Record<Role, NavItem[]> = {
     { href: "#settings", label: "Configuración" },
   ],
   SPECIALIST: [
-    { href: "#agenda", label: "Agenda", description: "Tu calendario" },
     { href: "#clients", label: "Mis clientes" },
     { href: "#progress", label: "Progreso", description: "Evidencia y notas" },
     { href: "#chat", label: "WhatsApp", description: "Responde en vivo" },
@@ -26,7 +24,6 @@ export const roleMenus: Record<Role, NavItem[]> = {
   ],
   STAFF: [
     { href: "#dashboard", label: "Dashboard" },
-    { href: "#agenda", label: "Agenda" },
     { href: "#chat", label: "Chat" },
   ],
 };
