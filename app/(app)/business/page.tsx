@@ -37,15 +37,16 @@ type SpecialistForm = {
   color: string;
 };
 
-// Nuevo tipo para recibir la data tal cual de Supabase, con la estructura y nulls del usuario
+// Nuevo tipo para recibir la data tal cual de Supabase
+// IMPORTANTE: Las claves aquí deben coincidir EXACTAMENTE con tu base de datos
 type ClientDB = {
-  Nombre: string;
-  Celular: number | null; // Asumiendo que es un número
+  Nombre: string | null;
+  Celular: number | string | null; 
   Tipo: string | null;
-  numberc: string | null; // Asumiendo que es un string con el formato "+57..."
-  "Dirección": string | null; // DB column: Dirección (con acento)
-  "Cumpleaños": string | null;
-  "Notas": string | null; // DB column: Notas (con N mayúscula)
+  numberc: string | null;
+  "Dirección": string | null; // Con acento y mayúscula
+  "Cumpleaños": string | null; // Con ñ y mayúscula
+  "Notas": string | null; // Con mayúscula
 };
 
 // TIPOS para mapear los datos de Supabase (Servicios y Especialistas se mantienen igual)
@@ -108,38 +109,50 @@ export default function BusinessPage() {
     color: "#6366f1",
   });
 
+  // Función auxiliar para mapear de ClientForm (UI) a ClientDB (Supabase)
+  const mapFormToDBClient = (form: ClientForm) => {
+      const dbObject: any = {
+          "Nombre": form.Nombre,
+          "Celular": form.Celular, // Supabase intentará convertirlo si la columna es numérica
+          "Tipo": form.Tipo,
+          "numberc": form.numberc,
+          "Dirección": form.Direccion, 
+          "Cumpleaños": form.Cumpleaños,
+          "Notas": form.notes, 
+      };
+      return dbObject;
+  };
+
   // *** useEffect para cargar datos iniciales de Supabase ***
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true);
       
-      // 1. Cargar Clientes (tabla 'clients') - CORREGIDO con nombres de columnas del usuario
+      // 1. Cargar Clientes (tabla 'clients')
+      // CORRECCIÓN: Usamos comillas dobles para respetar mayúsculas y acentos
       const { data: clientsData, error: clientsError } = await supabase
         .from('clients')
-        // Usamos los nombres de columnas del usuario (Dirección y Notas con mayúsculas/acento)
-        .select('Nombre, Celular, Tipo, numberc, "Dirección", Cumpleaños, Notas') 
+        .select('"Nombre", "Celular", "Tipo", "numberc", "Dirección", "Cumpleaños", "Notas"') 
         .returns<ClientDB[]>();
 
       if (clientsError) {
         console.error("Error fetching clients:", clientsError);
-      } else {
-        // Mapeamos los datos de la DB a la estructura ClientForm esperada por la UI
+        alert("Error cargando clientes. Revisa la consola (F12) para más detalles.");
+      } else if (clientsData) {
+        // Mapeamos los datos de la DB a la estructura ClientForm
         const formattedClients: ClientForm[] = clientsData.map(c => ({
-          Nombre: c.Nombre,
-          // Convertimos Celular a string (asumiendo que Celular puede ser un number o null)
-          Celular: String(c.Celular || ''), 
-          Tipo: c.Tipo || '',
+          Nombre: c.Nombre || 'Sin nombre',
+          Celular: c.Celular ? String(c.Celular) : '', 
+          Tipo: c.Tipo || 'General',
           numberc: c.numberc || '',
-          // Mapeamos Dirección (con acento) a Direccion (sin acento para el formulario)
-          Direccion: c.Dirección || '', 
-          Cumpleaños: c.Cumpleaños || '',
-          // Mapeamos Notas (DB) a notes (Form)
+          Direccion: c['Dirección'] || '', 
+          Cumpleaños: c['Cumpleaños'] || '',
           notes: c.Notas || '', 
         }));
         setClients(formattedClients);
       }
       
-      // 2. Cargar Servicios (tabla 'services')
+      // 2. Cargar Servicios
       const { data: servicesData, error: servicesError } = await supabase
         .from('services')
         .select('SKU, category, Servicio, Precio, duracion')
@@ -148,10 +161,10 @@ export default function BusinessPage() {
       if (servicesError) {
         console.error("Error fetching services:", servicesError);
       } else {
-        setServices(servicesData);
+        setServices(servicesData || []);
       }
 
-      // 3. Cargar Especialistas (tabla 'app_users')
+      // 3. Cargar Especialistas
       const { data: usersData, error: usersError } = await supabase
         .from('app_users')
         .select('id, name, email, color, role')
@@ -161,12 +174,14 @@ export default function BusinessPage() {
       if (usersError) {
         console.error("Error fetching specialists:", usersError);
       } else {
-        setSpecialists(usersData.map(u => ({
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            color: u.color,
-        } as SpecialistForm)));
+        setSpecialists(
+            (usersData || []).map(u => ({
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                color: u.color,
+            } as SpecialistForm))
+        );
       }
 
       setLoading(false);
@@ -218,23 +233,6 @@ export default function BusinessPage() {
     setIsFormOpen(true);
   };
 
-  // Función auxiliar para mapear de ClientForm (UI) a ClientDB (Supabase)
-  const mapFormToDBClient = (form: ClientForm) => {
-      // Mapeamos los campos que tienen nombres diferentes en la base de datos del usuario
-      const dbObject: any = {
-          Nombre: form.Nombre,
-          Celular: form.Celular,
-          Tipo: form.Tipo,
-          numberc: form.numberc,
-          "Dirección": form.Direccion, // Mapeo Direccion -> Dirección
-          "Cumpleaños": form.Cumpleaños,
-          "Notas": form.notes, // Mapeo notes -> Notas
-      };
-      return dbObject;
-  };
-
-
-  // *** Modificación de handleDelete para usar Supabase ***
   const handleDelete = async (tab: TabKey, id: string) => {
     if (!confirm("¿Seguro que deseas eliminar este registro?")) return;
 
@@ -267,12 +265,11 @@ export default function BusinessPage() {
     }
   };
 
-  // *** Modificación de handleSubmit para usar Supabase ***
   const handleSubmit = async () => {
     if (formTab === "clients") {
       if (!clientForm.Nombre || !clientForm.Celular) return alert("Completa nombre y celular");
       
-      const clientToSave = mapFormToDBClient(clientForm); // Mapeo a formato DB
+      const clientToSave = mapFormToDBClient(clientForm); 
 
       if (mode === "edit") {
         const { error } = await supabase.from('clients').update(clientToSave).eq('numberc', editingId);
@@ -287,19 +284,18 @@ export default function BusinessPage() {
 
         if (error) {
             console.error("Error al crear cliente:", error);
-            alert("Error al crear cliente.");
+            alert("Error al crear cliente: " + error.message);
             return;
         }
         if (data) {
-          // Mapear de vuelta de DB a ClientForm para actualizar el estado local
           const newClient = data[0] as ClientDB;
           const formattedNewClient: ClientForm = {
-            Nombre: newClient.Nombre,
+            Nombre: newClient.Nombre || '',
             Celular: String(newClient.Celular || ''),
             Tipo: newClient.Tipo || '',
             numberc: newClient.numberc || '',
-            Direccion: newClient.Dirección || '',
-            Cumpleaños: newClient.Cumpleaños || '',
+            Direccion: newClient['Dirección'] || '',
+            Cumpleaños: newClient['Cumpleaños'] || '',
             notes: newClient.Notas || '',
           };
           setClients((prev) => [...prev, formattedNewClient]);
@@ -384,7 +380,6 @@ export default function BusinessPage() {
 
   const renderRows = () => {
     if (activeTab === "clients")
-      // Casting explícito para ClientForm[]
       return (filteredRows as ClientForm[]).map((client) => (
         <tr key={client.numberc} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
           <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{client.Nombre}</td>
@@ -413,7 +408,6 @@ export default function BusinessPage() {
       ));
 
     if (activeTab === "services")
-      // Casting explícito para ServiceForm[]
       return (filteredRows as ServiceForm[]).map((service: ServiceForm) => (
         <tr key={service.SKU} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
           <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{service.Servicio}</td>
@@ -434,7 +428,6 @@ export default function BusinessPage() {
         </tr>
       ));
 
-    // Casting explícito para SpecialistForm[]
     return (filteredRows as SpecialistForm[]).map((specialist) => (
       <tr key={specialist.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
         <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{specialist.name}</td>
@@ -786,7 +779,7 @@ function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
               <li><span className="font-semibold">Celular:</span> {client.Celular}</li>
               <li><span className="font-semibold">Dirección:</span> {client.Direccion}</li>
               <li><span className="font-semibold">Cumpleaños:</span> {client.Cumpleaños}</li>
-              <li><span className="font-semibold">Notas:</span> {client.notes}</li>
+              <li><span className="font-semibold">Notas:</span> {client.notes || "Sin notas"}</li>
             </ul>
           </div>
 
