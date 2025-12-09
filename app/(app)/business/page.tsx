@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from "react";
 
-import { clients as mockClients, sampleUsers, services as mockServices } from "@/lib/mockData";
+import {
+  appointments,
+  clients as mockClients,
+  sampleUsers,
+  services as mockServices,
+} from "@/lib/mockData";
 
 type TabKey = "clients" | "services" | "specialists";
 
@@ -73,6 +78,7 @@ export default function BusinessPage() {
   const [mode, setMode] = useState<"create" | "edit">("create");
   const [formTab, setFormTab] = useState<TabKey>("clients");
   const [editingId, setEditingId] = useState<string>("");
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [clientForm, setClientForm] = useState<ClientForm>({
     Nombre: "",
     Celular: "",
@@ -208,6 +214,12 @@ export default function BusinessPage() {
           <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300">{client.Cumpleaños}</td>
           <td className="px-4 py-3 text-right text-sm">
             <div className="flex justify-end gap-2">
+              <button
+                className="rounded-lg px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-emerald-900/30"
+                onClick={() => setSelectedClientId(client.numberc)}
+              >
+                Ver ficha
+              </button>
               <button className="rounded-lg px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:text-indigo-200 dark:hover:bg-indigo-950/30" onClick={() => openEdit("clients", client.numberc)}>
                 Editar
               </button>
@@ -524,6 +536,165 @@ export default function BusinessPage() {
           </div>
         </div>
       ) : null}
+
+      {selectedClientId ? (
+        <ClientDetailModal
+          client={clients.find((c) => c.numberc === selectedClientId)}
+          onClose={() => setSelectedClientId("")}
+        />
+      ) : null}
     </section>
+  );
+}
+
+type ClientDetailModalProps = {
+  client?: ClientForm;
+  onClose: () => void;
+};
+
+function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
+  if (!client) return null;
+
+  const clientAppointments = appointments.filter((appt) => appt.cliente === client.Nombre);
+  const pastServices = clientAppointments.map((appt) => ({
+    servicio: appt.servicio,
+    especialista: appt.especialista,
+    fecha: appt.fecha,
+    hora: appt.hora,
+    estado: appt.estado,
+    is_paid: appt.is_paid,
+    price: appt.price,
+  }));
+
+  const serviceSummary = Array.from(
+    pastServices.reduce((map, item) => {
+      map.set(item.servicio, (map.get(item.servicio) || 0) + 1);
+      return map;
+    }, new Map<string, number>())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+        <header className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-indigo-500">Ficha del cliente</p>
+            <h3 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{client.Nombre}</h3>
+            <p className="text-sm text-zinc-500">{client.Tipo} · Código {client.numberc}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full bg-zinc-100 px-3 py-2 text-sm font-semibold text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200"
+          >
+            Cerrar
+          </button>
+        </header>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Ficha técnica</p>
+            <ul className="mt-2 space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
+              <li><span className="font-semibold">Celular:</span> {client.Celular}</li>
+              <li><span className="font-semibold">Dirección:</span> {client.Direccion}</li>
+              <li><span className="font-semibold">Cumpleaños:</span> {client.Cumpleaños}</li>
+              <li><span className="font-semibold">Notas:</span> {client.notes || "Sin notas"}</li>
+            </ul>
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Servicios tomados</p>
+            {serviceSummary.length === 0 ? (
+              <p className="mt-2 text-sm text-zinc-500">Aún sin historial.</p>
+            ) : (
+              <ul className="mt-2 space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
+                {serviceSummary.map(([service, count]) => (
+                  <li key={service} className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800/60">
+                    <span>{service}</span>
+                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-300">{count}x</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Pagos</p>
+            <div className="mt-2 space-y-2 text-sm">
+              <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-100">
+                <span>Pagadas</span>
+                <span className="font-semibold">{pastServices.filter((s) => s.is_paid).length}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2 text-amber-700 dark:bg-amber-900/30 dark:text-amber-100">
+                <span>Pendientes</span>
+                <span className="font-semibold">{pastServices.filter((s) => !s.is_paid).length}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Historial de reservas</p>
+              <p className="text-sm text-zinc-500">Últimas atenciones y estado de pago</p>
+            </div>
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-100">
+              {pastServices.length} reservas
+            </span>
+          </div>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+                  <th className="px-3 py-2 text-left">Fecha</th>
+                  <th className="px-3 py-2 text-left">Hora</th>
+                  <th className="px-3 py-2 text-left">Servicio</th>
+                  <th className="px-3 py-2 text-left">Especialista</th>
+                  <th className="px-3 py-2 text-left">Estado</th>
+                  <th className="px-3 py-2 text-left">Pago</th>
+                  <th className="px-3 py-2 text-right">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pastServices.length === 0 ? (
+                  <tr>
+                    <td className="px-3 py-4 text-center text-sm text-zinc-500" colSpan={7}>
+                      Sin reservas registradas para este cliente.
+                    </td>
+                  </tr>
+                ) : (
+                  pastServices.map((appt, index) => (
+                    <tr key={`${appt.fecha}-${index}`} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                      <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{appt.fecha}</td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{appt.hora}</td>
+                      <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{appt.servicio}</td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{appt.especialista}</td>
+                      <td className="px-3 py-2">
+                        <span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-100">
+                          {appt.estado}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                            appt.is_paid
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-100"
+                              : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-100"
+                          }`}
+                        >
+                          {appt.is_paid ? "Pagado" : "Pendiente"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right text-zinc-800 dark:text-zinc-100">${appt.price}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
