@@ -2,10 +2,10 @@ Lizto-style CRM demo ready to connect with Supabase tables (`app_users`, `appoin
 
 ## Features
 
-- PWA lista para instalar en móvil con menú inferior fijo (Soporte, Agenda, Mi negocio, Dashboard, Ajustes) y vista full-screen.
-- Login separado para Administrador y Especialista con contraseñas demo; el rol de especialista muestra solo Soporte y Agenda.
+- PWA lista para instalar en móvil con menú inferior fijo (Soporte, Mi negocio, Dashboard, Ajustes) y vista full-screen.
+- Login separado para Administrador y Especialista con contraseñas demo; el rol de especialista muestra solo Soporte.
 - Dashboard con KPIs, encuestas y progreso clínico conectado a mocks de Supabase.
-- Agenda semanal con estados PENDING / CONFIRMED / CANCELLED / NO SHOW / COMPLETED; calendario colapsable.
+- Agenda semanal integrada al flujo de soporte con estados PENDING / CONFIRMED / CANCELLED / NO SHOW / COMPLETED.
 - Ficha de clientes con historial, encuestas y últimos mensajes.
 - Administración de servicios y especialistas (colores para calendario).
 - Progreso clínico con fotos antes/después y notas listas para tabla `client_progress`.
@@ -21,8 +21,7 @@ npm run dev
 Flujo:
 
 - `app/page.tsx`: login por rol con autocompletado demo.
-- `app/(app)/support`: zona de soporte/WhatsApp.
-- `app/(app)/agenda`: calendario colapsable y chat de reservas.
+- `app/(app)/support`: zona de soporte/WhatsApp y reservas con calendario embebido.
 - `app/(app)/business`: clientes, servicios y especialistas.
 - `app/(app)/dashboard`: KPIs, encuestas y progreso.
 - `app/(app)/settings`: ajustes rápidos y cierre de sesión.
