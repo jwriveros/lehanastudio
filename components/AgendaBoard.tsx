@@ -484,7 +484,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
       {selectedAppointment ? (
         <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedAppointment(null)} aria-hidden />
-          <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
+          <div className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
             <div className="flex items-center justify-between gap-2 bg-zinc-900 px-5 py-4 text-white dark:bg-zinc-800">
               <div>
                 <p className="text-xs uppercase tracking-wide text-white/70">Reserva</p>
@@ -508,7 +508,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
               </div>
             </div>
 
-            <div className="grid gap-6 p-6 lg:grid-cols-3">
+            <div className="grid flex-1 gap-6 overflow-y-auto p-6 lg:grid-cols-3">
               <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900">
                 <p className="text-xs font-semibold uppercase text-zinc-500">Detalles</p>
                 <div className="space-y-2 text-sm text-zinc-700 dark:text-zinc-200">

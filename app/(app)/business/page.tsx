@@ -574,9 +574,9 @@ function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
-        <header className="mb-4 flex items-start justify-between gap-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:p-6 backdrop-blur-sm">
+      <div className="relative flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-zinc-100 bg-white/95 px-6 py-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
           <div>
             <p className="text-xs uppercase tracking-wide text-indigo-500">Ficha del cliente</p>
             <h3 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{client.Nombre}</h3>
@@ -590,7 +590,8 @@ function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
           </button>
         </header>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+          <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
             <p className="text-xs uppercase tracking-wide text-zinc-500">Ficha técnica</p>
             <ul className="mt-2 space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
@@ -632,66 +633,67 @@ function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Historial de reservas</p>
-              <p className="text-sm text-zinc-500">Últimas atenciones y estado de pago</p>
+          <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-zinc-500">Historial de reservas</p>
+                <p className="text-sm text-zinc-500">Últimas atenciones y estado de pago</p>
+              </div>
+              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-100">
+                {pastServices.length} reservas
+              </span>
             </div>
-            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-100">
-              {pastServices.length} reservas
-            </span>
-          </div>
 
-          <div className="mt-3 overflow-x-auto">
-            <table className="min-w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-                  <th className="px-3 py-2 text-left">Fecha</th>
-                  <th className="px-3 py-2 text-left">Hora</th>
-                  <th className="px-3 py-2 text-left">Servicio</th>
-                  <th className="px-3 py-2 text-left">Especialista</th>
-                  <th className="px-3 py-2 text-left">Estado</th>
-                  <th className="px-3 py-2 text-left">Pago</th>
-                  <th className="px-3 py-2 text-right">Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pastServices.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-sm text-zinc-500" colSpan={7}>
-                      Sin reservas registradas para este cliente.
-                    </td>
+            <div className="mt-3 overflow-x-auto">
+              <table className="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+                    <th className="px-3 py-2 text-left">Fecha</th>
+                    <th className="px-3 py-2 text-left">Hora</th>
+                    <th className="px-3 py-2 text-left">Servicio</th>
+                    <th className="px-3 py-2 text-left">Especialista</th>
+                    <th className="px-3 py-2 text-left">Estado</th>
+                    <th className="px-3 py-2 text-left">Pago</th>
+                    <th className="px-3 py-2 text-right">Monto</th>
                   </tr>
-                ) : (
-                  pastServices.map((appt, index) => (
-                    <tr key={`${appt.fecha}-${index}`} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
-                      <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{appt.fecha}</td>
-                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{appt.hora}</td>
-                      <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{appt.servicio}</td>
-                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{appt.especialista}</td>
-                      <td className="px-3 py-2">
-                        <span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-100">
-                          {appt.estado}
-                        </span>
+                </thead>
+                <tbody>
+                  {pastServices.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-4 text-center text-sm text-zinc-500" colSpan={7}>
+                        Sin reservas registradas para este cliente.
                       </td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                            appt.is_paid
-                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-100"
-                              : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-100"
-                          }`}
-                        >
-                          {appt.is_paid ? "Pagado" : "Pendiente"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right text-zinc-800 dark:text-zinc-100">${appt.price}</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    pastServices.map((appt, index) => (
+                      <tr key={`${appt.fecha}-${index}`} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                        <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{appt.fecha}</td>
+                        <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{appt.hora}</td>
+                        <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{appt.servicio}</td>
+                        <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{appt.especialista}</td>
+                        <td className="px-3 py-2">
+                          <span className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-100">
+                            {appt.estado}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                              appt.is_paid
+                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-100"
+                                : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-100"
+                            }`}
+                          >
+                            {appt.is_paid ? "Pagado" : "Pendiente"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-800 dark:text-zinc-100">${appt.price}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
