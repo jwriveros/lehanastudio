@@ -7,19 +7,19 @@ import { supabase } from "@/lib/supabaseClient";
 
 import {
   appointments,
-  clients as mockClients,
+  // Ya no usamos mockClients
 } from "@/lib/mockData";
 
 type TabKey = "clients" | "services" | "specialists";
 
 type ClientForm = {
   Nombre: string;
-  Celular: string;
+  Celular: string; // La UI espera un string
   Tipo: string;
   numberc: string;
-  Direccion: string;
+  Direccion: string; // UI key: sin acento
   Cumpleaños: string;
-  notes?: string;
+  notes?: string; // UI key: en minúsculas
 };
 
 type ServiceForm = {
@@ -37,7 +37,18 @@ type SpecialistForm = {
   color: string;
 };
 
-// TIPOS para mapear los datos de Supabase
+// Nuevo tipo para recibir la data tal cual de Supabase, con la estructura y nulls del usuario
+type ClientDB = {
+  Nombre: string;
+  Celular: number | null; // Asumiendo que es un número
+  Tipo: string | null;
+  numberc: string | null; // Asumiendo que es un string con el formato "+57..."
+  "Dirección": string | null; // DB column: Dirección (con acento)
+  "Cumpleaños": string | null;
+  "Notas": string | null; // DB column: Notas (con N mayúscula)
+};
+
+// TIPOS para mapear los datos de Supabase (Servicios y Especialistas se mantienen igual)
 type ServiceDB = {
   SKU: string;
   category: string;
@@ -65,18 +76,7 @@ export default function BusinessPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const [clients, setClients] = useState<ClientForm[]>(() =>
-    mockClients.map((client) => ({
-      Nombre: client.Nombre,
-      Celular: client.Celular,
-      Tipo: client.Tipo,
-      numberc: client.numberc,
-      Direccion: client.Direccion,
-      Cumpleaños: client["Cumpleaños"],
-      notes: client.notes,
-    }))
-  );
-
+  const [clients, setClients] = useState<ClientForm[]>([]);
   const [services, setServices] = useState<ServiceForm[]>([]); 
   const [specialists, setSpecialists] = useState<SpecialistForm[]>([]);
 
@@ -113,7 +113,33 @@ export default function BusinessPage() {
     const fetchInitialData = async () => {
       setLoading(true);
       
-      // 1. Cargar Servicios (tabla 'services')
+      // 1. Cargar Clientes (tabla 'clients') - CORREGIDO con nombres de columnas del usuario
+      const { data: clientsData, error: clientsError } = await supabase
+        .from('clients')
+        // Usamos los nombres de columnas del usuario (Dirección y Notas con mayúsculas/acento)
+        .select('Nombre, Celular, Tipo, numberc, "Dirección", Cumpleaños, Notas') 
+        .returns<ClientDB[]>();
+
+      if (clientsError) {
+        console.error("Error fetching clients:", clientsError);
+      } else {
+        // Mapeamos los datos de la DB a la estructura ClientForm esperada por la UI
+        const formattedClients: ClientForm[] = clientsData.map(c => ({
+          Nombre: c.Nombre,
+          // Convertimos Celular a string (asumiendo que Celular puede ser un number o null)
+          Celular: String(c.Celular || ''), 
+          Tipo: c.Tipo || '',
+          numberc: c.numberc || '',
+          // Mapeamos Dirección (con acento) a Direccion (sin acento para el formulario)
+          Direccion: c.Dirección || '', 
+          Cumpleaños: c.Cumpleaños || '',
+          // Mapeamos Notas (DB) a notes (Form)
+          notes: c.Notas || '', 
+        }));
+        setClients(formattedClients);
+      }
+      
+      // 2. Cargar Servicios (tabla 'services')
       const { data: servicesData, error: servicesError } = await supabase
         .from('services')
         .select('SKU, category, Servicio, Precio, duracion')
@@ -125,11 +151,11 @@ export default function BusinessPage() {
         setServices(servicesData);
       }
 
-      // 2. Cargar Especialistas (tabla 'app_users' con rol 'SPECIALIST')
+      // 3. Cargar Especialistas (tabla 'app_users')
       const { data: usersData, error: usersError } = await supabase
         .from('app_users')
         .select('id, name, email, color, role')
-        .eq('role', 'SPECIALIST')
+        .eq('role', 'ESPECIALISTA') 
         .returns<SpecialistDB[]>();
 
       if (usersError) {
@@ -192,43 +218,149 @@ export default function BusinessPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (tab: TabKey, id: string) => {
-    if (!confirm("¿Seguro que deseas eliminar este registro?")) return;
-
-    if (tab === "clients") setClients((prev) => prev.filter((c) => c.numberc !== id));
-    if (tab === "services") setServices((prev) => prev.filter((s) => s.SKU !== id));
-    if (tab === "specialists") setSpecialists((prev) => prev.filter((s) => s.id !== id));
+  // Función auxiliar para mapear de ClientForm (UI) a ClientDB (Supabase)
+  const mapFormToDBClient = (form: ClientForm) => {
+      // Mapeamos los campos que tienen nombres diferentes en la base de datos del usuario
+      const dbObject: any = {
+          Nombre: form.Nombre,
+          Celular: form.Celular,
+          Tipo: form.Tipo,
+          numberc: form.numberc,
+          "Dirección": form.Direccion, // Mapeo Direccion -> Dirección
+          "Cumpleaños": form.Cumpleaños,
+          "Notas": form.notes, // Mapeo notes -> Notas
+      };
+      return dbObject;
   };
 
-  const handleSubmit = () => {
+
+  // *** Modificación de handleDelete para usar Supabase ***
+  const handleDelete = async (tab: TabKey, id: string) => {
+    if (!confirm("¿Seguro que deseas eliminar este registro?")) return;
+
+    if (tab === "clients") {
+        const { error } = await supabase.from('clients').delete().eq('numberc', id);
+        if (error) {
+            console.error("Error eliminando cliente:", error);
+            alert("Error al eliminar el cliente.");
+            return;
+        }
+        setClients((prev) => prev.filter((c) => c.numberc !== id));
+    }
+    if (tab === "services") {
+        const { error } = await supabase.from('services').delete().eq('SKU', id);
+        if (error) {
+            console.error("Error eliminando servicio:", error);
+            alert("Error al eliminar el servicio.");
+            return;
+        }
+        setServices((prev) => prev.filter((s) => s.SKU !== id));
+    }
+    if (tab === "specialists") {
+        const { error } = await supabase.from('app_users').delete().eq('id', id);
+        if (error) {
+            console.error("Error eliminando especialista:", error);
+            alert("Error al eliminar el especialista.");
+            return;
+        }
+        setSpecialists((prev) => prev.filter((s) => s.id !== id));
+    }
+  };
+
+  // *** Modificación de handleSubmit para usar Supabase ***
+  const handleSubmit = async () => {
     if (formTab === "clients") {
       if (!clientForm.Nombre || !clientForm.Celular) return alert("Completa nombre y celular");
-      setClients((prev) => {
-        if (mode === "edit") return prev.map((c) => (c.numberc === editingId ? { ...clientForm } : c));
-        return [...prev, { ...clientForm, numberc: `C${String(clients.length + 1).padStart(3, "0")}` }];
-      });
+      
+      const clientToSave = mapFormToDBClient(clientForm); // Mapeo a formato DB
+
+      if (mode === "edit") {
+        const { error } = await supabase.from('clients').update(clientToSave).eq('numberc', editingId);
+        if (error) {
+            console.error("Error al actualizar cliente:", error);
+            alert("Error al actualizar cliente.");
+            return;
+        }
+        setClients((prev) => prev.map((c) => (c.numberc === editingId ? { ...clientForm } : c)));
+      } else {
+        const { data, error } = await supabase.from('clients').insert([clientToSave]).select();
+
+        if (error) {
+            console.error("Error al crear cliente:", error);
+            alert("Error al crear cliente.");
+            return;
+        }
+        if (data) {
+          // Mapear de vuelta de DB a ClientForm para actualizar el estado local
+          const newClient = data[0] as ClientDB;
+          const formattedNewClient: ClientForm = {
+            Nombre: newClient.Nombre,
+            Celular: String(newClient.Celular || ''),
+            Tipo: newClient.Tipo || '',
+            numberc: newClient.numberc || '',
+            Direccion: newClient.Dirección || '',
+            Cumpleaños: newClient.Cumpleaños || '',
+            notes: newClient.Notas || '',
+          };
+          setClients((prev) => [...prev, formattedNewClient]);
+        }
+      }
     }
 
     if (formTab === "services") {
       if (!serviceForm.Servicio) return alert("Agrega el nombre del servicio");
-      setServices((prev) => {
-        if (mode === "edit") return prev.map((s) => (s.SKU === editingId ? { ...serviceForm } : s));
-        return [...prev, { ...serviceForm, SKU: `SK-${String(services.length + 1).padStart(3, "0")}` }];
-      });
+      
+      const serviceToSave = { ...serviceForm, Precio: Number(serviceForm.Precio), duracion: Number(serviceForm.duracion) };
+
+      if (mode === "edit") {
+        const { error } = await supabase.from('services').update(serviceToSave).eq('SKU', editingId);
+        if (error) {
+            console.error("Error al actualizar servicio:", error);
+            alert("Error al actualizar servicio.");
+            return;
+        }
+        setServices((prev) => prev.map((s) => (s.SKU === editingId ? { ...serviceToSave } : s)));
+      } else {
+        const newSKU = serviceForm.SKU || `SK-${String(services.length + 1).padStart(3, "0")}`;
+        const { data, error } = await supabase.from('services').insert([{ ...serviceToSave, SKU: newSKU }]).select();
+        
+        if (error) {
+            console.error("Error al crear servicio:", error);
+            alert("Error al crear servicio.");
+            return;
+        }
+        if (data) setServices((prev) => [...prev, data[0] as ServiceForm]);
+      }
     }
 
     if (formTab === "specialists") {
       if (!specialistForm.name || !specialistForm.email) return alert("Completa nombre y correo del especialista");
-      setSpecialists((prev) => {
-        if (mode === "edit") return prev.map((s) => (s.id === editingId ? { ...specialistForm } : s));
-        return [...prev, { ...specialistForm, id: crypto.randomUUID() }];
-      });
+      
+      const specialistToSave = { ...specialistForm, role: 'ESPECIALISTA' };
+
+      if (mode === "edit") {
+        const { error } = await supabase.from('app_users').update(specialistToSave).eq('id', editingId);
+        if (error) {
+            console.error("Error al actualizar especialista:", error);
+            alert("Error al actualizar especialista.");
+            return;
+        }
+        setSpecialists((prev) => prev.map((s) => (s.id === editingId ? { ...specialistForm } : s)));
+      } else {
+        const { data, error } = await supabase.from('app_users').insert([specialistToSave]).select();
+        
+        if (error) {
+            console.error("Error al crear especialista:", error);
+            alert("Error al crear especialista.");
+            return;
+        }
+        if (data) setSpecialists((prev) => [...prev, data[0] as SpecialistForm]);
+      }
     }
 
     setIsFormOpen(false);
   };
 
-  // filteredRows: Usamos una unión de tipos más simple aquí, el chequeo lo hacemos en renderRows
   const filteredRows = useMemo(() => {
     const term = search.toLowerCase();
     if (activeTab === "clients")
@@ -252,7 +384,7 @@ export default function BusinessPage() {
 
   const renderRows = () => {
     if (activeTab === "clients")
-      // Corrección 1: Cast a ClientForm[]
+      // Casting explícito para ClientForm[]
       return (filteredRows as ClientForm[]).map((client) => (
         <tr key={client.numberc} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
           <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{client.Nombre}</td>
@@ -281,7 +413,7 @@ export default function BusinessPage() {
       ));
 
     if (activeTab === "services")
-      // Corrección 1: Cast a ServiceForm[]
+      // Casting explícito para ServiceForm[]
       return (filteredRows as ServiceForm[]).map((service: ServiceForm) => (
         <tr key={service.SKU} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
           <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{service.Servicio}</td>
@@ -302,7 +434,7 @@ export default function BusinessPage() {
         </tr>
       ));
 
-    // Corrección 1: Cast a SpecialistForm[]
+    // Casting explícito para SpecialistForm[]
     return (filteredRows as SpecialistForm[]).map((specialist) => (
       <tr key={specialist.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
         <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{specialist.name}</td>
@@ -610,12 +742,13 @@ type ClientDetailModalProps = {
 function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
   if (!client) return null;
 
+  // NOTA: appointments aún usa mock data. Será el siguiente paso.
   const clientAppointments = appointments.filter((appt) => appt.cliente === client.Nombre);
   const pastServices = clientAppointments.map((appt) => ({
     servicio: appt.servicio,
     especialista: appt.especialista,
-    fecha: appt.fecha,
-    hora: appt.hora,
+    fecha: (appt as any).fecha, 
+    hora: (appt as any).hora, 
     estado: appt.estado,
     is_paid: appt.is_paid,
     price: appt.price,
@@ -653,7 +786,7 @@ function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
               <li><span className="font-semibold">Celular:</span> {client.Celular}</li>
               <li><span className="font-semibold">Dirección:</span> {client.Direccion}</li>
               <li><span className="font-semibold">Cumpleaños:</span> {client.Cumpleaños}</li>
-              <li><span className="font-semibold">Notas:</span> {client.notes || "Sin notas"}</li>
+              <li><span className="font-semibold">Notas:</span> {client.notes}</li>
             </ul>
           </div>
 
@@ -721,9 +854,9 @@ function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
                     </tr>
                   ) : (
                     pastServices.map((appt, index) => (
-                      <tr key={`${appt.fecha}-${index}`} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
-                        <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{appt.fecha}</td>
-                        <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{appt.hora}</td>
+                      <tr key={`${(appt as any).fecha}-${index}`} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+                        <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{(appt as any).fecha}</td>
+                        <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{(appt as any).hora}</td>
                         <td className="px-3 py-2 text-zinc-800 dark:text-zinc-100">{appt.servicio}</td>
                         <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">{appt.especialista}</td>
                         <td className="px-3 py-2">
