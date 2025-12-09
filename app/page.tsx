@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { NAV_ITEMS, navByRole } from "@/lib/nav";
 import { useSessionStore } from "@/lib/sessionStore";
@@ -20,11 +20,13 @@ export default function Home() {
     router.push(destination);
   };
 
-  if (session) {
+  useEffect(() => {
+    if (!session) return;
     const destination = navByRole[session.role][0]?.href ?? NAV_ITEMS[0].href;
     router.replace(destination);
-    return null;
-  }
+  }, [router, session]);
+
+  if (session) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-emerald-50 text-zinc-900 dark:from-zinc-950 dark:via-black dark:to-zinc-900">

@@ -6,6 +6,7 @@ import { AgendaBoard, ChatPanel } from "@/components";
 
 export default function AgendaPage() {
   const [showCalendar, setShowCalendar] = useState(false);
+  const [bookingSignal, setBookingSignal] = useState(0);
 
   return (
     <section className="relative space-y-4 pb-24">
@@ -27,6 +28,10 @@ export default function AgendaPage() {
           title="Nueva reserva"
           className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-2xl transition hover:bg-indigo-700 active:scale-95"
           aria-label="Crear nueva reserva"
+          onClick={() => {
+            setShowCalendar(true);
+            setBookingSignal((value) => value + 1);
+          }}
         >
           +
         </button>
@@ -83,7 +88,7 @@ export default function AgendaPage() {
               </button>
             </div>
             <div className="flex-1 overflow-auto p-3 sm:p-4">
-              <AgendaBoard />
+              <AgendaBoard externalBookingSignal={bookingSignal} />
             </div>
           </div>
         </div>
