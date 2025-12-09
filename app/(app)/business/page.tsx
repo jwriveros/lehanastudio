@@ -1,12 +1,13 @@
+// jwriveros/lehanastudio/lehanastudio-a8a570c007a1557a6ccd13baa5a39a3fe79a534a/app/(app)/business/page.tsx
+
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 import {
   appointments,
   clients as mockClients,
-  sampleUsers,
-  services as mockServices,
 } from "@/lib/mockData";
 
 type TabKey = "clients" | "services" | "specialists";
@@ -36,6 +37,23 @@ type SpecialistForm = {
   color: string;
 };
 
+// TIPOS para mapear los datos de Supabase
+type ServiceDB = {
+  SKU: string;
+  category: string;
+  Servicio: string;
+  Precio: number;
+  duracion: number;
+};
+
+type SpecialistDB = {
+  id: string;
+  name: string;
+  email: string;
+  color: string;
+  role: string;
+};
+
 const tabs: { key: TabKey; label: string; helper: string }[] = [
   { key: "clients", label: "Clientes", helper: "Busca por nombre, celular o código" },
   { key: "services", label: "Servicios", helper: "Gestiona duración y precios" },
@@ -45,6 +63,7 @@ const tabs: { key: TabKey; label: string; helper: string }[] = [
 export default function BusinessPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("clients");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const [clients, setClients] = useState<ClientForm[]>(() =>
     mockClients.map((client) => ({
@@ -58,21 +77,8 @@ export default function BusinessPage() {
     }))
   );
 
-  const [services, setServices] = useState<ServiceForm[]>(() =>
-    mockServices.map((service) => ({
-      Servicio: service.Servicio,
-      category: service.category,
-      Precio: service.Precio,
-      duracion: service.duracion,
-      SKU: service.SKU,
-    }))
-  );
-
-  const [specialists, setSpecialists] = useState<SpecialistForm[]>(() =>
-    sampleUsers
-      .filter((user) => user.role === "SPECIALIST")
-      .map((user) => ({ id: user.id, name: user.name, email: user.email, color: user.color }))
-  );
+  const [services, setServices] = useState<ServiceForm[]>([]); 
+  const [specialists, setSpecialists] = useState<SpecialistForm[]>([]);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [mode, setMode] = useState<"create" | "edit">("create");
@@ -102,6 +108,47 @@ export default function BusinessPage() {
     color: "#6366f1",
   });
 
+  // *** useEffect para cargar datos iniciales de Supabase ***
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      setLoading(true);
+      
+      // 1. Cargar Servicios (tabla 'services')
+      const { data: servicesData, error: servicesError } = await supabase
+        .from('services')
+        .select('SKU, category, Servicio, Precio, duracion')
+        .returns<ServiceDB[]>();
+
+      if (servicesError) {
+        console.error("Error fetching services:", servicesError);
+      } else {
+        setServices(servicesData);
+      }
+
+      // 2. Cargar Especialistas (tabla 'app_users' con rol 'SPECIALIST')
+      const { data: usersData, error: usersError } = await supabase
+        .from('app_users')
+        .select('id, name, email, color, role')
+        .eq('role', 'SPECIALIST')
+        .returns<SpecialistDB[]>();
+
+      if (usersError) {
+        console.error("Error fetching specialists:", usersError);
+      } else {
+        setSpecialists(usersData.map(u => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            color: u.color,
+        } as SpecialistForm)));
+      }
+
+      setLoading(false);
+    };
+
+    fetchInitialData();
+  }, []);
+
   const resetForms = () => {
     setClientForm({
       Nombre: "",
@@ -113,7 +160,7 @@ export default function BusinessPage() {
       notes: "",
     });
     setServiceForm({ Servicio: "", category: "", Precio: 0, duracion: 0, SKU: `SK-${String(services.length + 1).padStart(3, "0")}` });
-    setSpecialistForm({ id: crypto.randomUUID(), name: "", email: "", color: "#10b981" });
+    setSpecialistForm({ id: Date.now().toString(), name: "", email: "", color: "#10b981" }); 
     setEditingId("");
   };
 
@@ -158,7 +205,7 @@ export default function BusinessPage() {
       if (!clientForm.Nombre || !clientForm.Celular) return alert("Completa nombre y celular");
       setClients((prev) => {
         if (mode === "edit") return prev.map((c) => (c.numberc === editingId ? { ...clientForm } : c));
-        return [...prev, { ...clientForm }];
+        return [...prev, { ...clientForm, numberc: `C${String(clients.length + 1).padStart(3, "0")}` }];
       });
     }
 
@@ -166,7 +213,7 @@ export default function BusinessPage() {
       if (!serviceForm.Servicio) return alert("Agrega el nombre del servicio");
       setServices((prev) => {
         if (mode === "edit") return prev.map((s) => (s.SKU === editingId ? { ...serviceForm } : s));
-        return [...prev, { ...serviceForm }];
+        return [...prev, { ...serviceForm, SKU: `SK-${String(services.length + 1).padStart(3, "0")}` }];
       });
     }
 
@@ -174,13 +221,14 @@ export default function BusinessPage() {
       if (!specialistForm.name || !specialistForm.email) return alert("Completa nombre y correo del especialista");
       setSpecialists((prev) => {
         if (mode === "edit") return prev.map((s) => (s.id === editingId ? { ...specialistForm } : s));
-        return [...prev, { ...specialistForm }];
+        return [...prev, { ...specialistForm, id: crypto.randomUUID() }];
       });
     }
 
     setIsFormOpen(false);
   };
 
+  // filteredRows: Usamos una unión de tipos más simple aquí, el chequeo lo hacemos en renderRows
   const filteredRows = useMemo(() => {
     const term = search.toLowerCase();
     if (activeTab === "clients")
@@ -204,7 +252,8 @@ export default function BusinessPage() {
 
   const renderRows = () => {
     if (activeTab === "clients")
-      return filteredRows.map((client) => (
+      // Corrección 1: Cast a ClientForm[]
+      return (filteredRows as ClientForm[]).map((client) => (
         <tr key={client.numberc} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
           <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{client.Nombre}</td>
           <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300">{client.Celular}</td>
@@ -232,7 +281,8 @@ export default function BusinessPage() {
       ));
 
     if (activeTab === "services")
-      return filteredRows.map((service: ServiceForm) => (
+      // Corrección 1: Cast a ServiceForm[]
+      return (filteredRows as ServiceForm[]).map((service: ServiceForm) => (
         <tr key={service.SKU} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
           <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{service.Servicio}</td>
           <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-300">{service.category}</td>
@@ -252,6 +302,7 @@ export default function BusinessPage() {
         </tr>
       ));
 
+    // Corrección 1: Cast a SpecialistForm[]
     return (filteredRows as SpecialistForm[]).map((specialist) => (
       <tr key={specialist.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
         <td className="whitespace-nowrap px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">{specialist.name}</td>
@@ -326,41 +377,45 @@ export default function BusinessPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-                {activeTab === "clients" && (
-                  <>
-                    <th className="px-4 py-2">Nombre</th>
-                    <th className="px-4 py-2">Celular</th>
-                    <th className="px-4 py-2">Tipo</th>
-                    <th className="px-4 py-2">Código</th>
-                    <th className="px-4 py-2">Dirección</th>
-                    <th className="px-4 py-2">Cumpleaños</th>
-                  </>
-                )}
-                {activeTab === "services" && (
-                  <>
-                    <th className="px-4 py-2">Servicio</th>
-                    <th className="px-4 py-2">Categoría</th>
-                    <th className="px-4 py-2">Duración</th>
-                    <th className="px-4 py-2">Precio</th>
-                    <th className="px-4 py-2">SKU</th>
-                  </>
-                )}
-                {activeTab === "specialists" && (
-                  <>
-                    <th className="px-4 py-2">Nombre</th>
-                    <th className="px-4 py-2">Correo</th>
-                    <th className="px-4 py-2">Color</th>
-                  </>
-                )}
-                <th className="px-4 py-2 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>{renderRows()}</tbody>
-          </table>
-          {filteredRows.length === 0 && <p className="px-4 py-6 text-sm text-zinc-500">Sin resultados para esta búsqueda.</p>}
+          {loading ? (
+            <p className="px-4 py-6 text-sm text-indigo-500">Cargando datos de Supabase...</p>
+          ) : (
+            <table className="min-w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+                  {activeTab === "clients" && (
+                    <>
+                      <th className="px-4 py-2">Nombre</th>
+                      <th className="px-4 py-2">Celular</th>
+                      <th className="px-4 py-2">Tipo</th>
+                      <th className="px-4 py-2">Código</th>
+                      <th className="px-4 py-2">Dirección</th>
+                      <th className="px-4 py-2">Cumpleaños</th>
+                    </>
+                  )}
+                  {activeTab === "services" && (
+                    <>
+                      <th className="px-4 py-2">Servicio</th>
+                      <th className="px-4 py-2">Categoría</th>
+                      <th className="px-4 py-2">Duración</th>
+                      <th className="px-4 py-2">Precio</th>
+                      <th className="px-4 py-2">SKU</th>
+                    </>
+                  )}
+                  {activeTab === "specialists" && (
+                    <>
+                      <th className="px-4 py-2">Nombre</th>
+                      <th className="px-4 py-2">Correo</th>
+                      <th className="px-4 py-2">Color</th>
+                    </>
+                  )}
+                  <th className="px-4 py-2 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>{renderRows()}</tbody>
+            </table>
+          )}
+          {!loading && filteredRows.length === 0 && <p className="px-4 py-6 text-sm text-zinc-500">Sin resultados para esta búsqueda.</p>}
         </div>
       </div>
 
@@ -574,7 +629,7 @@ function ClientDetailModal({ client, onClose }: ClientDetailModalProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-[70] flex min-h-screen items-center justify-center overflow-y-auto bg-black/40 px-4 py-8 sm:px-6 sm:py-10 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:p-6 backdrop-blur-sm">
       <div className="relative flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
         <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-zinc-100 bg-white/95 px-6 py-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
           <div>
