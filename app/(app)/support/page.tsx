@@ -18,7 +18,7 @@ export default function SupportPage() {
             <p className="text-xs uppercase tracking-wide text-indigo-500">PWA · pantalla completa · mobile first</p>
             <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Lehana Studio</h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-300">
-              Menú inferior con Soporte, Agenda, Mi negocio, Dashboard y Ajustes. Especialista solo ve Soporte y Agenda.
+              Menú inferior con Soporte, Mi negocio, Dashboard y Ajustes. Especialista se concentra en Soporte.
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -45,6 +45,8 @@ export default function SupportPage() {
         <ChatPanel />
       </div>
 
+      <AgendaBoard externalBookingSignal={bookingSignal} renderCalendarShell={false} />
+
       <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-3">
         <button
           type="button"
@@ -52,7 +54,6 @@ export default function SupportPage() {
           className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-2xl transition hover:bg-indigo-700 active:scale-95"
           aria-label="Crear nueva reserva"
           onClick={() => {
-            setShowCalendar(true);
             setBookingSignal(Date.now());
           }}
         >
@@ -111,7 +112,7 @@ export default function SupportPage() {
               </button>
             </div>
             <div className="flex-1 overflow-auto p-3 sm:p-4">
-              <AgendaBoard externalBookingSignal={bookingSignal} />
+              <AgendaBoard />
             </div>
           </div>
         </div>
