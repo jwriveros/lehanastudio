@@ -6,6 +6,7 @@ import { appointments, appointmentStatuses, services, sampleUsers } from "@/lib/
 
 type AgendaBoardProps = {
   externalBookingSignal?: number | null;
+  renderCalendarShell?: boolean;
 };
 
 const MINUTES_START = 7 * 60; // 07:00
@@ -33,7 +34,7 @@ const dayFormatter = new Intl.DateTimeFormat("es", {
   weekday: "short",
 });
 
-export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
+export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true }: AgendaBoardProps) {
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
   const [baseDate, setBaseDate] = useState<Date>(appointments[0] ? new Date(appointments[0].fecha) : new Date());
   const [serviceFilter, setServiceFilter] = useState<string>("ALL");
@@ -153,7 +154,9 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
   };
 
   return (
-    <div className="flex h-full min-h-[720px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+    <>
+      {renderCalendarShell ? (
+        <div className="flex h-full min-h-[720px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-gradient-to-r from-white via-indigo-50 to-white px-4 py-3 text-sm dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900/60 dark:to-zinc-900">
         <div className="flex items-center gap-2">
           <button
@@ -374,8 +377,8 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
               ))}
             </div>
           </div>
-        </>
-      )}
+        </div>
+      ) : null}
 
       {bookingForm.open ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -565,6 +568,6 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
