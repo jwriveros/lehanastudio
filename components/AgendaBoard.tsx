@@ -469,14 +469,16 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
                             </div>
                           </button>
                         );
-                      })}
-                    </div>
-                  );
-                })}
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
+      </div>
       ) : null}
 
       {selectedAppointment ? (
