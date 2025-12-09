@@ -1,3 +1,5 @@
+// jwriveros/lehanastudio/lehanastudio-a8a570c007a1557a6ccd13baa5a39a3fe79a534a/app/page.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,26 +9,31 @@ import { useSessionStore } from "@/lib/sessionStore";
 
 export default function Home() {
   const router = useRouter();
-  const { login, error, session } = useSessionStore();
-  const [email, setEmail] = useState("admin@lizto.demo");
+  const { login, error, session, isLoading } = useSessionStore();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleLogin = () => {
-    const ok = login(email, password);
-    if (!ok) return;
-
-    const role = useSessionStore.getState().session?.role ?? "ADMIN";
-    const destination = navByRole[role][0]?.href ?? NAV_ITEMS[0].href;
-    router.push(destination);
+  const handleLogin = async () => {
+    if (!email || !password) return;
+    
+    const ok = await login(email, password);
+    
+    if (ok) {
+      // Redirigir según el rol recién obtenido
+      const currentSession = useSessionStore.getState().session;
+      const role = currentSession?.role ?? "ADMIN";
+      const destination = navByRole[role][0]?.href ?? NAV_ITEMS[0].href;
+      router.push(destination);
+    }
   };
 
+  // Si ya está logueado, redirigir automáticamente
   useEffect(() => {
-    if (!session) return;
-    const destination = navByRole[session.role][0]?.href ?? NAV_ITEMS[0].href;
-    router.replace(destination);
-  }, [router, session]);
-
-  if (session) return null;
+    if (session) {
+        const destination = navByRole[session.role][0]?.href ?? NAV_ITEMS[0].href;
+        router.replace(destination);
+    }
+  }, [session, router]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-emerald-50 text-zinc-900 dark:from-zinc-950 dark:via-black dark:to-zinc-900">
@@ -35,19 +42,21 @@ export default function Home() {
           <p className="text-xs uppercase tracking-wide text-indigo-500">PWA lista para instalar</p>
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Inicia sesión</h1>
           <p className="text-sm text-zinc-600 dark:text-zinc-300">
-            Admin y Especialista ingresan con su contraseña. El menú inferior incluye Soporte, Mi negocio, Dashboard y Ajustes.
+            Ingresa con tus credenciales de especialista o administrador.
           </p>
         </header>
 
         <section className="rounded-3xl border border-zinc-200 bg-white/95 p-6 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3">
             <div className="space-y-2">
               <label className="text-xs font-semibold text-zinc-500">Correo</label>
               <input
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950"
-                placeholder="admin@lizto.demo"
+                placeholder="ejemplo@lehanastudio.com"
+                disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
@@ -58,41 +67,21 @@ export default function Home() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-950"
                 placeholder="••••••••"
+                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                disabled={isLoading}
               />
             </div>
           </div>
-          {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-          <div className="mt-4 flex flex-wrap gap-3">
+          {error ? <p className="mt-3 text-sm text-rose-600 font-medium">{error}</p> : null}
+          <div className="mt-6">
             <button
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+              className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleLogin}
+              disabled={isLoading}
             >
-              Ingresar
-            </button>
-            <button
-              className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:border-indigo-300 dark:border-zinc-700 dark:text-zinc-200"
-              onClick={() => {
-                setEmail("admin@lizto.demo");
-                setPassword("admin123");
-              }}
-            >
-              Autocompletar Admin
-            </button>
-            <button
-              className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:border-indigo-300 dark:border-zinc-700 dark:text-zinc-200"
-              onClick={() => {
-                setEmail("rivera@lizto.demo");
-                setPassword("especialista123");
-              }}
-            >
-              Autocompletar Especialista
+              {isLoading ? "Verificando..." : "Ingresar"}
             </button>
           </div>
-        </section>
-
-        <section className="rounded-3xl border border-dashed border-zinc-300 p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
-          Funciona como PWA: instala en tu móvil desde el navegador para abrir a pantalla completa. El menú inferior mantiene todas
-          las secciones accesibles.
         </section>
       </div>
     </div>
