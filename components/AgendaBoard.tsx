@@ -2,7 +2,7 @@
 
 "use client";
 
-import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, MouseEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 import {
@@ -361,7 +361,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
 
   return (
     <>
-      {renderCalendarShell ? (
+      {renderCalendarShell && (
         <div className="flex h-full min-h-[720px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-gradient-to-r from-white via-indigo-50 to-white px-4 py-3 text-sm dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900/60 dark:to-zinc-900">
         <div className="flex items-center gap-2">
@@ -516,8 +516,8 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
             )}
           </div>
         </div>
-      ) : (
-        <>
+        ) : (
+          <Fragment>
           <div className="relative flex-1 overflow-auto bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-950 dark:to-zinc-900">
             <div className="min-w-[900px] sm:min-w-full">
               <div className="sticky top-0 z-20 flex border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
@@ -556,101 +556,107 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
                 </div>
 
                 {loading ? (
-                    <div className="flex-1 flex items-center justify-center" style={{ height: COLUMN_HEIGHT }}>
-                        <p className="text-xl text-indigo-500">Cargando Citas...</p>
-                    </div>
+                  <div className="flex-1 flex items-center justify-center" style={{ height: COLUMN_HEIGHT }}>
+                    <p className="text-xl text-indigo-500">Cargando Citas...</p>
+                  </div>
                 ) : (
-                    days.map((day, idx) => {
-                        // Filtra citas por el día ISO (parte de la fecha)
-                        const dayAppointments = filteredAppointments
-                          .filter((appt) => getAppointmentDetails(appt.appointment_at).dateISO === day.iso)
-                          .map((appt) => normalizeAppointment(appt));
-  
-                        const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          const offsetY = event.clientY - rect.top;
-                          const minutesFromStart = Math.min(Math.max(offsetY / COLUMN_HEIGHT, 0), 1) * TOTAL_MINUTES;
-                          const roundedSlot = Math.floor(minutesFromStart / STEP) * STEP + MINUTES_START;
-                          openBooking(day.iso, minutesToTimeString(roundedSlot));
-                        };
-  
-                        return (
+                  <div className="relative flex flex-1">
+                    {days.map((day, idx) => {
+                      // Filtra citas por el día ISO (parte de la fecha)
+                      const dayAppointments = filteredAppointments
+                        .filter((appt) => getAppointmentDetails(appt.appointment_at).dateISO === day.iso)
+                        .map((appt) => normalizeAppointment(appt));
+
+                      const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        const offsetY = event.clientY - rect.top;
+                        const minutesFromStart = Math.min(Math.max(offsetY / COLUMN_HEIGHT, 0), 1) * TOTAL_MINUTES;
+                        const roundedSlot = Math.floor(minutesFromStart / STEP) * STEP + MINUTES_START;
+                        openBooking(day.iso, minutesToTimeString(roundedSlot));
+                      };
+
+                      return (
+                        <div
+                          key={day.iso}
+                          onClick={handleColumnClick}
+                          className={`relative flex min-w-[160px] sm:min-w-0 flex-1 border-r border-zinc-300 last:border-r-0 ${
+                            idx === 0 ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"
+                          }`}
+                          style={{ height: COLUMN_HEIGHT }}
+                        >
                           <div
-                            key={day.iso}
-                            onClick={handleColumnClick}
-                            className={`relative flex min-w-[160px] sm:min-w-0 flex-1 border-r border-zinc-300 last:border-r-0 ${
-                              idx === 0 ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"
-                            }`}
-                            style={{ height: COLUMN_HEIGHT }}
-                          >
-                            <div
-                              className="pointer-events-none absolute inset-0"
-                              style={{
-                                backgroundImage: `repeating-linear-gradient(to bottom, ${idx === 0 ? "#e0e7ff" : "#e5e7eb"} 0, ${
-                                  idx === 0 ? "#e0e7ff" : "#e5e7eb"
-                                } 1px, transparent 1px, transparent ${ROW_HEIGHT}px)`,
-                              }}
-                            />
-  
-                            {dayAppointments.map((appt) => {
-                              const { minutes, timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
-                              const startMinutes = minutes;
-                              const top = Math.max(0, ((startMinutes - MINUTES_START) / STEP) * ROW_HEIGHT);
-                              const duration = appt.duration ?? 60;
-                              const height = Math.min(COLUMN_HEIGHT - top, Math.max((duration / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75));
-                              const endMinutes = Math.min(MINUTES_END, startMinutes + duration);
-  
-                              return (
-                                <button
-                                  key={appt.id}
-                                  type="button"
-                                  data-appointment
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    // Rellenamos los campos de fecha y hora que el formulario de edición espera
-                                    setSelectedAppointment({ 
-                                        ...appt,
-                                        fecha: dateISO, 
-                                        hora: timeString, 
-                                    } as Appointment);
-                                  }}
-                                  className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg"
-                                  style={{ backgroundColor: appt.bg_color, top, height }}
-                                  title={`${appt.servicio} · ${appt.cliente}`}
-                                >
-                                  <div className="flex items-center justify-between gap-2 text-[10px] font-semibold leading-none uppercase">
-                                    <span>
-                                      {timeString} – {minutesToTimeString(endMinutes)}
-                                    </span>
-                                    <span className="rounded-full bg-black/20 px-2 py-0.5 text-[9px] text-white">{appt.estado}</span>
-                                  </div>
-                                  <div className="truncate text-[11px] font-semibold leading-tight">{appt.servicio}</div>
-                                  <div className="truncate text-[10px] leading-tight opacity-90">{appt.cliente}</div>
-                                  <div className="truncate text-[9px] leading-tight opacity-75">{appt.especialista}</div>
-                                  <div className="mt-1 flex flex-wrap items-center gap-1 text-[9px] leading-tight opacity-85">
-                                    <span className="rounded-full bg-black/15 px-2 py-0.5 text-white">${appt.price}</span>
-                                    <span
-                                      className={`rounded-full px-2 py-0.5 ${
-                                        appt.is_paid ? "bg-emerald-200/70 text-emerald-900" : "bg-amber-200/80 text-amber-900"
-                                      }`}
-                                    >
-                                      {appt.is_paid ? "Pagado" : "Pendiente"}
-                                    </span>
-                                    <span className="rounded-full bg-black/15 px-2 py-0.5 text-white">{appt.sede}</span>
-                                  </div>
-                                </button>
-                              );
-                              })}
-                            </div>
-                          );
-                        })}
+                            className="pointer-events-none absolute inset-0"
+                            style={{
+                              backgroundImage: `repeating-linear-gradient(to bottom, ${idx === 0 ? "#e0e7ff" : "#e5e7eb"} 0, ${
+                                idx === 0 ? "#e0e7ff" : "#e5e7eb"
+                              } 1px, transparent 1px, transparent ${ROW_HEIGHT}px)`,
+                            }}
+                          />
+
+                          {dayAppointments.map((appt) => {
+                            const { minutes, timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
+                            const startMinutes = minutes;
+                            const top = Math.max(0, ((startMinutes - MINUTES_START) / STEP) * ROW_HEIGHT);
+                            const duration = appt.duration ?? 60;
+                            const height = Math.min(
+                              COLUMN_HEIGHT - top,
+                              Math.max((duration / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75),
+                            );
+                            const endMinutes = Math.min(MINUTES_END, startMinutes + duration);
+
+                            return (
+                              <button
+                                key={appt.id}
+                                type="button"
+                                data-appointment
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Rellenamos los campos de fecha y hora que el formulario de edición espera
+                                  setSelectedAppointment({
+                                    ...appt,
+                                    fecha: dateISO,
+                                    hora: timeString,
+                                  } as Appointment);
+                                }}
+                                className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg"
+                                style={{ backgroundColor: appt.bg_color, top, height }}
+                                title={`${appt.servicio} · ${appt.cliente}`}
+                              >
+                                <div className="flex items-center justify-between gap-2 text-[10px] font-semibold leading-none uppercase">
+                                  <span>
+                                    {timeString} – {minutesToTimeString(endMinutes)}
+                                  </span>
+                                  <span className="rounded-full bg-black/20 px-2 py-0.5 text-[9px] text-white">{appt.estado}</span>
+                                </div>
+                                <div className="truncate text-[11px] font-semibold leading-tight">{appt.servicio}</div>
+                                <div className="truncate text-[10px] leading-tight opacity-90">{appt.cliente}</div>
+                                <div className="truncate text-[9px] leading-tight opacity-75">{appt.especialista}</div>
+                                <div className="mt-1 flex flex-wrap items-center gap-1 text-[9px] leading-tight opacity-85">
+                                  <span className="rounded-full bg-black/15 px-2 py-0.5 text-white">${appt.price}</span>
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 ${
+                                      appt.is_paid ? "bg-emerald-200/70 text-emerald-900" : "bg-amber-200/80 text-amber-900"
+                                    }`}
+                                  >
+                                    {appt.is_paid ? "Pagado" : "Pendiente"}
+                                  </span>
+                                  <span className="rounded-full bg-black/15 px-2 py-0.5 text-white">{appt.sede}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
             </div>
-          </>
+          </div>
+          </Fragment>
         )}
       </div>
+      )}
 
       {selectedAppointment ? (
         <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
