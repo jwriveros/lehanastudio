@@ -1,16 +1,22 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 
-import { appointments, appointmentStatuses, services, sampleUsers } from "@/lib/mockData";
+import { AppointmentStatus, appointments, appointmentStatuses, services, sampleUsers } from "@/lib/mockData";
 
 type AgendaBoardProps = {
   externalBookingSignal?: number | null;
+  renderCalendarShell?: boolean;
 };
+
+type Appointment = (typeof appointments)[number] & { duration?: number };
 
 const MINUTES_START = 7 * 60; // 07:00
 const MINUTES_END = 20 * 60; // 20:00
 const STEP = 30; // 30 minutes
+const ROW_HEIGHT = 52;
+const TOTAL_MINUTES = MINUTES_END - MINUTES_START;
+const COLUMN_HEIGHT = ((MINUTES_END - MINUTES_START) / STEP) * ROW_HEIGHT;
 
 function startOfWeek(date: Date) {
   const d = new Date(date);
@@ -29,11 +35,28 @@ function parseTimeToMinutes(time: string) {
   return h * 60 + (m || 0);
 }
 
+function minutesToTimeString(minutes: number) {
+  const h = Math.floor(minutes / 60)
+    .toString()
+    .padStart(2, "0");
+  const m = (minutes % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+function normalizeAppointment(appt: Appointment): Appointment {
+  const matchedService = services.find((service) => service.Servicio === appt.servicio);
+  const duration = appt.duration ?? matchedService?.duracion ?? 60;
+  return { ...appt, duration };
+}
+
 const dayFormatter = new Intl.DateTimeFormat("es", {
   weekday: "short",
 });
 
-export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
+export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true }: AgendaBoardProps) {
+  const [appointmentList, setAppointmentList] = useState<Appointment[]>(() =>
+    appointments.map((appt) => normalizeAppointment(appt))
+  );
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
   const [baseDate, setBaseDate] = useState<Date>(appointments[0] ? new Date(appointments[0].fecha) : new Date());
   const [serviceFilter, setServiceFilter] = useState<string>("ALL");
@@ -53,6 +76,8 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
     notes: "",
     status: "Nueva Reserva Creada",
   });
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [editAppointment, setEditAppointment] = useState<Appointment | null>(null);
 
   useEffect(() => {
     if (externalBookingSignal === null || externalBookingSignal === undefined) return;
@@ -60,18 +85,26 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalBookingSignal]);
 
-  const serviceOptions = useMemo(() => Array.from(new Set(appointments.map((a) => a.servicio))), []);
-  const specialistOptions = useMemo(() => Array.from(new Set(appointments.map((a) => a.especialista))), []);
+  useEffect(() => {
+    if (!selectedAppointment) return;
+    setEditAppointment(selectedAppointment);
+  }, [selectedAppointment]);
+
+  const serviceOptions = useMemo(() => Array.from(new Set(appointmentList.map((a) => a.servicio))), [appointmentList]);
+  const specialistOptions = useMemo(
+    () => Array.from(new Set(appointmentList.map((a) => a.especialista))),
+    [appointmentList]
+  );
 
   const filteredAppointments = useMemo(
     () =>
-      appointments.filter((appt) => {
+      appointmentList.filter((appt) => {
         const matchesService = serviceFilter === "ALL" || appt.servicio === serviceFilter;
         const matchesSpecialist = specialistFilter === "ALL" || appt.especialista === specialistFilter;
         const matchesStatus = statusFilter === "ALL" || appt.estado === statusFilter;
         return matchesService && matchesSpecialist && matchesStatus;
       }),
-    [serviceFilter, specialistFilter, statusFilter]
+    [appointmentList, serviceFilter, specialistFilter, statusFilter]
   );
 
   const days = useMemo(() => {
@@ -128,14 +161,6 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
     setBaseDate(next);
   };
 
-  const minutesToTime = (minutes: number) => {
-    const h = Math.floor(minutes / 60)
-      .toString()
-      .padStart(2, "0");
-    const m = (minutes % 60).toString().padStart(2, "0");
-    return `${h}:${m}`;
-  };
-
   const openBooking = (dateIso: string, time?: string) => {
     setBookingForm((prev) => ({
       ...prev,
@@ -147,13 +172,46 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
 
   const closeBooking = () => setBookingForm((prev) => ({ ...prev, open: false }));
 
+  const updateAppointment = (id: Appointment["id"], updater: (appt: Appointment) => Partial<Appointment>) => {
+    setAppointmentList((prev) =>
+      prev.map((appt) => (appt.id === id ? normalizeAppointment({ ...appt, ...updater(appt) }) : appt))
+    );
+  };
+
+  const handleMarkPaid = () => {
+    if (!selectedAppointment) return;
+    updateAppointment(selectedAppointment.id, () => ({ is_paid: true }));
+    setSelectedAppointment((prev) => (prev ? { ...prev, is_paid: true } : prev));
+  };
+
+  const handleCancelAppointment = () => {
+    if (!selectedAppointment) return;
+    updateAppointment(selectedAppointment.id, () => ({ estado: "CANCELLED" }));
+    setSelectedAppointment((prev) => (prev ? { ...prev, estado: "CANCELLED" } : prev));
+  };
+
+  const saveEditedAppointment = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editAppointment) return;
+
+    updateAppointment(editAppointment.id, () => editAppointment);
+    setSelectedAppointment(editAppointment);
+  };
+
+  const getAppointmentEnd = (appt: Appointment) => {
+    const endMinutes = Math.min(MINUTES_END, parseTimeToMinutes(appt.hora) + (appt.duration ?? 60));
+    return minutesToTimeString(endMinutes);
+  };
+
   const submitBooking = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     closeBooking();
   };
 
   return (
-    <div className="flex h-full min-h-[720px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+    <>
+      {renderCalendarShell ? (
+        <div className="flex h-full min-h-[720px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-gradient-to-r from-white via-indigo-50 to-white px-4 py-3 text-sm dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900/60 dark:to-zinc-900">
         <div className="flex items-center gap-2">
           <button
@@ -321,39 +379,78 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
                 ))}
               </div>
 
-              {slots.map((slot) => (
-                <div
-                  key={slot.minutes}
-                  className={`flex min-h-[110px] border-b border-zinc-300 ${slot.dashed ? "border-dashed" : "border-solid"}`}
-                >
-                  <div className="sticky left-0 z-10 flex w-16 flex-shrink-0 items-center justify-center border-r border-zinc-300 bg-white/95 px-1 text-center text-[11px] font-medium leading-none text-zinc-500 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/90 dark:text-zinc-400">
-                    {slot.label}
-                  </div>
-
-                  {days.map((day) => {
-                    const cellAppointments = filteredAppointments.filter((appt) => {
-                      if (appt.fecha !== day.iso) return false;
-                      const start = parseTimeToMinutes(appt.hora);
-                      return start >= slot.minutes && start < slot.minutes + STEP;
-                    });
-
-                    return (
+              <div className="relative flex" aria-label="Agenda detallada">
+                <div className="sticky left-0 z-20 w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+                  <div className="relative" style={{ height: COLUMN_HEIGHT }}>
+                    {slots.map((slot, idx) => (
                       <div
-                        key={`${day.iso}-${slot.minutes}`}
-                        onClick={() => openBooking(day.iso, minutesToTime(slot.minutes))}
-                        className="relative flex min-w-[160px] sm:min-w-0 flex-1 gap-1 overflow-hidden border-r border-zinc-300 p-1.5 transition-colors hover:bg-indigo-50/40 dark:border-zinc-800 dark:hover:bg-indigo-900/30"
+                        key={slot.minutes}
+                        className={`absolute inset-x-0 flex items-start justify-center border-b ${
+                          slot.dashed ? "border-dashed" : "border-solid"
+                        } border-zinc-200 px-1 text-[11px] font-medium leading-none text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`}
+                        style={{ top: idx * ROW_HEIGHT, height: ROW_HEIGHT }}
                       >
-                        {cellAppointments.map((appt) => (
-                          <div
+                        <span className="mt-1 block">{slot.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {days.map((day, idx) => {
+                  const dayAppointments = filteredAppointments
+                    .filter((appt) => appt.fecha === day.iso)
+                    .map((appt) => normalizeAppointment(appt));
+
+                  const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const offsetY = event.clientY - rect.top;
+                    const minutesFromStart = Math.min(Math.max(offsetY / COLUMN_HEIGHT, 0), 1) * TOTAL_MINUTES;
+                    const roundedSlot = Math.floor(minutesFromStart / STEP) * STEP + MINUTES_START;
+                    openBooking(day.iso, minutesToTimeString(roundedSlot));
+                  };
+
+                  return (
+                    <div
+                      key={day.iso}
+                      onClick={handleColumnClick}
+                      className={`relative flex min-w-[160px] sm:min-w-0 flex-1 border-r border-zinc-300 last:border-r-0 ${
+                        idx === 0 ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"
+                      }`}
+                      style={{ height: COLUMN_HEIGHT }}
+                    >
+                      <div
+                        className="pointer-events-none absolute inset-0"
+                        style={{
+                          backgroundImage: `repeating-linear-gradient(to bottom, ${idx === 0 ? "#e0e7ff" : "#e5e7eb"} 0, ${
+                            idx === 0 ? "#e0e7ff" : "#e5e7eb"
+                          } 1px, transparent 1px, transparent ${ROW_HEIGHT}px)`,
+                        }}
+                      />
+
+                      {dayAppointments.map((appt) => {
+                        const startMinutes = parseTimeToMinutes(appt.hora);
+                        const top = Math.max(0, ((startMinutes - MINUTES_START) / STEP) * ROW_HEIGHT);
+                        const duration = appt.duration ?? 60;
+                        const height = Math.min(COLUMN_HEIGHT - top, Math.max((duration / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75));
+                        const endMinutes = Math.min(MINUTES_END, startMinutes + duration);
+
+                        return (
+                          <button
                             key={appt.id}
+                            type="button"
                             data-appointment
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex-1 min-w-[140px] truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:translate-y-0.5"
-                            style={{ backgroundColor: appt.bg_color }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedAppointment(appt);
+                            }}
+                            className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg"
+                            style={{ backgroundColor: appt.bg_color, top, height }}
                             title={`${appt.servicio} · ${appt.cliente}`}
                           >
-                            <div className="flex items-center justify-between gap-1 text-[10px] font-semibold leading-none uppercase">
-                              <span>{appt.hora}</span>
+                            <div className="flex items-center justify-between gap-2 text-[10px] font-semibold leading-none uppercase">
+                              <span>
+                                {appt.hora} – {minutesToTimeString(endMinutes)}
+                              </span>
                               <span className="rounded-full bg-black/20 px-2 py-0.5 text-[9px] text-white">{appt.estado}</span>
                             </div>
                             <div className="truncate text-[11px] font-semibold leading-tight">{appt.servicio}</div>
@@ -361,21 +458,222 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
                             <div className="truncate text-[9px] leading-tight opacity-75">{appt.especialista}</div>
                             <div className="mt-1 flex flex-wrap items-center gap-1 text-[9px] leading-tight opacity-85">
                               <span className="rounded-full bg-black/15 px-2 py-0.5 text-white">${appt.price}</span>
-                              <span className={`rounded-full px-2 py-0.5 ${appt.is_paid ? "bg-emerald-200/60 text-emerald-900" : "bg-amber-200/70 text-amber-900"}`}>
+                              <span
+                                className={`rounded-full px-2 py-0.5 ${
+                                  appt.is_paid ? "bg-emerald-200/70 text-emerald-900" : "bg-amber-200/80 text-amber-900"
+                                }`}
+                              >
                                 {appt.is_paid ? "Pagado" : "Pendiente"}
                               </span>
+                              <span className="rounded-full bg-black/15 px-2 py-0.5 text-white">{appt.sede}</span>
                             </div>
-                          </div>
-                        ))}
+                          </button>
+                        );
+                        })}
                       </div>
                     );
                   })}
                 </div>
-              ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+      ) : null}
+
+      {selectedAppointment ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedAppointment(null)} aria-hidden />
+          <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
+            <div className="flex items-center justify-between gap-2 bg-zinc-900 px-5 py-4 text-white dark:bg-zinc-800">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-white/70">Reserva</p>
+                <h3 className="text-lg font-bold leading-tight">
+                  {selectedAppointment.servicio} · {selectedAppointment.cliente}
+                </h3>
+                <p className="text-sm text-white/80">
+                  {selectedAppointment.fecha} · {selectedAppointment.hora} – {getAppointmentEnd(selectedAppointment)}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2 text-xs font-semibold">
+                <span className="rounded-full bg-white/15 px-3 py-1">{selectedAppointment.estado}</span>
+                <span
+                  className={`rounded-full px-3 py-1 ${
+                    selectedAppointment.is_paid ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {selectedAppointment.is_paid ? "Pagado" : "Pendiente de pago"}
+                </span>
+                <span className="rounded-full bg-white/15 px-3 py-1">{selectedAppointment.especialista}</span>
+              </div>
+            </div>
+
+            <div className="grid gap-6 p-6 lg:grid-cols-3">
+              <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <p className="text-xs font-semibold uppercase text-zinc-500">Detalles</p>
+                <div className="space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-zinc-500">Cliente</span>
+                    <span className="font-semibold">{selectedAppointment.cliente}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-zinc-500">Celular</span>
+                    <span className="font-semibold">{selectedAppointment.celular}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-zinc-500">Sede</span>
+                    <span className="font-semibold">{selectedAppointment.sede}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-zinc-500">Notas</span>
+                    <span className="max-w-[220px] text-right text-sm leading-snug text-zinc-600 dark:text-zinc-300">
+                      {selectedAppointment.notas || "Sin notas"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleMarkPaid}
+                    className="rounded-full bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                  >
+                    Marcar como pagada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelAppointment}
+                    className="rounded-full bg-rose-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700"
+                  >
+                    Cancelar cita
+                  </button>
+                </div>
+              </div>
+
+              <form className="lg:col-span-2 space-y-4" onSubmit={saveEditedAppointment}>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="col-span-2 text-xs font-semibold text-zinc-500">Servicio</label>
+                  <input
+                    className="col-span-2 rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.servicio ?? ""}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, servicio: e.target.value } : prev))
+                    }
+                  />
+
+                  <label className="col-span-2 text-xs font-semibold text-zinc-500">Especialista</label>
+                  <select
+                    className="col-span-2 rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.especialista ?? ""}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, especialista: e.target.value } : prev))
+                    }
+                  >
+                    {specialistOptions.map((spec) => (
+                      <option key={spec} value={spec}>
+                        {spec}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label className="text-xs font-semibold text-zinc-500">Fecha</label>
+                  <label className="text-xs font-semibold text-zinc-500">Hora inicio</label>
+                  <input
+                    type="date"
+                    className="rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.fecha ?? ""}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, fecha: e.target.value } : prev))
+                    }
+                  />
+                  <input
+                    type="time"
+                    className="rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.hora ?? ""}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, hora: e.target.value } : prev))
+                    }
+                  />
+
+                  <label className="text-xs font-semibold text-zinc-500">Duración (min)</label>
+                  <label className="text-xs font-semibold text-zinc-500">Precio</label>
+                  <input
+                    type="number"
+                    min={15}
+                    step={5}
+                    className="rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.duration ?? 60}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, duration: Number(e.target.value) } : prev))
+                    }
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step={10}
+                    className="rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.price ?? 0}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, price: Number(e.target.value) } : prev))
+                    }
+                  />
+
+                  <label className="text-xs font-semibold text-zinc-500">Estado</label>
+                  <label className="text-xs font-semibold text-zinc-500">Pago</label>
+                  <select
+                    className="rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.estado ?? ""}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, estado: e.target.value as AppointmentStatus } : prev))
+                    }
+                  >
+                    {appointmentStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.is_paid ? "yes" : "no"}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, is_paid: e.target.value === "yes" } : prev))
+                    }
+                  >
+                    <option value="yes">Pagado</option>
+                    <option value="no">Pendiente</option>
+                  </select>
+
+                  <label className="col-span-2 text-xs font-semibold text-zinc-500">Notas</label>
+                  <textarea
+                    className="col-span-2 min-h-[80px] rounded-lg border border-zinc-200 bg-white p-3 text-sm font-medium focus:border-indigo-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+                    value={editAppointment?.notas ?? ""}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => (prev ? { ...prev, notas: e.target.value } : prev))
+                    }
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAppointment(null)}
+                    className="rounded-full border border-zinc-300 px-4 py-2 text-xs font-semibold text-zinc-700 transition hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-200"
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  >
+                    Guardar cambios
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
-        </>
-      )}
+        </div>
+      ) : null}
 
       {bookingForm.open ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -565,6 +863,6 @@ export function AgendaBoard({ externalBookingSignal }: AgendaBoardProps) {
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
