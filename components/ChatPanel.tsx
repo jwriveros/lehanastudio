@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type Tab = "active" | "abandoned" | "reservations";
@@ -22,6 +22,21 @@ type ChatMessage = {
   created_at: string;
 };
 
+// ---------- Helpers de remitente ----------
+const isStaffMessage = (m: any) =>
+  m.sender_role === "staff" ||
+  m.sender_role === "agent" ||
+  m.direction === "outbound";
+
+const getSenderRole = (m: any): "client" | "staff" =>
+  isStaffMessage(m) ? "staff" : "client";
+
+// ---------- Helper de normalización de teléfono ----------
+const normalizePhone = (phone: any) =>
+  String(phone || "")
+    .replace(/\D/g, "") // quitar todo lo que no es número
+    .replace(/^57/, "57"); // dejamos 57 al inicio si está, solo limpiamos símbolos
+
 export function ChatPanel() {
   const [tab, setTab] = useState<Tab>("active");
   const [threads, setThreads] = useState<ChatUser[]>([]);
@@ -31,47 +46,94 @@ export function ChatPanel() {
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
-  const [clientCache, setClientCache] = useState<Map<string, string>>(new Map());
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // ---------------------- LOAD THREADS ----------------------
+  // cache de clientes disponible para realtime
+  const [clientCache, setClientCache] = useState<Map<string, string>>(
+    () => new Map()
+  );
+
+  // ---------------------- 1. Cargar lista de hilos ----------------------
   useEffect(() => {
     const fetchThreads = async () => {
       setLoadingThreads(true);
 
-      const { data: clientsData } = await supabase
+      // 1. Clientes
+      const { data: clientsData, error: clientsError } = await supabase
         .from("clients")
-        .select("Nombre, Celular, celular, numberc");
+        .select("nombre, nombre_comercial, numberc, celular, telefono");
+
+      if (clientsError) {
+        console.error("Error cargando clients:", clientsError);
+      }
 
       const cache = new Map<string, string>();
+
       if (clientsData) {
         clientsData.forEach((c: any) => {
-          const phone = String(c.Celular || c.celular || c.numberc).replace(/\D/g, "");
-          if (phone) cache.set(phone, c.Nombre || c.nombre || phone);
+          const rawPhone =
+            c.numberc ??
+            c.celular ??
+            c.telefono ??
+            null;
+
+          const phone = normalizePhone(rawPhone);
+          if (!phone) return;
+
+          const nombre: string =
+            c.nombre ||
+            c.nombre_comercial ||
+            "";
+
+          if (nombre) {
+            cache.set(phone, nombre);
+          }
         });
       }
+
+      // guardamos el cache para realtime
       setClientCache(cache);
 
-      const { data: messagesData } = await supabase
+      // 2. Mensajes para construir hilos
+      const { data: messagesData, error: messagesError } = await supabase
         .from("mensajes")
-        .select("client_phone, content, message, created_at")
+        .select("client_phone, content, message, created_at, sender_role")
         .order("created_at", { ascending: false });
+
+      if (messagesError) {
+        console.error("Error cargando mensajes:", messagesError);
+      }
 
       const unique = new Map<string, ChatUser>();
 
       if (messagesData) {
         messagesData.forEach((m: any) => {
-          const phone = String(m.client_phone).replace(/\D/g, "");
-          if (!unique.has(phone)) {
-            unique.set(phone, {
-              id: phone,
-              cliente: cache.get(phone) || `Cliente (+${phone.slice(-4)})`,
-              phone,
-              lastMessage: m.content || m.message || "",
-              lastActivity: m.created_at,
-              unread: 0,
-              status: "active",
-            });
-          }
+          const phoneNorm = normalizePhone(m.client_phone);
+
+          if (!phoneNorm || unique.has(phoneNorm)) return;
+
+          // ⚠️ AQUÍ ESTABA EL BUG:
+          // antes se usaba clientCache (vacío todavía). Debe usarse *cache*.
+          const clientName =
+            cache.get(phoneNorm) ||
+            cache.get(phoneNorm.slice(-10)); // por si hay ligeras variaciones
+
+          const finalName =
+            clientName && clientName.length > 0
+              ? clientName
+              : `+${phoneNorm}`;
+
+          const isClientMsg = getSenderRole(m) === "client";
+
+          unique.set(phoneNorm, {
+            id: phoneNorm,
+            cliente: finalName,
+            phone: phoneNorm,
+            lastMessage: m.content || m.message || "",
+            lastActivity: m.created_at,
+            unread: isClientMsg ? 1 : 0,
+            status: "active",
+          });
         });
       }
 
@@ -86,9 +148,9 @@ export function ChatPanel() {
     };
 
     fetchThreads();
-  }, []);
+  }, [activeId]);
 
-  // ---------------------- REALTIME LIST ----------------------
+  // ---------------------- 2. Realtime lista (unread + nuevos hilos) ----------------------
   useEffect(() => {
     const globalChannel = supabase
       .channel("mensajes_global_panel")
@@ -97,32 +159,47 @@ export function ChatPanel() {
         { event: "INSERT", schema: "public", table: "mensajes" },
         (payload) => {
           const n = payload.new as any;
-          const phone = String(n.client_phone).replace(/\D/g, "");
+          const phoneNorm = normalizePhone(n.client_phone);
+          if (!phoneNorm) return;
 
           setThreads((prev) => {
-            const exists = prev.find((t) => t.id === phone);
+            const exists = prev.find((t) => t.id === phoneNorm);
+            const isClientMsg = getSenderRole(n) === "client";
 
+            const clientName =
+              clientCache.get(phoneNorm) ||
+              clientCache.get(phoneNorm.slice(-10));
+
+            const finalName =
+              clientName && clientName.length > 0
+                ? clientName
+                : `Cliente (${phoneNorm})`;
+
+            // nuevo hilo
             if (!exists) {
               return [
                 {
-                  id: phone,
-                  cliente: clientCache.get(phone) || `Cliente (+${phone.slice(-4)})`,
-                  phone,
+                  id: phoneNorm,
+                  cliente: finalName,
+                  phone: phoneNorm,
                   lastMessage: n.content || n.message,
                   lastActivity: n.created_at,
-                  unread: 0,
+                  unread: isClientMsg ? 1 : 0,
                   status: "active",
                 },
                 ...prev,
               ];
             }
 
+            // actualizar hilo existente
             const updated = prev.map((t) =>
-              t.id === phone
+              t.id === phoneNorm
                 ? {
                     ...t,
+                    cliente: finalName, // por si ahora sí tenemos el nombre
                     lastMessage: n.content || n.message,
                     lastActivity: n.created_at,
+                    unread: isClientMsg ? t.unread + 1 : t.unread,
                   }
                 : t
             );
@@ -140,7 +217,7 @@ export function ChatPanel() {
     };
   }, [clientCache]);
 
-  // ---------------------- REALTIME CHAT ----------------------
+  // ---------------------- 3. Realtime del chat activo ----------------------
   useEffect(() => {
     if (!activeId) {
       setMessages([]);
@@ -151,14 +228,20 @@ export function ChatPanel() {
       setLoadingMessages(true);
 
       const activeThread = threads.find((t) => t.id === activeId);
-      if (!activeThread) return;
+      if (!activeThread) {
+        setLoadingMessages(false);
+        return;
+      }
 
-      const cleanPhone = activeThread.phone.replace(/\D/g, "");
+      const cleanPhone = activeThread.phone;
+      const plusPhone = `+${cleanPhone}`;
 
       const { data, error } = await supabase
         .from("mensajes")
         .select("*")
-        .or(`client_phone.eq.${activeThread.phone},client_phone.eq.${cleanPhone},client_id.eq.${activeId}`)
+        .or(
+          `client_phone.eq.${cleanPhone},client_phone.eq.${plusPhone},client_id.eq.${activeId}`
+        )
         .order("created_at", { ascending: true });
 
       if (error) console.error(error);
@@ -166,8 +249,8 @@ export function ChatPanel() {
       if (data) {
         const uiMessages: ChatMessage[] = data.map((m: any) => ({
           id: m.id,
+          from: getSenderRole(m),
           text: m.content || m.text || m.message || "",
-          from: m.sender_role === "staff" || m.direction === "outbound" ? "staff" : "client",
           created_at: m.created_at,
         }));
         setMessages(uiMessages);
@@ -181,9 +264,13 @@ export function ChatPanel() {
     const activeThread = threads.find((t) => t.id === activeId);
     if (!activeThread) return;
 
-    const normalizedPhones = [activeThread.phone, activeThread.phone.replace(/\D/g, "")]
+    const normalizedPhones = [
+      activeThread.phone,
+      activeThread.phone.replace(/\D/g, ""),
+      `+${activeThread.phone}`,
+    ]
       .filter(Boolean)
-      .map((p) => p.replace(/\D/g, ""));
+      .map((p) => normalizePhone(p));
 
     const channel = supabase
       .channel(`realtime:mensajes:${activeId}`)
@@ -192,30 +279,41 @@ export function ChatPanel() {
         { event: "INSERT", schema: "public", table: "mensajes" },
         (payload) => {
           const newMsg = payload.new as any;
-          const incomingPhone = (newMsg.client_phone || "").replace(/\D/g, "");
+          const incomingPhone = normalizePhone(newMsg.client_phone);
+
           const belongsToChat =
             newMsg.client_id === activeId ||
             (incomingPhone && normalizedPhones.includes(incomingPhone));
 
           if (!belongsToChat) return;
 
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: newMsg.id,
-              text: newMsg.content || newMsg.text || newMsg.message,
-              from: newMsg.sender_role === "staff" ? "staff" : "client",
-              created_at: newMsg.created_at,
-            },
-          ]);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+
+            return [
+              ...prev,
+              {
+                id: newMsg.id,
+                from: getSenderRole(newMsg),
+                text: newMsg.content || newMsg.text || newMsg.message || "",
+                created_at: newMsg.created_at,
+              },
+            ];
+          });
 
           setThreads((prev) =>
             prev.map((thread) =>
               thread.id === activeId
                 ? {
                     ...thread,
-                    lastMessage: newMsg.content || newMsg.text || thread.lastMessage,
-                    lastActivity: newMsg.created_at || new Date().toISOString(),
+                    lastMessage:
+                      newMsg.content || newMsg.text || thread.lastMessage,
+                    lastActivity:
+                      newMsg.created_at || new Date().toISOString(),
+                    unread:
+                      getSenderRole(newMsg) === "client"
+                        ? thread.unread + 1
+                        : thread.unread,
                   }
                 : thread
             )
@@ -229,28 +327,32 @@ export function ChatPanel() {
     };
   }, [activeId, threads]);
 
-  // ---------------------- SEND MESSAGE ----------------------
+  // ---------------------- 4. Scroll automático ----------------------
+  useEffect(() => {
+    if (activeId && messagesEndRef.current) {
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({
+          behavior: "instant",
+          block: "end",
+        });
+      });
+    }
+  }, [activeId, messages.length, loadingMessages]);
+
+  // ---------------------- 5. Enviar mensaje ----------------------
   const sendMessage = async () => {
     if (!inputText.trim() || !activeId) return;
 
     const activeThread = threads.find((t) => t.id === activeId);
     if (!activeThread) return;
 
-    const tempMsg: ChatMessage = {
-      from: "staff",
-      text: inputText,
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, tempMsg]);
-
     const payload = {
       client_phone: activeThread.phone,
       content: inputText,
     };
 
-    const msgToSend = inputText;
     setInputText("");
+    messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
 
     await fetch("/api/whatsapp/outgoing", {
       method: "POST",
@@ -259,15 +361,35 @@ export function ChatPanel() {
     });
   };
 
+  const handleThreadClick = (id: string) => {
+    setActiveId(id);
+    setThreads((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, unread: 0 } : t))
+    );
+  };
+
+  const handleResolveChat = () => {
+    if (
+      !activeId ||
+      !confirm(
+        "¿Estás seguro de marcar este chat como resuelto? Desaparecerá de la lista activa."
+      )
+    )
+      return;
+
+    setThreads((prev) => prev.filter((t) => t.id !== activeId));
+    setActiveId(null);
+  };
+
   const currentChat = useMemo(
     () => threads.find((t) => t.id === activeId) ?? null,
     [activeId, threads]
   );
 
-  // ---------------------- UI ----------------------
+  // ---------------------- 6. UI ----------------------
   return (
-    <div className="flex w-full h-full overflow-hidden">
-      {/* TABS FIJOS */}
+    <div className="flex flex-col w-full h-full overflow-hidden">
+      {/* Tabs */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
         {(["active", "reservations", "abandoned"] as const).map((t) => (
           <button
@@ -284,10 +406,10 @@ export function ChatPanel() {
         ))}
       </div>
 
-      {/* GRID */}
-      <div className="grid flex-1 h-full w-full gap-4 grid-cols-1 lg:grid-cols-[1fr_1.3fr] overflow-hidden">
-        {/* LISTA DE CHATS */}
-        <div className="flex flex-col rounded-2xl border bg-white overflow-hidden">
+      {/* Grid */}
+      <div className="grid flex-1 w-full gap-4 grid-cols-1 lg:grid-cols-[1fr_1.3fr] overflow-hidden p-4">
+        {/* Lista de chats */}
+        <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full">
           <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-zinc-500">
             <span>Chats Recientes ({threads.length})</span>
           </div>
@@ -301,15 +423,23 @@ export function ChatPanel() {
               threads.map((chat) => (
                 <div
                   key={chat.id}
-                  onClick={() => setActiveId(chat.id)}
+                  onClick={() => handleThreadClick(chat.id)}
                   className={`flex items-center justify-between px-4 py-3 cursor-pointer ${
                     activeId === chat.id
                       ? "bg-indigo-50 border-l-4 border-indigo-500"
-                      : "border-l-4 border-transparent"
+                      : "border-l-4 border-transparent hover:bg-zinc-50"
                   }`}
                 >
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold">{chat.cliente}</div>
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className={`truncate ${
+                        chat.unread > 0
+                          ? "font-bold text-indigo-800"
+                          : "font-semibold"
+                      }`}
+                    >
+                      {chat.cliente}
+                    </div>
                     <div className="truncate text-xs text-zinc-500">
                       {chat.lastMessage}
                     </div>
@@ -320,19 +450,50 @@ export function ChatPanel() {
                       })}
                     </div>
                   </div>
+
+                  {chat.unread > 0 && (
+                    <span className="flex-shrink-0 ml-2 rounded-full bg-red-500 w-5 h-5 flex items-center justify-center text-white text-xs font-bold">
+                      {chat.unread > 9 ? "9+" : chat.unread}
+                    </span>
+                  )}
                 </div>
               ))
             )}
           </div>
         </div>
 
-        {/* PANEL DE MENSAJES */}
+        {/* Panel de mensajes */}
         {currentChat ? (
-          <div className="flex flex-col rounded-2xl border bg-white overflow-hidden">
+          <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full">
             <div className="flex items-center justify-between border-b p-4">
-              <div>
-                <div className="text-lg font-semibold">{currentChat.cliente}</div>
-                <p className="text-sm text-zinc-500">{currentChat.phone}</p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleResolveChat}
+                  className="p-2 rounded-full bg-green-500 text-white hover:bg-green-600 transition"
+                  title="Marcar como Resuelto"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="lucide lucide-check"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                </button>
+
+                <div>
+                  <div className="text-lg font-semibold">
+                    {currentChat.cliente}
+                  </div>
+                  <p className="text-sm text-zinc-500">{currentChat.phone}</p>
+                </div>
               </div>
 
               <a
@@ -378,6 +539,7 @@ export function ChatPanel() {
                   </div>
                 ))
               )}
+              <div ref={messagesEndRef} />
             </div>
 
             <div className="p-4 border-t bg-white">

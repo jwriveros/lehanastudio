@@ -1,88 +1,161 @@
 "use client";
 
 import { useState } from "react";
-import { AgendaBoard, ChatPanel } from "@/components";
+import { ChatPanel } from "@/components/ChatPanel";
+import { AgendaBoard } from "@/components/AgendaBoard";
 
 export default function SupportPage() {
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [bookingSignal, setBookingSignal] = useState<number | null>(null);
+    // Estado para controlar la visibilidad del Calendario (Modal Grande)
+    const [calendarOpen, setCalendarOpen] = useState(false);
+    
+    // Nuevo estado para controlar la visibilidad del Modal de Solo Reserva
+    const [bookingModalOpen, setBookingModalOpen] = useState(false); 
+    
+    // Señal que el AgendaBoard usa para abrir su formulario interno
+    const [bookingSignal, setBookingSignal] = useState<number | null>(null); 
 
-  return (
-    <div className="w-full h-full relative overflow-hidden">
+    const handleCloseModal = () => {
+        setCalendarOpen(false);
+        setBookingModalOpen(false);
+        setBookingSignal(null);
+    }
+    
+    // Handler para abrir el modal de reserva
+    const handleNewBookingClick = () => {
+        setCalendarOpen(false); 
+        setBookingModalOpen(true); 
+        setBookingSignal(Date.now()); 
+    };
 
-      {/* PANEL DE CHAT — ocupa toda la altura disponible */}
-      <div className="w-full h-full overflow-hidden">
-        <ChatPanel />
-      </div>
+    // Handler para abrir el modal de calendario
+    const handleCalendarClick = () => {
+        setBookingModalOpen(false); 
+        setCalendarOpen(true);
+        setBookingSignal(null);
+    };
 
-      {/* BOTONES FLOTANTES */}
-      <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-3">
-        <button
-          type="button"
-          title="Nueva reserva"
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl hover:bg-indigo-700 active:scale-95"
-          onClick={() => setBookingSignal(Date.now())}
-        >
-          +
-        </button>
+    const showCalendarAgenda = calendarOpen;
+    const showBookingAgenda = bookingModalOpen;
 
-        <button
-          type="button"
-          onClick={() => setShowCalendar(true)}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-900 text-white shadow-xl hover:bg-black active:scale-95"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 5h.01"/>
-            <path d="M3 12h.01"/>
-            <path d="M3 19h.01"/>
-            <path d="M8 5h13"/>
-            <path d="M8 12h13"/>
-            <path d="M8 19h13"/>
-          </svg>
-        </button>
-      </div>
+    return (
+        <section className="relative h-full overflow-hidden bg-white"> 
 
-      {/* MODAL DEL CALENDARIO */}
-      {showCalendar && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-2">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setShowCalendar(false)}
-          />
-
-          <div className="relative z-10 flex h-[95vh] w-full max-w-[1900px] flex-col rounded-3xl overflow-hidden bg-white border shadow-xl">
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <div className="flex items-center gap-3">
-                <button className="p-3.5 rounded-full bg-gray-900 text-white shadow hover:bg-black">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 5h.01"/>
-                    <path d="M3 12h.01"/>
-                    <path d="M3 19h.01"/>
-                    <path d="M8 5h13"/>
-                    <path d="M8 12h13"/>
-                    <path d="M8 19h13"/>
-                  </svg>
+            {/*
+            ==========================================================
+            3️⃣ BOTONES FLOTANTES (MOVIDOS ARRIBA)
+            ==========================================================
+            */}
+            <div className="absolute top-4 right-4 flex items-center gap-3 z-[200]">
+                
+                {/* Botón Abrir Calendario */}
+                <button
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 active:scale-95 transition"
+                    title="Abrir Calendario"
+                    onClick={handleCalendarClick} 
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-calendar">
+                        <rect width="18" height="18" x="3" y="4" rx="2" ry="2"></rect>
+                        <line x1="16" x2="16" y1="2" y2="6"></line>
+                        <line x1="8" x2="8" y1="2" y2="6"></line>
+                        <line x1="3" x2="21" y1="10" y2="10"></line>
+                    </svg>
                 </button>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-indigo-500">Calendario</p>
-                  <h3 className="text-lg font-semibold">Vista estilo Google Calendar</h3>
+                
+                {/* Botón Nueva Reserva */}
+                <button
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-green-600 text-white shadow-lg hover:bg-green-700 active:scale-95 transition"
+                    title="Nueva reserva"
+                    onClick={handleNewBookingClick} 
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-plus">
+                        <path d="M5 12h14"></path>
+                        <path d="M12 5v14"></path>
+                    </svg>
+                </button>
+            </div>
+
+            {/* PANEL PRINCIPAL (CHAT) */}
+            <div className="w-full h-full">
+                <ChatPanel />
+            </div>
+
+            {/*
+            ==========================================================
+            1️⃣ MODAL: SOLO NUEVA RESERVA (renderCalendarShell=false)
+            ==========================================================
+            */}
+            {showBookingAgenda && (
+                <div className="fixed inset-0 z-[100] overflow-y-auto p-4 flex items-center justify-center">
+
+                    <div
+                      className="absolute inset-0 bg-black/50"
+                      onClick={handleCloseModal} 
+                    />
+                    <div className="relative z-10 w-full max-w-xl max-h-[92vh] rounded-3xl overflow-hidden shadow-2xl bg-white">
+                        <AgendaBoard 
+                            externalBookingSignal={bookingSignal}
+                            renderCalendarShell={false}
+                            // AÑADIDO CLAVE: Pasar el método de cierre del padre
+                            onBookingClose={handleCloseModal} 
+                        />
+                         {/* Botón de cierre visible para el contenedor de la reserva */}
+                         <button 
+                            className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-800 p-2 z-[999] bg-white rounded-full shadow-lg"
+                            onClick={handleCloseModal}>
+                            <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' strokeWidth='2.5' stroke='currentColor' className='w-5 h-5'>
+                                <path strokeLinecap='round' strokeLinejoin='round' d='M6 18L18 6M6 6l12 12' />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
-              </div>
+            )}
 
-              <button
-                onClick={() => setShowCalendar(false)}
-                className="rounded-full border px-3 py-2 text-xs font-semibold hover:border-indigo-300 hover:text-indigo-700"
-              >
-                Cerrar calendario
-              </button>
-            </div>
 
-            <div className="flex-1 overflow-auto p-4">
-              <AgendaBoard />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+            {/*
+            ==========================================================
+            2️⃣ MODAL: CALENDARIO COMPLETO (renderCalendarShell=true)
+            ==========================================================
+            */}
+            {showCalendarAgenda && (
+                <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center">
+
+                    <div className="relative w-full h-full max-w-[1900px] max-h-[95vh] rounded-3xl overflow-hidden bg-white shadow-2xl">
+
+                        {/* Calendario fullscreen */}
+                        <AgendaBoard
+                            externalBookingSignal={null}
+                            renderCalendarShell={true}
+                        />
+
+                        {/* Botón de cierre */}
+                        <button
+                            onClick={handleCloseModal}
+                            className="
+                                absolute top-6 right-6
+                                w-10 h-10 
+                                flex items-center justify-center
+                                rounded-full 
+                                bg-white/90 
+                                text-zinc-700 
+                                shadow-xl shadow-black/20 
+                                hover:bg-white 
+                                hover:text-zinc-900 
+                                active:scale-95 
+                                backdrop-blur-md
+                                border border-zinc-200
+                                transition-all
+                                z-[999]
+                            "
+                        >
+                            <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' strokeWidth='2.5' stroke='currentColor' className='w-5 h-5'>
+                                <path strokeLinecap='round' strokeLinejoin='round' d='M6 18L18 6M6 6l12 12' />
+                            </svg>
+                        </button>
+
+
+                    </div>
+                </div>
+            )}
+        </section>
+    );
 }

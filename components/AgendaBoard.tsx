@@ -1,5 +1,3 @@
-// jwriveros/lehanastudio/lehanastudio-a8a570c007a1557a6ccd13baa5a39a3fe79a534a/components/AgendaBoard.tsx
-
 "use client";
 
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
@@ -15,6 +13,7 @@ import {
 type AgendaBoardProps = {
   externalBookingSignal?: number | null;
   renderCalendarShell?: boolean;
+  onBookingClose?: () => void;
 };
 
 export type Appointment = {
@@ -90,7 +89,7 @@ function normalizeAppointment(appt: Appointment): Appointment {
 
 const dayFormatter = new Intl.DateTimeFormat("es", { weekday: "short" });
 
-export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true }: AgendaBoardProps) {
+export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true, onBookingClose }: AgendaBoardProps) {
   const [appointmentList, setAppointmentList] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
@@ -100,7 +99,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
   const specialistOptions = useMemo(
-    () => Array.from(new Set(mockUsers.filter((u: any) => u.role === 'ESPECIALISTA').map(u => u.name))), 
+    () => Array.from(new Set(mockUsers.filter((u) => (u.role as string) === 'ESPECIALISTA' || (u.role as string) === 'SPECIALIST').map(u => u.name))).sort(), 
     []
   );
 
@@ -143,7 +142,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
   }, []);
 
   useEffect(() => {
-    if (externalBookingSignal === null || externalBookingSignal === undefined) return;
+    if (externalBookingSignal == null) return;
     openBooking(formatDateISO(baseDate));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalBookingSignal]);
@@ -194,6 +193,65 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
     });
   }, [baseDate, viewMode]);
 
+  // Determinar qué especialistas mostrar en la vista "day"
+  const dayViewSpecialists = useMemo(() => {
+    if (viewMode !== 'day' || days.length === 0) return [];
+    
+    const singleDay = days[0];
+    
+    let specialists = Array.from(
+        new Set(
+            filteredAppointments
+                .filter(appt => getAppointmentDetails(appt.appointment_at).dateISO === singleDay.iso)
+                .map(appt => appt.especialista)
+        )
+    ).sort();
+
+    if (specialistFilter !== 'ALL') {
+        if (!specialists.includes(specialistFilter)) {
+            specialists = [specialistFilter];
+        } else {
+            specialists = [specialistFilter];
+        }
+    } else if (specialists.length === 0) {
+        specialists = specialistOptions;
+    }
+    
+    return specialists;
+  }, [viewMode, days, filteredAppointments, specialistOptions, specialistFilter]);
+  
+  // Nuevo: Columnas para la vista de Semana (Día + Especialista)
+  const weeklySpecialistGroups = useMemo(() => {
+      if (viewMode !== 'week' || days.length === 0) return [];
+      
+      return days.map(day => {
+          let specialistsForDay = Array.from(
+              new Set(
+                  filteredAppointments
+                      .filter(appt => getAppointmentDetails(appt.appointment_at).dateISO === day.iso)
+                      .map(appt => appt.especialista)
+              )
+          ).sort();
+
+          if (specialistFilter !== 'ALL') {
+              specialistsForDay = specialistsForDay.filter(s => s === specialistFilter);
+          }
+
+          if (specialistsForDay.length === 0 && specialistFilter === 'ALL') {
+              // Si está vacío y no hay filtro, mostramos todos los especialistas para que haya columnas.
+              return { day, specialists: specialistOptions, isEmpty: true };
+          }
+          
+          if (specialistsForDay.length === 0 && specialistFilter !== 'ALL') {
+              // Mostrar al especialista filtrado aunque no tenga citas.
+              specialistsForDay = [specialistFilter];
+          }
+
+          return { day, specialists: specialistsForDay };
+      });
+  }, [viewMode, days, filteredAppointments, specialistFilter, specialistOptions]);
+
+
   const slots = useMemo(() => {
     const items: { label: string; minutes: number; dashed: boolean }[] = [];
     for (let m = MINUTES_START; m <= MINUTES_END; m += STEP) {
@@ -214,11 +272,22 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
     setBaseDate(next);
   };
 
-  const openBooking = (dateIso: string, time?: string) => {
-    setBookingForm((prev) => ({ ...prev, open: true, date: dateIso, time: time ?? prev.time }));
+  const openBooking = (dateIso: string, time?: string, specialist?: string) => {
+    setBookingForm((prev) => ({ 
+      ...prev, 
+      open: true, 
+      date: dateIso, 
+      time: time ?? prev.time, 
+      specialist: specialist ?? prev.specialist 
+    }));
   };
 
-  const closeBooking = () => setBookingForm((prev) => ({ ...prev, open: false }));
+  const closeBooking = () => {
+    setBookingForm((prev) => ({ ...prev, open: false }));
+    if (onBookingClose && !renderCalendarShell) {
+      onBookingClose();
+    }
+  };
 
   const updateAppointment = async (id: Appointment["id"], updater: (appt: Appointment) => Partial<Appointment>) => {
     const existing = appointmentList.find(a => a.id === id);
@@ -270,12 +339,6 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
     setEditAppointment(null);
   };
 
-  const getAppointmentEnd = (appt: Appointment) => {
-    const { minutes } = getAppointmentDetails(appt.appointment_at);
-    const endMinutes = Math.min(MINUTES_END, minutes + (appt.duration ?? 60));
-    return minutesToTimeString(endMinutes);
-  };
-
   const submitBooking = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const appointmentDate = `${bookingForm.date}T${bookingForm.time}:00.000Z`;
@@ -304,6 +367,9 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
         alert("Error al enviar la solicitud.");
     }
   };
+
+  // El único objeto de día en la vista "day"
+  const currentDay = days.length > 0 && viewMode === 'day' ? days[0] : null;
 
   return (
     <>
@@ -355,9 +421,9 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
                           </div>
                           <div className="mt-2 space-y-2">
                             {dayAppointments.map((appt) => {
-                              const { timeString } = getAppointmentDetails(appt.appointment_at);
+                              const { timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
                               return (
-                                <div key={appt.id} data-appointment onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: getAppointmentDetails(appt.appointment_at).dateISO, hora: timeString } as Appointment); }} className="rounded-lg border border-zinc-200 bg-white/90 p-2 text-[11px] leading-tight shadow-sm transition hover:border-indigo-200 dark:border-zinc-700 dark:bg-zinc-800">
+                                <div key={appt.id} data-appointment onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: dateISO, hora: timeString } as Appointment); }} className="rounded-lg border border-zinc-200 bg-white/90 p-2 text-[11px] leading-tight shadow-sm transition hover:border-indigo-200 dark:border-zinc-700 dark:bg-zinc-800">
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="font-semibold text-zinc-800 dark:text-zinc-100">{timeString}</span>
                                     <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ backgroundColor: appt.bg_color }}>{appt.estado}</span>
@@ -375,110 +441,505 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true 
               </div>
             </div>
           ) : (
+            /* ------------------------- VISTA DIA / SEMANA (GRID) -------------------------- */
             <div className="relative flex-1 overflow-auto bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-950 dark:to-zinc-900">
-              <div className="min-w-[900px] sm:min-w-full">
-                <div className="sticky top-0 z-20 flex border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
-                  <div className="w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-[11px] font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/95">Hora</div>
-                  {days.map((day, idx) => (
-                    <div key={day.iso} className={`flex min-w-[160px] sm:min-w-0 flex-1 flex-col border-r border-zinc-300 px-3 py-3 last:border-r-0 ${idx === 0 ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}>
-                      <span className="text-[11px] font-bold uppercase text-zinc-400">{day.label}</span>
-                      <div className={`text-lg font-bold leading-none ${idx === 0 ? "text-indigo-700 dark:text-indigo-200" : "text-zinc-800 dark:text-zinc-100"}`}>{day.dayNumber}</div>
-                      <p className="text-[10px] text-zinc-400">{day.date.toLocaleString("es", { month: "short" })}</p>
+              {viewMode === 'week' ? (
+                 /* ------------------------- VISTA SEMANA (ADAPTADA A LA IMAGEN) -------------------------- */
+                <div className="min-w-full"> {/* Elimina el scroll horizontal forzado */}
+                    {/* Encabezado de la Semana (SOLO DÍAS) */}
+                    <div className="sticky top-0 z-20 flex border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+                        <div className="w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-[11px] font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/95">Hora</div>
+                        
+                        {/* Columna Principal por Día */}
+                        {weeklySpecialistGroups.map((group) => (
+                            <div 
+                                key={group.day.iso} 
+                                className={`flex flex-1 flex-col border-r border-zinc-300 last:border-r-0 ${group.day.iso === formatDateISO(new Date()) ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
+                                style={{ minWidth: 120 }} 
+                            >
+                                {/* Día y Fecha */}
+                                <div className={`p-2 text-center border-b border-zinc-300 dark:border-zinc-800`}>
+                                    <div className={`text-lg font-bold leading-none ${group.day.iso === formatDateISO(new Date()) ? "text-indigo-700 dark:text-indigo-200" : "text-zinc-800 dark:text-zinc-100"}`}>
+                                        {group.day.label.toUpperCase()}
+                                    </div>
+                                    <p className="text-[12px] text-zinc-500">{group.day.dayNumber}</p>
+                                </div>
+                                
+                                {/* Sub-Encabezado de Especialistas */}
+                                <div className="flex bg-zinc-50 dark:bg-zinc-800/50">
+                                    {group.specialists.map(specialist => (
+                                        <div key={specialist} className="flex-1 p-1 text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 truncate border-r last:border-r-0 border-zinc-200 dark:border-zinc-700">
+                                            {specialist}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                  ))}
-                </div>
-                <div className="relative flex" aria-label="Agenda detallada">
-                  <div className="sticky left-0 z-20 w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
-                    <div className="relative" style={{ height: COLUMN_HEIGHT }}>
-                      {slots.map((slot, idx) => (
-                        <div key={slot.minutes} className={`absolute inset-x-0 flex items-start justify-center border-b ${slot.dashed ? "border-dashed" : "border-solid"} border-zinc-200 px-1 text-[11px] font-medium leading-none text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`} style={{ top: idx * ROW_HEIGHT, height: ROW_HEIGHT }}>
-                          <span className="mt-1 block">{slot.label}</span>
+                    
+                    {/* Cuerpo de la agenda (Slots y Citas) */}
+                    <div className="relative flex" aria-label="Agenda por especialista">
+                        {/* Columna Horas */}
+                        <div className="sticky left-0 z-20 w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+                            <div className="relative" style={{ height: COLUMN_HEIGHT }}>
+                                {slots.map((slot, idx) => (
+                                    <div key={slot.minutes} className={`absolute inset-x-0 flex items-start justify-center border-b ${slot.dashed ? "border-dashed" : "border-solid"} border-zinc-200 px-1 text-[11px] font-medium leading-none text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`} style={{ top: idx * ROW_HEIGHT, height: ROW_HEIGHT }}>
+                                        <span className="mt-1 block">{slot.label}</span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                      ))}
+                        
+                        {/* Columnas de Días/Especialistas */}
+                        {loading ? (
+                            <div className="flex-1 flex items-center justify-center" style={{ height: COLUMN_HEIGHT }}><p className="text-xl text-indigo-500">Cargando Citas...</p></div>
+                        ) : (
+                            weeklySpecialistGroups.map((group) => {
+                                const dayIso = group.day.iso;
+                                const totalSpecialists = group.specialists.length;
+                                const colWidthPercent = 100 / totalSpecialists;
+
+                                return (
+                                    <div 
+                                        key={dayIso}
+                                        className={`relative flex flex-1 border-r border-zinc-300 last:border-r-0 ${group.day.iso === formatDateISO(new Date()) ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
+                                        style={{ height: COLUMN_HEIGHT, minWidth: 120 }}
+                                    >
+                                        <div 
+                                            className="pointer-events-none absolute inset-0" 
+                                            style={{ backgroundImage: `repeating-linear-gradient(to bottom, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent ${ROW_HEIGHT}px)` }} 
+                                        />
+
+                                        {group.specialists.map((specialist, specialistIdx) => {
+                                            const specialistAppointments = filteredAppointments
+                                                .filter((appt) => 
+                                                    getAppointmentDetails(appt.appointment_at).dateISO === dayIso && 
+                                                    appt.especialista === specialist
+                                                )
+                                                .map(normalizeAppointment);
+
+                                            const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
+                                                const rect = event.currentTarget.getBoundingClientRect();
+                                                const offsetY = event.clientY - rect.top;
+                                                const minutesFromStart = Math.min(Math.max(offsetY / COLUMN_HEIGHT, 0), 1) * TOTAL_MINUTES;
+                                                const roundedSlot = Math.floor(minutesFromStart / STEP) * STEP + MINUTES_START;
+                                                openBooking(dayIso, minutesToTimeString(roundedSlot), specialist);
+                                            };
+                                            
+                                            // Renderizar una columna vacía para el especialista
+                                            if (specialist === 'VACÍO') {
+                                                return <div key={`${dayIso}-${specialist}`} className="flex-1 border-r border-zinc-200 dark:border-zinc-800"></div>;
+                                            }
+
+                                            return (
+                                                <div
+                                                    key={`${dayIso}-${specialist}`}
+                                                    onClick={handleColumnClick} 
+                                                    className="relative h-full border-r border-zinc-200 dark:border-zinc-800"
+                                                    style={{ width: `${colWidthPercent}%` }}
+                                                >
+                                                    {specialistAppointments.map((appt) => {
+                                                        const { minutes, timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
+                                                        const top = Math.max(0, ((minutes - MINUTES_START) / STEP) * ROW_HEIGHT);
+                                                        const height = Math.min(COLUMN_HEIGHT - top, Math.max((appt.duration! / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75));
+                                                        
+                                                        const apptColor = appt.bg_color;
+
+                                                        return (
+                                                            <button 
+                                                                key={appt.id} 
+                                                                type="button" 
+                                                                data-appointment 
+                                                                onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: dateISO, hora: timeString } as Appointment); }} 
+                                                                className="group absolute left-0.5 right-0.5 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-1 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
+                                                                style={{ backgroundColor: apptColor, top, height }} 
+                                                                title={`${appt.servicio} · ${appt.cliente} (${appt.especialista})`}
+                                                            >
+                                                                <div className="flex items-center justify-between gap-1 text-[8px] font-semibold leading-none uppercase">
+                                                                    <span>{timeString}</span>
+                                                                    <span className="rounded-full bg-black/20 px-1 py-0.5 text-[7px] text-white">{appt.estado}</span>
+                                                                </div>
+                                                                <div className="truncate text-[9px] font-semibold leading-tight">{appt.servicio}</div>
+                                                                <div className="truncate text-[8px] leading-tight opacity-90">{appt.cliente}</div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
-                  </div>
-                  {loading ? (
-                      <div className="flex-1 flex items-center justify-center" style={{ height: COLUMN_HEIGHT }}><p className="text-xl text-indigo-500">Cargando Citas...</p></div>
-                  ) : (
-                      days.map((day, idx) => {
-                        const dayAppointments = filteredAppointments.filter((appt) => getAppointmentDetails(appt.appointment_at).dateISO === day.iso).map(normalizeAppointment);
-                        const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          const offsetY = event.clientY - rect.top;
-                          const minutesFromStart = Math.min(Math.max(offsetY / COLUMN_HEIGHT, 0), 1) * TOTAL_MINUTES;
-                          const roundedSlot = Math.floor(minutesFromStart / STEP) * STEP + MINUTES_START;
-                          openBooking(day.iso, minutesToTimeString(roundedSlot));
-                        };
-                        return (
-                          <div key={day.iso} onClick={handleColumnClick} className={`relative flex min-w-[160px] sm:min-w-0 flex-1 border-r border-zinc-300 last:border-r-0 ${idx === 0 ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`} style={{ height: COLUMN_HEIGHT }}>
-                            <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: `repeating-linear-gradient(to bottom, ${idx === 0 ? "#e0e7ff" : "#e5e7eb"} 0, ${idx === 0 ? "#e0e7ff" : "#e5e7eb"} 1px, transparent 1px, transparent ${ROW_HEIGHT}px)` }} />
-                            {dayAppointments.map((appt) => {
-                              const { minutes, timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
-                              const top = Math.max(0, ((minutes - MINUTES_START) / STEP) * ROW_HEIGHT);
-                              const height = Math.min(COLUMN_HEIGHT - top, Math.max((appt.duration! / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75));
-                              return (
-                                <button key={appt.id} type="button" data-appointment onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: dateISO, hora: timeString } as Appointment); }} className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" style={{ backgroundColor: appt.bg_color, top, height }} title={`${appt.servicio} · ${appt.cliente}`}>
-                                  <div className="flex items-center justify-between gap-2 text-[10px] font-semibold leading-none uppercase">
-                                    <span>{timeString}</span>
-                                    <span className="rounded-full bg-black/20 px-2 py-0.5 text-[9px] text-white">{appt.estado}</span>
-                                  </div>
-                                  <div className="truncate text-[11px] font-semibold leading-tight">{appt.servicio}</div>
-                                  <div className="truncate text-[10px] leading-tight opacity-90">{appt.cliente}</div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        );
-                      })
-                  )}
                 </div>
-              </div>
+              ) : (
+                /* ------------------------- VISTA DIA (SPECIALIST COLUMNS) -------------------------- */
+                <div className="min-w-[900px] sm:min-w-full">
+                    {/* Encabezado Principal del Día */}
+                    {currentDay && (
+                        <div className="sticky top-0 z-20 flex flex-col border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+                            <div className="flex items-center justify-center p-3">
+                                <h3 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">
+                                    {currentDay!.label}. {currentDay!.dayNumber}{" "}
+                                    <span className="text-sm font-normal text-zinc-500">
+                                        {currentDay!.date.toLocaleString("es", { month: "long" })}
+                                    </span>
+                                </h3>
+                            </div>
+                            
+                            {/* Sub-Encabezado de Especialistas */}
+                            <div className="flex border-t border-zinc-300 dark:border-zinc-800">
+                                <div className="w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-[11px] font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/95">Hora</div>
+                                {dayViewSpecialists.map((specialist) => (
+                                    <div 
+                                        key={specialist} 
+                                        className="flex-1 border-r border-zinc-300 p-2 text-xs font-semibold text-indigo-700 dark:border-zinc-800 dark:text-indigo-300"
+                                    >
+                                        {specialist}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Cuerpo de la Agenda (Slots y Citas) */}
+                    <div className="relative flex" aria-label="Agenda por especialista">
+                        
+                        {/* Columna Horas */}
+                        <div className="sticky left-0 z-20 w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/95">
+                            <div className="relative" style={{ height: COLUMN_HEIGHT }}>
+                                {slots.map((slot, idx) => (
+                                    <div key={slot.minutes} className={`absolute inset-x-0 flex items-start justify-center border-b ${slot.dashed ? "border-dashed" : "border-solid"} border-zinc-200 px-1 text-[11px] font-medium leading-none text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`} style={{ top: idx * ROW_HEIGHT, height: ROW_HEIGHT }}>
+                                        <span className="mt-1 block">{slot.label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Columnas de Especialistas */}
+                        {loading ? (
+                            <div className="flex-1 flex items-center justify-center" style={{ height: COLUMN_HEIGHT }}><p className="text-xl text-indigo-500">Cargando Citas...</p></div>
+                        ) : (
+                            dayViewSpecialists.map((specialist) => {
+                                const specialistAppointments = filteredAppointments
+                                    .filter((appt) => 
+                                        getAppointmentDetails(appt.appointment_at).dateISO === currentDay?.iso && 
+                                        appt.especialista === specialist
+                                    )
+                                    .map(normalizeAppointment);
+
+                                const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    const offsetY = event.clientY - rect.top;
+                                    const minutesFromStart = Math.min(Math.max(offsetY / COLUMN_HEIGHT, 0), 1) * TOTAL_MINUTES;
+                                    const roundedSlot = Math.floor(minutesFromStart / STEP) * STEP + MINUTES_START;
+                                    openBooking(currentDay!.iso, minutesToTimeString(roundedSlot), specialist);
+                                };
+
+                                return (
+                                    <div 
+                                        key={specialist} 
+                                        onClick={handleColumnClick} 
+                                        className="relative flex min-w-[160px] sm:min-w-0 flex-1 border-r border-zinc-300 last:border-r-0 bg-white dark:bg-zinc-900" 
+                                        style={{ height: COLUMN_HEIGHT }}
+                                    >
+                                        <div 
+                                            className="pointer-events-none absolute inset-0" 
+                                            style={{ backgroundImage: `repeating-linear-gradient(to bottom, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent ${ROW_HEIGHT}px)` }} 
+                                        />
+
+                                        {specialistAppointments.map((appt) => {
+                                            const { minutes, timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
+                                            const top = Math.max(0, ((minutes - MINUTES_START) / STEP) * ROW_HEIGHT);
+                                            const height = Math.min(COLUMN_HEIGHT - top, Math.max((appt.duration! / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75));
+                                            
+                                            // Usar appt.bg_color directamente (ya está normalizado)
+                                            const apptColor = appt.bg_color;
+                                            
+                                            return (
+                                                <button 
+                                                    key={appt.id} 
+                                                    type="button" 
+                                                    data-appointment 
+                                                    onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: dateISO, hora: timeString } as Appointment); }} 
+                                                    className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
+                                                    style={{ backgroundColor: apptColor, top, height }} 
+                                                    title={`${appt.servicio} · ${appt.cliente}`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-2 text-[10px] font-semibold leading-none uppercase">
+                                                        <span>{timeString}</span>
+                                                        <span className="rounded-full bg-black/20 px-2 py-0.5 text-[9px] text-white">{appt.estado}</span>
+                                                    </div>
+                                                    <div className="truncate text-[11px] font-semibold leading-tight">{appt.servicio}</div>
+                                                    <div className="truncate text-[10px] leading-tight opacity-90">{appt.cliente}</div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       ) : null}
 
-      {/* Modals */}
+      {/* ------------------------- MODAL EDITAR CITA -------------------------- */}
       {selectedAppointment && (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setSelectedAppointment(null)} aria-hidden />
-          <div className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
+        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 overflow-y-auto">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setSelectedAppointment(null)}
+            aria-hidden
+          />
+          
+          <div className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-y-auto rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
             <div className="flex items-center justify-between gap-2 bg-zinc-900 px-5 py-4 text-white dark:bg-zinc-800">
-               <div><h3 className="text-lg font-bold">{selectedAppointment.servicio}</h3></div>
-               <button className="rounded-full bg-white/20 px-3 py-1 text-xs" onClick={() => setSelectedAppointment(null)}>Cerrar</button>
+              <h3 className="text-lg font-bold">
+                {selectedAppointment.servicio}
+              </h3>
+              <button
+                className="rounded-full bg-white/20 px-3 py-1 text-xs"
+                onClick={() => setSelectedAppointment(null)}
+              >
+                Cerrar
+              </button>
             </div>
+
             <div className="p-6 overflow-y-auto">
-               <form className="grid grid-cols-2 gap-4" onSubmit={saveEditedAppointment}>
-                  <label className="col-span-2 text-xs font-semibold text-zinc-500">Servicio</label>
-                  <input className="col-span-2 border p-2 rounded" value={(editAppointment as any)?.servicio} onChange={e => setEditAppointment(prev => ({...prev!, servicio: e.target.value}))} />
-                  
-                  <label className="text-xs font-semibold text-zinc-500">Fecha</label>
-                  <label className="text-xs font-semibold text-zinc-500">Hora</label>
-                  <input type="date" className="border p-2 rounded" value={(editAppointment as any)?.fecha} onChange={e => setEditAppointment(prev => ({...prev!, fecha: e.target.value}))} />
-                  <input type="time" className="border p-2 rounded" value={(editAppointment as any)?.hora} onChange={e => setEditAppointment(prev => ({...prev!, hora: e.target.value}))} />
-                  
-                  <div className="col-span-2 flex justify-end gap-2 mt-4">
-                     <button type="button" onClick={() => setSelectedAppointment(null)} className="p-2 border rounded">Cancelar</button>
-                     <button type="submit" className="p-2 bg-indigo-600 text-white rounded">Guardar</button>
-                  </div>
-               </form>
+              <form
+                className="grid grid-cols-2 gap-4"
+                onSubmit={saveEditedAppointment}
+              >
+                <label className="col-span-2 text-xs font-semibold text-zinc-500">
+                  Servicio
+                </label>
+                <input
+                  className="col-span-2 border p-2 rounded"
+                  value={editAppointment?.servicio}
+                  onChange={(e) =>
+                    setEditAppointment((prev) => ({
+                      ...prev!,
+                      servicio: e.target.value,
+                    }))
+                  }
+                />
+
+                <label className="text-xs font-semibold text-zinc-500">
+                  Fecha
+                </label>
+                <label className="text-xs font-semibold text-zinc-500">
+                  Hora
+                </label>
+
+                <input
+                  type="date"
+                  className="border p-2 rounded"
+                  value={editAppointment?.fecha}
+                  onChange={(e) =>
+                    setEditAppointment((prev) => ({
+                      ...prev!,
+                      fecha: e.target.value,
+                    }))
+                  }
+                />
+
+                <input
+                  type="time"
+                  className="border p-2 rounded"
+                  value={editAppointment?.hora}
+                  onChange={(e) =>
+                    setEditAppointment((prev) => ({
+                      ...prev!,
+                      hora: e.target.value,
+                    }))
+                  }
+                />
+                
+                <div className="col-span-2 flex justify-end gap-2 mt-4">
+                  <button
+                    type="button"
+                    onClick={handleCancelAppointment}
+                    className="p-2 border rounded text-rose-600 hover:bg-rose-50"
+                  >
+                    Cancelar Cita
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMarkPaid}
+                    disabled={selectedAppointment.is_paid}
+                    className="p-2 border rounded text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                  >
+                    {selectedAppointment.is_paid ? "Pagada" : "Marcar como Pagada"}
+                  </button>
+                </div>
+
+                <div className="col-span-2 flex justify-end gap-2 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAppointment(null)}
+                    className="p-2 border rounded"
+                  >
+                    Cerrar
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="p-2 bg-indigo-600 text-white rounded"
+                  >
+                    Guardar Cambios
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
       )}
 
+      {/* ------------------------- MODAL NUEVA CITA -------------------------- */}
       {bookingForm.open && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={closeBooking} aria-hidden />
-          <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
-             <div className="bg-indigo-600 p-4 text-white"><h2 className="text-lg font-bold">Nueva Reserva</h2></div>
-             <form className="p-6 space-y-4" onSubmit={submitBooking}>
-                <input required className="w-full border p-2 rounded" placeholder="Cliente" value={bookingForm.customer} onChange={e => setBookingForm({...bookingForm, customer: e.target.value})} />
-                <div className="flex gap-2">
-                   <button type="button" onClick={closeBooking} className="flex-1 bg-gray-100 p-2 rounded">Cancelar</button>
-                   <button type="submit" className="flex-1 bg-indigo-600 text-white p-2 rounded">Guardar</button>
-                </div>
-             </form>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up relative">
+            <div className="bg-indigo-600 p-4 flex justify-between items-center text-white">
+              <h2 className="font-bold text-lg">Nueva Reserva</h2>
+              <button
+                onClick={closeBooking}
+                className="p-1 hover:bg-indigo-700 rounded-full transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                    strokeLinejoin="round" className="lucide lucide-x">
+                    <path d="M18 6 6 18"></path>
+                    <path d="m6 6 12 12"></path>
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={submitBooking} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto no-scrollbar">
+              <input required className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Nombre del cliente" value={bookingForm.customer} onChange={(e) => setBookingForm({ ...bookingForm, customer: e.target.value })} />
+              <input className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Celular (Para WhatsApp)" value={bookingForm.phone} onChange={(e) => setBookingForm({ ...bookingForm, phone: e.target.value })} />
+              
+              {/* Servicio */}
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Servicio</label>
+                  <input
+                      required
+                      list="services-list"
+                      className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 bg-white"
+                      placeholder="Escribe o selecciona un servicio..."
+                      value={bookingForm.service}
+                      onChange={(e) => setBookingForm({ ...bookingForm, service: e.target.value })}
+                  />
+                  <datalist id="services-list">
+                      {mockServices.map((s) => (
+                          <option key={s.Servicio} value={s.Servicio}>${s.Precio}</option>
+                      ))}
+                  </datalist>
+              </div>
+
+              {/* Especialista */}
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Especialista</label>
+                  <select
+                      required
+                      className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 bg-white"
+                      value={bookingForm.specialist}
+                      onChange={(e) => setBookingForm({ ...bookingForm, specialist: e.target.value })}
+                  >
+                      <option value="">Seleccionar Especialista</option>
+                      {mockUsers
+                          .filter((u) => (u.role as string) === "ESPECIALISTA" || (u.role as string) === "SPECIALIST")
+                          .map((u) => (
+                              <option key={u.id} value={u.name}>{u.name}</option>
+                          ))}
+                  </select>
+              </div>
+
+              {/* Precio */}
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Valor Total</label>
+                  <input
+                      required
+                      type="number"
+                      min="0"
+                      step="10" // Reduced step for flexibility
+                      className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+                      value={bookingForm.price}
+                      onChange={(e) => setBookingForm({ ...bookingForm, price: Number(e.target.value) })}
+                  />
+              </div>
+
+              {/* Fecha + Hora */}
+              <div className="grid grid-cols-2 gap-4">
+                  <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                      <input
+                          required
+                          type="date"
+                          className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500"
+                          value={bookingForm.date}
+                          onChange={(e) => setBookingForm({ ...bookingForm, date: e.target.value })}
+                      />
+                  </div>
+                  <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Hora</label>
+                      <input
+                          required
+                          type="time"
+                          className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500"
+                          value={bookingForm.time}
+                          onChange={(e) => setBookingForm({ ...bookingForm, time: e.target.value })}
+                      />
+                  </div>
+              </div>
+
+              {/* Sede */}
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sede</label>
+                  <select
+                      className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 bg-white"
+                      value={bookingForm.location}
+                      onChange={(e) => setBookingForm({ ...bookingForm, location: e.target.value })}
+                  >
+                      <option value="Miraflores">Miraflores</option>
+                      <option value="San Isidro">San Isidro</option>
+                      <option value="Marquetalia">Marquetalia</option>
+                  </select>
+              </div>
+
+              {/* Notas */}
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                  <textarea
+                      rows={2}
+                      className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Detalles adicionales..."
+                      value={bookingForm.notes}
+                      onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
+                  />
+              </div>
+
+              {/* BOTONES */}
+              <div className="pt-4 flex gap-3">
+                  <button
+                      type="button"
+                      onClick={closeBooking}
+                      className="flex-1 py-3 text-gray-700 bg-gray-100 rounded-xl font-semibold hover:bg-gray-200 transition"
+                  >
+                      Cancelar
+                  </button>
+                  <button
+                      type="submit"
+                      className="flex-1 py-3 text-white bg-indigo-600 rounded-xl font-semibold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition"
+                  >
+                      Agendar
+                  </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

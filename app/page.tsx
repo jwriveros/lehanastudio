@@ -4,10 +4,29 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image"; // <-- IMPORTANTE: Importamos el componente de imagen
+import Image from "next/image";
 import { NAV_ITEMS, navByRole } from "@/lib/nav";
 import { useSessionStore } from "@/lib/sessionStore";
 import type { Role } from "@/lib/sessionStore";
+
+// =======================================================
+// CORRECCIÓN: Función para centralizar la lógica de routing
+// (Reduce la duplicación de código en handleLogin y useEffect)
+// =======================================================
+const getDestination = (session: { role?: Role | string | null } | null): string => {
+  // 1. Determinar el rol, cayendo en 'ADMIN' como fallback seguro
+  const userRole = (session?.role as Role) || "ADMIN";
+  
+  // 2. Obtener los ítems de navegación para ese rol
+  // Usamos el rol como índice, con un fallback seguro a navByRole.ADMIN si fuera necesario, 
+  // aunque el tipo Role de sessionStore ya debería asegurar la compatibilidad.
+  const userNav = navByRole[userRole as keyof typeof navByRole];
+  
+  // 3. Devolver la primera ruta disponible, o la primera ruta general como fallback final
+  return (userNav && userNav.length > 0) ? userNav[0].href : NAV_ITEMS[0].href;
+};
+// =======================================================
+
 
 export default function Home() {
   const router = useRouter();
@@ -21,11 +40,9 @@ export default function Home() {
     const ok = await login(email, password);
     
     if (ok) {
+      // Usamos el estado recién actualizado y la función auxiliar
       const currentSession = useSessionStore.getState().session;
-      const userRole = (currentSession?.role as Role) || "ADMIN";
-      
-      const userNav = navByRole[userRole];
-      const destination = userNav && userNav.length > 0 ? userNav[0].href : NAV_ITEMS[0].href;
+      const destination = getDestination(currentSession);
       
       router.push(destination);
     }
@@ -33,9 +50,8 @@ export default function Home() {
 
   useEffect(() => {
     if (session) {
-      const userRole = (session.role as Role) || "ADMIN";
-      const userNav = navByRole[userRole];
-      const destination = userNav && userNav.length > 0 ? userNav[0].href : NAV_ITEMS[0].href;
+      // Usamos la función auxiliar para determinar la ruta
+      const destination = getDestination(session);
       router.replace(destination);
     }
   }, [session, router]);
@@ -45,7 +61,6 @@ export default function Home() {
       <div className="mx-auto flex max-w-xl flex-col gap-6 px-4 pb-12 pt-20">
         
         {/* --- SECCIÓN DEL LOGO --- */}
-        {/* Reemplazamos el texto anterior por la imagen */}
         <header className="flex justify-center rounded-3xl p-4 bg-transparent">
           <div className="relative w-full max-w-[280px] h-auto aspect-[3/1]">
              <Image
