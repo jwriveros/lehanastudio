@@ -35,6 +35,31 @@ export type Appointment = {
   hora?: string;
 };
 
+// Nuevo tipo para manejar la información del cliente
+type ClientRecord = {
+  nombre: string;
+  celular: string | number | null;
+  numberc: string | null;
+};
+
+// Nuevo tipo para manejar la información del servicio (basado en la BD)
+type ServiceRecord = {
+    Servicio: string;
+    SKU: string;
+    Precio: number;
+    duracion: number;
+    category?: string;
+};
+
+// Nuevo tipo para manejar la información del especialista (cargado de app_users)
+type SpecialistRecord = {
+    id: string;
+    name: string;
+    role: string; // Puede ser 'ESPECIALISTA' o 'SPECIALIST'
+    color: string;
+};
+
+
 const MINUTES_START = 7 * 60; // 07:00
 const MINUTES_END = 20 * 60; // 20:00
 const STEP = 30; // 30 minutes
@@ -98,28 +123,203 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   const [specialistFilter, setSpecialistFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
-  const specialistOptions = useMemo(
-    () => Array.from(new Set(mockUsers.filter((u) => (u.role as string) === 'ESPECIALISTA' || (u.role as string) === 'SPECIALIST').map(u => u.name))).sort(), 
-    []
-  );
+  const [clientRecords, setClientRecords] = useState<ClientRecord[]>([]);
+  const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>([]);
+  const [specialistRecords, setSpecialistRecords] = useState<SpecialistRecord[]>([]);
 
+
+  // **********************************************
+  // Lógica de Carga de Especialistas (DB)
+  // **********************************************
+  useEffect(() => {
+    const fetchSpecialists = async () => {
+        const { data, error } = await supabase
+            .from("app_users")
+            .select("id, name, role, color")
+            .or('role.eq.ESPECIALISTA,role.eq.SPECIALIST') // Filtramos por ambos roles
+            .returns<SpecialistRecord[]>();
+
+        if (error) {
+            console.error("Error fetching specialists:", error);
+        } else if (data) {
+            setSpecialistRecords(data);
+        }
+    };
+    fetchSpecialists();
+  }, []);
+
+  const specialistOptions = useMemo(
+    // Usamos specialistRecords para la lista de selección
+    () => specialistRecords.map(u => u.name).sort(), 
+    [specialistRecords]
+  );
+  
+  // Sincronizar el estado inicial CON VALORES VACÍOS
   const [bookingForm, setBookingForm] = useState({
     open: false,
     customer: "",
     phone: "",
     guests: 1,
-    service: mockServices[0]?.Servicio ?? "",
-    specialist: specialistOptions[0] ?? "",
-    price: mockServices[0]?.Precio ?? 0,
+    service: "", // <-- Inicialmente vacío
+    specialist: "", // <-- Inicialmente vacío
+    price: 0, // <-- Inicialmente 0
     date: formatDateISO(baseDate),
     time: "09:00",
     location: "Miraflores",
     notes: "",
     status: "Nueva Reserva Creada",
   });
+
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [editAppointment, setEditAppointment] = useState<Appointment | null>(null);
 
+  // **********************************************
+  // Lógica de Carga de Servicios
+  // **********************************************
+  useEffect(() => {
+      const fetchServices = async () => {
+          const { data, error } = await supabase
+              .from("services")
+              .select("Servicio, SKU, Precio, duracion, category")
+              .returns<ServiceRecord[]>(); 
+
+          if (error) {
+              console.error("Error fetching services:", error);
+          } else if (data) {
+              setServiceRecords(data.map(s => ({...s, Precio: Number(s.Precio), duracion: Number(s.duracion)}))); // Asegurar tipos numéricos
+              // NOTA: Se eliminó la lógica de setear el primer servicio por defecto.
+          }
+      };
+      fetchServices();
+  }, []);
+
+  // ** Agrupación de servicios por categoría **
+  const serviceOptionsGrouped = useMemo(() => {
+      return serviceRecords.reduce((acc, service) => {
+          const category = service.category || 'Sin Categoría';
+          if (!acc[category]) {
+              acc[category] = [];
+          }
+          acc[category].push(service);
+          return acc;
+      }, {} as Record<string, ServiceRecord[]>);
+  }, [serviceRecords]);
+  
+  // **********************************************
+  // Lógica de Sugerencias de Clientes
+  // **********************************************
+  useEffect(() => {
+    const fetchClients = async () => {
+        const { data: clientsData, error } = await supabase
+            .from("clients")
+            .select("nombre, nombre_comercial, celular, telefono, numberc");
+
+        if (error) {
+            console.error("Error fetching clients for suggestions:", error);
+            return;
+        }
+
+        if (clientsData) {
+            const normalizedClients: ClientRecord[] = clientsData.map((c: any) => ({
+                nombre: c.nombre || c.nombre_comercial || '',
+                celular: String(c.celular || c.telefono || c.numberc || '').replace(/\D/g, '') || null,
+                numberc: c.numberc || c.celular || c.telefono || null,
+            })).filter(c => c.nombre || c.celular);
+            setClientRecords(normalizedClients);
+        }
+    };
+    fetchClients();
+  }, []);
+
+  const suggestionOptions = useMemo(() => {
+    const nameQuery = bookingForm.customer.toLowerCase().trim();
+    const phoneQuery = bookingForm.phone.replace(/\D/g, '').trim(); 
+    
+    const minLengthRequired = nameQuery.length >= 3 || phoneQuery.length >= 3;
+    if (!minLengthRequired) return [];
+
+    const suggestions: { display: string, name: string, phone: string }[] = [];
+    const addedPhones = new Set<string>();
+
+    clientRecords.forEach(c => {
+        const primaryPhone = c.celular as string; 
+        const displayName = c.nombre;
+
+        if (!primaryPhone || addedPhones.has(primaryPhone)) return;
+
+        // MATCHING LOGIC (Usando substring search para nombre y número)
+        const nameMatch = nameQuery.length > 0 && displayName.toLowerCase().includes(nameQuery);
+        const phoneMatch = phoneQuery.length > 0 && primaryPhone.includes(phoneQuery); 
+
+        if (nameMatch || phoneMatch) {
+            suggestions.push({
+                display: `${displayName} | ${primaryPhone}`,
+                name: displayName,
+                phone: primaryPhone,
+            });
+            addedPhones.add(primaryPhone);
+        }
+    });
+
+    return suggestions;
+  }, [clientRecords, bookingForm.customer, bookingForm.phone]);
+
+  const handleSuggestionSelect = (inputValue: string) => {
+    const selectedSuggestion = suggestionOptions.find(o => o.display === inputValue);
+    if (selectedSuggestion) {
+        setBookingForm(prev => ({
+            ...prev,
+            customer: selectedSuggestion.name, 
+            phone: selectedSuggestion.phone,   
+        }));
+        return true;
+    }
+    return false;
+  };
+  
+  const handleCustomerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    
+    if (handleSuggestionSelect(inputValue)) return;
+
+    setBookingForm(prev => ({ ...prev, customer: inputValue }));
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    
+    if (handleSuggestionSelect(inputValue)) return;
+
+    const normalizedInputPhone = inputValue.replace(/\D/g, '').trim();
+    setBookingForm(prev => ({ ...prev, phone: inputValue }));
+
+    const matchingClient = clientRecords.find(c => c.celular === normalizedInputPhone);
+
+    if (matchingClient && matchingClient.nombre && matchingClient.nombre !== bookingForm.customer) {
+        setBookingForm(prev => ({
+            ...prev,
+            customer: matchingClient.nombre,
+        }));
+    }
+  };
+
+  // Handler para actualizar precio y duración al seleccionar un servicio
+  const handleServiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedService = e.target.value;
+      const matchingService = serviceRecords.find(s => s.Servicio === selectedService);
+
+      setBookingForm(prev => ({ 
+          ...prev, 
+          service: selectedService,
+          // Si no se encuentra un matching service, el precio será 0 (prev.price es 0 por defecto)
+          price: matchingService?.Precio ?? 0, 
+      }));
+  };
+
+  // **********************************************
+  // Lógica de Agenda (código existente)
+  // **********************************************
+  
   useEffect(() => {
     const fetchAppointments = async () => {
       setLoading(true);
@@ -341,6 +541,11 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
   const submitBooking = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    // Obtener la duración del servicio seleccionado para enviar a la BD
+    const selectedService = serviceRecords.find(s => s.Servicio === bookingForm.service);
+    const serviceDuration = selectedService?.duracion ?? 60; // Default to 60 min if not found
+
     const appointmentDate = `${bookingForm.date}T${bookingForm.time}:00.000Z`;
     const newAppointment = {
       cliente: bookingForm.customer,
@@ -352,8 +557,9 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
       sede: bookingForm.location,
       notas: bookingForm.notes,
       estado: 'Nueva Reserva Creada' as AppointmentStatus,
-      bg_color: mockUsers.find((u: any) => u.name === bookingForm.specialist)?.color ?? '#94a3b8',
+      bg_color: specialistRecords.find((u: any) => u.name === bookingForm.specialist)?.color ?? '#94a3b8',
       is_paid: false,
+      duration: serviceDuration, // Incluir la duración
     };
     const response = await fetch('/api/bookings/create', {
         method: 'POST',
@@ -389,9 +595,10 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* Filtros de la vista Calendario (Mantienen mockServices) */}
               <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-inner outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
                 <option value="ALL">Todos los servicios</option>
-                {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                {serviceRecords.map((s) => <option key={s.Servicio} value={s.Servicio}>{s.Servicio}</option>)}
               </select>
               <select value={specialistFilter} onChange={(e) => setSpecialistFilter(e.target.value)} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-inner outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
                 <option value="ALL">Todos los especialistas</option>
@@ -607,7 +814,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
                     <div className="relative flex" aria-label="Agenda por especialista">
                         
                         {/* Columna Horas */}
-                        <div className="sticky left-0 z-20 w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/95">
+                        <div className="sticky left-0 z-20 w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
                             <div className="relative" style={{ height: COLUMN_HEIGHT }}>
                                 {slots.map((slot, idx) => (
                                     <div key={slot.minutes} className={`absolute inset-x-0 flex items-start justify-center border-b ${slot.dashed ? "border-dashed" : "border-solid"} border-zinc-200 px-1 text-[11px] font-medium leading-none text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`} style={{ top: idx * ROW_HEIGHT, height: ROW_HEIGHT }}>
@@ -820,10 +1027,40 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
             </div>
 
             <form onSubmit={submitBooking} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto no-scrollbar">
-              <input required className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Nombre del cliente" value={bookingForm.customer} onChange={(e) => setBookingForm({ ...bookingForm, customer: e.target.value })} />
-              <input className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="Celular (Para WhatsApp)" value={bookingForm.phone} onChange={(e) => setBookingForm({ ...bookingForm, phone: e.target.value })} />
               
-              {/* Servicio */}
+              {/* Input Nombre con Sugerencias */}
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cliente Principal</label>
+                  <input 
+                      required 
+                      list="client-suggestions"
+                      className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
+                      placeholder="Nombre del cliente (o 3 últimos dígitos de celular)" 
+                      value={bookingForm.customer} 
+                      onChange={handleCustomerChange} 
+                  />
+                  {/* Datalist enlazada al input de nombre */}
+                  <datalist id="client-suggestions">
+                      {suggestionOptions.map(o => (
+                          <option key={o.phone + o.name} value={o.display} />
+                      ))}
+                  </datalist>
+              </div>
+
+              {/* Input Celular con Autocompletado */}
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Celular (Para WhatsApp)</label>
+                  <input 
+                      required
+                      list="client-suggestions"
+                      className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
+                      placeholder="+57 300 123 4567" 
+                      value={bookingForm.phone} 
+                      onChange={handlePhoneChange} 
+                  />
+              </div>
+              
+              {/* Servicio (Actualizado para usar serviceRecords y agrupación por categoría) */}
               <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Servicio</label>
                   <input
@@ -832,16 +1069,23 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
                       className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 bg-white"
                       placeholder="Escribe o selecciona un servicio..."
                       value={bookingForm.service}
-                      onChange={(e) => setBookingForm({ ...bookingForm, service: e.target.value })}
+                      onChange={handleServiceChange} 
                   />
+                  {/* DATALIST CON AGRUPACIÓN POR CATEGORÍA */}
                   <datalist id="services-list">
-                      {mockServices.map((s) => (
-                          <option key={s.Servicio} value={s.Servicio}>${s.Precio}</option>
+                      {Object.entries(serviceOptionsGrouped).map(([category, services]) => (
+                          // Usamos optgroup para agrupar visualmente
+                          <optgroup key={category} label={category}>
+                              {services.map((s) => (
+                                  // El value ahora es solo el nombre del servicio para mantener el campo limpio
+                                  <option key={s.SKU} value={s.Servicio} /> 
+                              ))}
+                          </optgroup>
                       ))}
                   </datalist>
               </div>
 
-              {/* Especialista */}
+              {/* Especialista (ACTUALIZADO para usar specialistRecords) */}
               <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Especialista</label>
                   <select
@@ -850,12 +1094,10 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
                       value={bookingForm.specialist}
                       onChange={(e) => setBookingForm({ ...bookingForm, specialist: e.target.value })}
                   >
-                      <option value="">Seleccionar Especialista</option>
-                      {mockUsers
-                          .filter((u) => (u.role as string) === "ESPECIALISTA" || (u.role as string) === "SPECIALIST")
-                          .map((u) => (
-                              <option key={u.id} value={u.name}>{u.name}</option>
-                          ))}
+                      <option value="">Seleccionar Especialista</option> {/* Opción en blanco */}
+                      {specialistRecords.map((u) => (
+                          <option key={u.id} value={u.name}>{u.name}</option>
+                      ))}
                   </select>
               </div>
 
@@ -871,6 +1113,12 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
                       value={bookingForm.price}
                       onChange={(e) => setBookingForm({ ...bookingForm, price: Number(e.target.value) })}
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                      Precio sugerido: 
+                      {serviceRecords.find(s => s.Servicio === bookingForm.service)?.Precio 
+                       ? `$${serviceRecords.find(s => s.Servicio === bookingForm.service)!.Precio.toLocaleString()} `
+                       : '$0'}
+                  </p>
               </div>
 
               {/* Fecha + Hora */}
