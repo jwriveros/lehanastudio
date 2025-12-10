@@ -1,3 +1,5 @@
+// jwriveros/lehanastudio/lehanastudio-910f6b2f23845520141757de8a19232a7486021d/app/(app)/layout.tsx (Ajuste para fusión)
+
 "use client";
 
 import { type ReactNode, useEffect, useState } from "react";
@@ -13,8 +15,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { session, setUser } = useSessionStore();
   const [isChecking, setIsChecking] = useState(true);
 
-  // Restaurar sesión
+  // Lógica de restauración de sesión (omito por brevedad, el código es el mismo)
   useEffect(() => {
+    // ... (Código de useEffect)
     const checkSession = async () => {
       const { data: { session: authSession } } = await supabase.auth.getSession();
 
@@ -44,12 +47,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     if (!session) checkSession();
     else setIsChecking(false);
   }, [session, setUser]);
-
-  // Redirigir sin sesión
+  
   useEffect(() => {
     if (!isChecking && !session) router.replace("/");
   }, [isChecking, session, router]);
-
+  
   if (isChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white text-zinc-500">
@@ -65,16 +67,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     navByRole[currentRole as keyof typeof navByRole] || navByRole.ADMIN;
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-auto bg-white dark:bg-black">
+    <div className="h-screen w-screen flex flex-col overflow-hidden bg-white dark:bg-black">
 
       
-      {/* HEADER MINIMALISTA */}
-      <header className="h-12 w-full flex items-center justify-between px-4 border-b bg-white dark:bg-zinc-900">
-        <div className="font-semibold">Lehana Studio</div>
-
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-zinc-600 dark:text-zinc-300">Admin</span>
-
+      {/* HEADER MINIMALISTA FUSIONADO */}
+      {/* CAMBIO 1: Usamos 'h-16' para dar espacio a la fila única, y justify-between para distribuir los elementos. */}
+      {/* Usamos flex items-center para centrar verticalmente en la fila. */}
+      <header className="h-16 w-full flex items-center justify-between px-4 border-b bg-white dark:bg-zinc-900">
+        
+        {/* Lado Izquierdo (Logo/Título) */}
+        <div className="font-semibold text-lg flex-shrink-0">Lehana Studio</div>
+        
+        {/* Centro (Menú de Navegación) */}
+        {/* CAMBIO 2: Colocamos el BottomNav en el centro. Le pasamos una clase de flex-1 para que ocupe el espacio central. */}
+        <div className="flex-1 max-w-xl mx-auto flex justify-center h-full">
+            <BottomNav currentPath={pathname} items={navItems} />
+        </div>
+        
+        {/* Lado Derecho (Usuario y Cierre de Sesión) */}
+        <div className="flex items-center gap-4 text-sm flex-shrink-0">
+          <span className="text-zinc-600 dark:text-zinc-300">{session.name || session.role}</span>
           <button
             className="text-red-500 hover:underline"
             onClick={() => {
@@ -92,8 +104,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {/* MENÚ INFERIOR */}
-      <BottomNav currentPath={pathname} items={navItems} />
+      {/* MENÚ INFERIOR (Eliminado) */}
+      {/* El menú inferior se elimina completamente si se fusiona con el header */}
     </div>
   );
 }
