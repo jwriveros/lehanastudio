@@ -130,34 +130,33 @@ export function ChatPanel() {
   }, [activeId, threads]);
 
 
-  const sendMessage = async () => {
+ const sendMessage = async () => {
     if (!inputText.trim() || !activeId) return;
     
     const activeThread = threads.find(t => t.id === activeId);
     if (!activeThread) return;
 
-    // 1. UI Optimista (mostrar mensaje inmediatamente)
+    // 1. UI Optimista (mostrar mensaje inmediatamente en el frontend)
     const tempMsg: ChatMessage = { from: "staff", text: inputText, created_at: new Date().toISOString() };
     setMessages((prev) => [...prev, tempMsg]);
-    const textToSend = inputText;
-    setInputText("");
-
-    // 2. Guardar en Supabase (y disparar n8n via webhook en el backend si fuera necesario)
-    const { error } = await supabase.from("mensajes").insert([{
-        content: textToSend,
-        sender_role: "staff",
-        client_id: activeId,
+    
+    const payloadToSend = {
         client_phone: activeThread.phone,
-        created_at: new Date().toISOString()
-    }]);
+        content: inputText,
+    };
+    
+    const textToSend = inputText;
+    setInputText(""); // Limpiar input DESPUÉS de capturar el texto
 
-    if (error) {
-        console.error("Error enviando mensaje:", error);
-        alert("Error al guardar mensaje en DB");
-    } else {
-        // Aquí podrías llamar a fetch('/api/whatsapp/outgoing') si quieres integrar n8n real
-    }
-  };
+    // 2. Llamar a la API de Next.js, que a su vez llama a n8n
+    const response = await fetch('/api/whatsapp/outgoing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadToSend),
+    });
+
+    // ... manejo de errores (opcional)
+};
 
   const currentChat = useMemo(() => threads.find((t) => t.id === activeId) ?? null, [activeId, threads]);
 
