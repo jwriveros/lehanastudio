@@ -314,7 +314,7 @@ export function ChatPanel() {
                       {chat.lastMessage}
                     </div>
                     <div className="text-[10px] text-zinc-400">
-                      {new Date(chat.last.lastActivity).toLocaleTimeString([], {
+                      {new Date(chat.lastActivity).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
