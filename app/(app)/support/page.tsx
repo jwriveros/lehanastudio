@@ -42,10 +42,10 @@ export default function SupportPage() {
 
             {/*
             ==========================================================
-            3️⃣ BOTONES FLOTANTES (MOVIDOS ARRIBA)
+            3️⃣ BOTONES FLOTANTES (Z-INDEX 50)
             ==========================================================
             */}
-            <div className="absolute top-4 right-4 flex items-center gap-3 z-[200]">
+            <div className="absolute top-4 right-4 flex items-center gap-3 z-50">
                 
                 {/* Botón Abrir Calendario */}
                 <button
@@ -81,11 +81,11 @@ export default function SupportPage() {
 
             {/*
             ==========================================================
-            1️⃣ MODAL: SOLO NUEVA RESERVA (renderCalendarShell=false)
+            1️⃣ MODAL: SOLO NUEVA RESERVA (Z-INDEX 60)
             ==========================================================
             */}
             {showBookingAgenda && (
-                <div className="fixed inset-0 z-[100] overflow-y-auto p-4 flex items-center justify-center">
+                <div className="fixed inset-0 z-[60] overflow-y-auto p-4 flex items-center justify-center">
 
                     <div
                       className="absolute inset-0 bg-black/50"
@@ -113,12 +113,13 @@ export default function SupportPage() {
 
             {/*
             ==========================================================
-            2️⃣ MODAL: CALENDARIO COMPLETO (renderCalendarShell=true)
+            2️⃣ MODAL: CALENDARIO COMPLETO (Z-INDEX 70)
             ==========================================================
             */}
             {showCalendarAgenda && (
-                <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center">
+                <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center">
 
+                    {/* El contenedor max-w-[1900px] asegura que no sea fullscreen total si la pantalla es gigante */}
                     <div className="relative w-full h-full max-w-[1900px] max-h-[95vh] rounded-3xl overflow-hidden bg-white shadow-2xl">
 
                         {/* Calendario fullscreen */}

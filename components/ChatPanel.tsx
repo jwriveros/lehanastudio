@@ -5,15 +5,24 @@ import { supabase } from "@/lib/supabaseClient";
 
 type Tab = "active" | "abandoned" | "reservations";
 
+type ChatStatus =
+  | "active"
+  | "new"
+  | "bot_active"
+  | "agent_active"
+  | "pending_agent"
+  | "resolved";
+
 type ChatUser = {
   id: string;
   cliente: string;
   phone: string;
   lastMessage: string;
   unread: number;
-  status: Tab;
+  status: ChatStatus;
   lastActivity: string;
 };
+
 
 type ChatMessage = {
   id?: number;
@@ -104,6 +113,23 @@ export function ChatPanel() {
         console.error("Error cargando mensajes:", messagesError);
       }
 
+      // 2. Obtener sesiones de chat
+      const { data: sessions, error: sessionsError } = await supabase
+        .from("chat_sessions")
+        .select("*");
+
+      if (sessionsError) console.error("Error cargando sesiones:", sessionsError);
+
+      // Convertir en map para acceso rápido:
+      const sessionMap = new Map<string, any>();
+      if (sessions) {
+        sessions.forEach((s) => {
+          const phone = normalizePhone(s.client_phone);
+          sessionMap.set(phone, s); // guardar sesión por teléfono
+        });
+      }
+
+
       const unique = new Map<string, ChatUser>();
 
       if (messagesData) {
@@ -125,6 +151,10 @@ export function ChatPanel() {
 
           const isClientMsg = getSenderRole(m) === "client";
 
+          // Determinar estado REAL desde chat_sessions
+          const session = sessionMap.get(phoneNorm);
+          const realStatus = session?.status || "active";
+
           unique.set(phoneNorm, {
             id: phoneNorm,
             cliente: finalName,
@@ -132,8 +162,9 @@ export function ChatPanel() {
             lastMessage: m.content || m.message || "",
             lastActivity: m.created_at,
             unread: isClientMsg ? 1 : 0,
-            status: "active",
+            status: realStatus, // <-- aquí aplicamos el estado real
           });
+
         });
       }
 
@@ -359,27 +390,56 @@ export function ChatPanel() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+    // 🔥 Actualizar session como agent_active
+    await supabase
+      .from("chat_sessions")
+      .update({
+        status: "agent_active",
+        last_agent_message_at: new Date().toISOString()
+      })
+      .eq("client_phone", activeThread.phone);
+
   };
 
-  const handleThreadClick = (id: string) => {
-    setActiveId(id);
-    setThreads((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, unread: 0 } : t))
-    );
-  };
+  const handleThreadClick = async (id: string) => {
+  setActiveId(id);
 
-  const handleResolveChat = () => {
-    if (
-      !activeId ||
-      !confirm(
-        "¿Estás seguro de marcar este chat como resuelto? Desaparecerá de la lista activa."
-      )
+  // 🔥 Marcar sesión como agent_active
+  await supabase
+    .from("chat_sessions")
+    .update({
+      status: "agent_active",
+      last_agent_message_at: new Date().toISOString()
+    })
+    .eq("client_phone", id);
+
+  setThreads((prev) =>
+    prev.map((t) => (t.id === id ? { ...t, unread: 0 } : t))
+  );
+};
+
+  const handleResolveChat = async () => {
+  if (
+    !activeId ||
+    !confirm(
+      "¿Estás seguro de marcar este chat como resuelto? Desaparecerá de la lista activa."
     )
-      return;
+  ) return;
 
-    setThreads((prev) => prev.filter((t) => t.id !== activeId));
-    setActiveId(null);
-  };
+  // 🔥 Marcar la sesión como resuelta
+  await supabase
+    .from("chat_sessions")
+    .update({
+      status: "resolved",
+      updated_at: new Date().toISOString()
+    })
+    .eq("client_phone", activeId);
+
+  setThreads((prev) => prev.filter((t) => t.id !== activeId));
+  setActiveId(null);
+};
+
 
   const currentChat = useMemo(
     () => threads.find((t) => t.id === activeId) ?? null,
@@ -387,6 +447,27 @@ export function ChatPanel() {
   );
 
   // ---------------------- 6. UI ----------------------
+  // ---------------------- FILTRO DE THREADS ----------------------
+const filteredThreads = threads.filter((t) => {
+  if (tab === "active") {
+    return (
+      t.status === "active" ||
+      t.status === "bot_active" ||
+      t.status === "new"
+    );
+  }
+
+  if (tab === "reservations") {
+    return t.status === "pending_agent";
+  }
+
+  if (tab === "abandoned") {
+    return t.status === "resolved";
+  }
+
+  return true;
+});
+
   return (
     <div className="flex flex-col w-full h-full overflow-hidden">
       {/* Tabs */}
@@ -420,7 +501,9 @@ export function ChatPanel() {
             ) : threads.length === 0 ? (
               <p className="p-4 text-sm text-zinc-500">No hay hilos.</p>
             ) : (
-              threads.map((chat) => (
+              
+              filteredThreads.map((chat) => (
+                
                 <div
                   key={chat.id}
                   onClick={() => handleThreadClick(chat.id)}
