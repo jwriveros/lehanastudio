@@ -77,86 +77,122 @@ export function ChatPanel() {
     if (!activeId) return;
     
     const fetchMessages = async () => {
-        setLoadingMessages(true);
-        // Buscamos mensajes donde el 'client_id' o 'phone' coincida con el chat activo
-        // Asumiendo que tu tabla mensajes tiene columnas: content, sender_role ('client'|'staff'), client_reference
-        const activeThread = threads.find(t => t.id === activeId);
-        if (!activeThread) return;
+      setLoadingMessages(true);
+      // Buscamos mensajes donde el 'client_id' o 'phone' coincida con el chat activo
+      // Asumiendo que tu tabla mensajes tiene columnas: content, sender_role ('client'|'staff'), client_reference
+      const activeThread = threads.find((t) => t.id === activeId);
+      if (!activeThread) return;
 
-        // Intentamos buscar por numero de celular (limpiando espacios) o por numberc
-        const cleanPhone = activeThread.phone.replace(/\D/g, ''); 
+      // Intentamos buscar por numero de celular (limpiando espacios) o por numberc
+      const cleanPhone = activeThread.phone.replace(/\D/g, "");
 
-        const { data, error } = await supabase
-            .from("mensajes")
-            .select("*")
-            .or(`client_phone.eq.${activeThread.phone},client_phone.eq.${cleanPhone},client_id.eq.${activeId}`) // Busqueda flexible
-            .order("created_at", { ascending: true });
+      const { data, error } = await supabase
+        .from("mensajes")
+        .select("*")
+        .or(`client_phone.eq.${activeThread.phone},client_phone.eq.${cleanPhone},client_id.eq.${activeId}`) // Busqueda flexible
+        .order("created_at", { ascending: true });
 
-        if (error) {
-            console.error("Error fetching messages:", error);
-        } else {
-            // Mapear DB a UI
-            const uiMessages: ChatMessage[] = (data || []).map((m: any) => ({
-                id: m.id,
-                text: m.content || m.text || "", 
-                from: (m.sender_role === "staff" || m.direction === "outbound") ? "staff" : "client",
-                created_at: m.created_at
-            }));
-            setMessages(uiMessages);
-        }
-        setLoadingMessages(false);
+      if (error) {
+        console.error("Error fetching messages:", error);
+      } else {
+        // Mapear DB a UI
+        const uiMessages: ChatMessage[] = (data || []).map((m: any) => ({
+          id: m.id,
+          text: m.content || m.text || "",
+          from: m.sender_role === "staff" || m.direction === "outbound" ? "staff" : "client",
+          created_at: m.created_at,
+        }));
+        setMessages(uiMessages);
+      }
+      setLoadingMessages(false);
     };
 
     fetchMessages();
 
-    // Opcional: Suscribirse a nuevos mensajes en tiempo real para este chat
-    const channel = supabase.channel('realtime:mensajes')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes' }, (payload) => {
-        // Si el mensaje nuevo pertenece al chat activo, agregarlo
-        const newMsg = payload.new as any;
-        if (newMsg.client_id === activeId || newMsg.client_phone === threads.find(t=>t.id===activeId)?.phone) {
-             setMessages((prev) => [...prev, {
-                id: newMsg.id,
-                text: newMsg.content || newMsg.text,
-                from: newMsg.sender_role === 'staff' ? 'staff' : 'client',
-                created_at: newMsg.created_at
-             }]);
+    // Suscripción en tiempo real a nuevos mensajes del chat activo
+    const activeThread = threads.find((t) => t.id === activeId);
+    if (!activeThread) return;
+
+    const normalizedPhones = [activeThread.phone, activeThread.phone.replace(/\D/g, "")]
+      .filter(Boolean)
+      .map((p) => p.replace(/\D/g, ""));
+
+    const channel = supabase
+      .channel(`realtime:mensajes:${activeId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "mensajes" },
+        (payload) => {
+          const newMsg = payload.new as any;
+          const incomingPhone = (newMsg.client_phone || "").replace(/\D/g, "");
+          const belongsToChat =
+            newMsg.client_id === activeId ||
+            (incomingPhone && normalizedPhones.some((p) => p === incomingPhone));
+
+          if (!belongsToChat) return;
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: newMsg.id,
+              text: newMsg.content || newMsg.text,
+              from: newMsg.sender_role === "staff" ? "staff" : "client",
+              created_at: newMsg.created_at,
+            },
+          ]);
+
+          // Refrescar actividad en la lista de chats
+          setThreads((prev) =>
+            prev.map((thread) =>
+              thread.id === activeId
+                ? {
+                    ...thread,
+                    lastMessage: newMsg.content || newMsg.text || thread.lastMessage,
+                    lastActivity: newMsg.created_at || new Date().toISOString(),
+                  }
+                : thread
+            )
+          );
         }
-    })
-    .subscribe();
+      )
+      .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    const interval = setInterval(fetchMessages, 10000);
 
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
   }, [activeId, threads]);
 
 
- const sendMessage = async () => {
+  const sendMessage = async () => {
     if (!inputText.trim() || !activeId) return;
     
-    const activeThread = threads.find(t => t.id === activeId);
+    const activeThread = threads.find((t) => t.id === activeId);
     if (!activeThread) return;
 
     // 1. UI Optimista (mostrar mensaje inmediatamente en el frontend)
     const tempMsg: ChatMessage = { from: "staff", text: inputText, created_at: new Date().toISOString() };
     setMessages((prev) => [...prev, tempMsg]);
-    
+
     const payloadToSend = {
-        client_phone: activeThread.phone,
-        content: inputText,
+      client_phone: activeThread.phone,
+      content: inputText,
     };
-    
+
     const textToSend = inputText;
     setInputText(""); // Limpiar input DESPUÉS de capturar el texto
 
     // 2. Llamar a la API de Next.js, que a su vez llama a n8n
     const response = await fetch('/api/whatsapp/outgoing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadToSend),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadToSend),
     });
 
     // ... manejo de errores (opcional)
-};
+  };
 
   const currentChat = useMemo(() => threads.find((t) => t.id === activeId) ?? null, [activeId, threads]);
 
