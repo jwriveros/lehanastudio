@@ -61,7 +61,6 @@ export function ChatPanel() {
       if (messagesData) {
         messagesData.forEach((m: any) => {
           const phone = String(m.client_phone).replace(/\D/g, "");
-
           if (!unique.has(phone)) {
             unique.set(phone, {
               id: phone,
@@ -151,21 +150,27 @@ export function ChatPanel() {
     const fetchMessages = async () => {
       setLoadingMessages(true);
 
-      const { data } = await supabase
+      const activeThread = threads.find((t) => t.id === activeId);
+      if (!activeThread) return;
+
+      const cleanPhone = activeThread.phone.replace(/\D/g, "");
+
+      const { data, error } = await supabase
         .from("mensajes")
-        .select("id, content, sender_role, created_at, message")
-        .eq("client_phone", activeId)
+        .select("*")
+        .or(`client_phone.eq.${activeThread.phone},client_phone.eq.${cleanPhone},client_id.eq.${activeId}`)
         .order("created_at", { ascending: true });
 
+      if (error) console.error(error);
+
       if (data) {
-        setMessages(
-          data.map((m: any) => ({
-            id: m.id,
-            text: m.content || m.message || "",
-            from: m.sender_role === "staff" ? "staff" : "client",
-            created_at: m.created_at,
-          }))
-        );
+        const uiMessages: ChatMessage[] = data.map((m: any) => ({
+          id: m.id,
+          text: m.content || m.text || m.message || "",
+          from: m.sender_role === "staff" || m.direction === "outbound" ? "staff" : "client",
+          created_at: m.created_at,
+        }));
+        setMessages(uiMessages);
       }
 
       setLoadingMessages(false);
@@ -173,28 +178,48 @@ export function ChatPanel() {
 
     fetchMessages();
 
+    const activeThread = threads.find((t) => t.id === activeId);
+    if (!activeThread) return;
+
+    const normalizedPhones = [activeThread.phone, activeThread.phone.replace(/\D/g, "")]
+      .filter(Boolean)
+      .map((p) => p.replace(/\D/g, ""));
+
     const channel = supabase
-      .channel(`mensajes_chat_${activeId}`)
+      .channel(`realtime:mensajes:${activeId}`)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "mensajes",
-          filter: `client_phone=eq.${activeId}`,
-        },
+        { event: "INSERT", schema: "public", table: "mensajes" },
         (payload) => {
-          const n = payload.new as any;
+          const newMsg = payload.new as any;
+          const incomingPhone = (newMsg.client_phone || "").replace(/\D/g, "");
+          const belongsToChat =
+            newMsg.client_id === activeId ||
+            (incomingPhone && normalizedPhones.includes(incomingPhone));
+
+          if (!belongsToChat) return;
 
           setMessages((prev) => [
             ...prev,
             {
-              id: n.id,
-              text: n.content || n.message,
-              from: n.sender_role === "staff" ? "staff" : "client",
-              created_at: n.created_at,
+              id: newMsg.id,
+              text: newMsg.content || newMsg.text || newMsg.message,
+              from: newMsg.sender_role === "staff" ? "staff" : "client",
+              created_at: newMsg.created_at,
             },
           ]);
+
+          setThreads((prev) =>
+            prev.map((thread) =>
+              thread.id === activeId
+                ? {
+                    ...thread,
+                    lastMessage: newMsg.content || newMsg.text || thread.lastMessage,
+                    lastActivity: newMsg.created_at || new Date().toISOString(),
+                  }
+                : thread
+            )
+          );
         }
       )
       .subscribe();
@@ -202,11 +227,14 @@ export function ChatPanel() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeId]);
+  }, [activeId, threads]);
 
   // ---------------------- SEND MESSAGE ----------------------
   const sendMessage = async () => {
     if (!inputText.trim() || !activeId) return;
+
+    const activeThread = threads.find((t) => t.id === activeId);
+    if (!activeThread) return;
 
     const tempMsg: ChatMessage = {
       from: "staff",
@@ -215,12 +243,19 @@ export function ChatPanel() {
     };
 
     setMessages((prev) => [...prev, tempMsg]);
+
+    const payload = {
+      client_phone: activeThread.phone,
+      content: inputText,
+    };
+
+    const msgToSend = inputText;
     setInputText("");
 
     await fetch("/api/whatsapp/outgoing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_phone: activeId, content: inputText }),
+      body: JSON.stringify(payload),
     });
   };
 
@@ -232,8 +267,7 @@ export function ChatPanel() {
   // ---------------------- UI ----------------------
   return (
     <div className="flex w-full h-full overflow-hidden">
-
-      {/* TABS FIJOS ARRIBA */}
+      {/* TABS FIJOS */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
         {(["active", "reservations", "abandoned"] as const).map((t) => (
           <button
@@ -250,9 +284,8 @@ export function ChatPanel() {
         ))}
       </div>
 
-      {/* GRID PRINCIPAL */}
+      {/* GRID */}
       <div className="grid flex-1 h-full w-full gap-4 grid-cols-1 lg:grid-cols-[1fr_1.3fr] overflow-hidden">
-
         {/* LISTA DE CHATS */}
         <div className="flex flex-col rounded-2xl border bg-white overflow-hidden">
           <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-zinc-500">
@@ -281,7 +314,7 @@ export function ChatPanel() {
                       {chat.lastMessage}
                     </div>
                     <div className="text-[10px] text-zinc-400">
-                      {new Date(chat.lastActivity).toLocaleTimeString([], {
+                      {new Date(chat.last.lastActivity).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
@@ -296,7 +329,6 @@ export function ChatPanel() {
         {/* PANEL DE MENSAJES */}
         {currentChat ? (
           <div className="flex flex-col rounded-2xl border bg-white overflow-hidden">
-
             <div className="flex items-center justify-between border-b p-4">
               <div>
                 <div className="text-lg font-semibold">{currentChat.cliente}</div>
@@ -365,7 +397,6 @@ export function ChatPanel() {
                 </button>
               </div>
             </div>
-
           </div>
         ) : (
           <div className="flex items-center justify-center rounded-2xl border text-sm text-zinc-500">
