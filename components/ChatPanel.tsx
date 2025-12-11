@@ -536,7 +536,7 @@ const filteredThreads = threads.filter((t) => {
 });
 
   return (
-    <div className="flex flex-col w-full h-full overflow-hidden">
+    <div className="flex flex-col w-full h-screen overflow-hidden">
       {/* Tabs */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
         {(["active", "reservations", "abandoned"] as const).map((t) => (
