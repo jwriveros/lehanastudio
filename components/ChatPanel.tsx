@@ -55,6 +55,9 @@ export function ChatPanel() {
   const [inputText, setInputText] = useState("");
   const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  // --- MODO MÓVIL (solo vista tipo WhatsApp) ---
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [showMobileChat, setShowMobileChat] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +67,18 @@ export function ChatPanel() {
   );
 
   // ---------------------- 1. Cargar lista de hilos (CORREGIDO PARA INCLUIR PENDING_AGENT) ----------------------
+  // Detectar si la vista es móvil
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobileView(window.innerWidth < 768); // < 768px = móvil
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
   useEffect(() => {
     const fetchThreads = async () => {
       setLoadingThreads(true);
@@ -430,8 +445,13 @@ export function ChatPanel() {
 
   };
 
-  const handleThreadClick = async (id: string) => {
+const handleThreadClick = async (id: string) => {
   setActiveId(id);
+
+  // Si estoy en celular → abrir modo chat
+  if (isMobileView) {
+    setShowMobileChat(true);
+  }
 
   // 🔥 Marcar sesión como agent_active
   await supabase
@@ -442,7 +462,7 @@ export function ChatPanel() {
     })
     .eq("client_phone", id);
 
-  setThreads((prev) =>
+  setThreads(prev =>
     prev.map((t) => (t.id === id ? { ...t, unread: 0 } : t))
   );
 };
@@ -535,9 +555,28 @@ const filteredThreads = threads.filter((t) => {
       </div>
 
       {/* Grid */}
-      <div className="grid flex-1 w-full gap-4 grid-cols-1 lg:grid-cols-[1fr_1.3fr] overflow-hidden p-4">
-        {/* Lista de chats */}
-        <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full">
+      <div className="flex-1 w-full overflow-hidden p-4">
+  {isMobileView ? (
+    <>
+      {/* 📱 Vista móvil: SOLO lista de chats */}
+      {!showMobileChat && (
+        <div className="h-full">
+          {/* ⬇️ TU LISTA DE CHATS VA AQUÍ (NO LA MUEVAS DEL JSX ORIGINAL) */}
+        </div>
+      )}
+
+      {/* 📱 Vista móvil: SOLO el chat seleccionado */}
+      {showMobileChat && activeId && (
+        <div className="h-full">
+          {/* ⬇️ TU PANEL DE CHAT VA AQUÍ (NO LA MUEVAS DEL JSX ORIGINAL) */}
+        </div>
+      )}
+    </>
+  ) : (
+    /* 🖥 Desktop: vista doble */
+    <div className="grid flex-1 w-full gap-4 grid-cols-[1fr_1.3fr]">
+      {/* ⬇️ LISTA DE CHATS */}
+      <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full">
           <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-zinc-500">
             <span>Chats Recientes ({threads.length})</span>
           </div>
@@ -591,8 +630,8 @@ const filteredThreads = threads.filter((t) => {
             )}
           </div>
         </div>
-
-        {/* Panel de mensajes */}
+      {/* ⬇️ PANEL DE CHAT */}
+      {/* Panel de mensajes */}
         {currentChat ? (
           <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full">
             <div className="flex items-center justify-between border-b p-4">
@@ -696,6 +735,11 @@ const filteredThreads = threads.filter((t) => {
           </div>
         )}
       </div>
+  )}
+</div>
+        
+
+        
     </div>
   );
 }
