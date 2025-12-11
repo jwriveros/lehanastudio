@@ -8,7 +8,7 @@ import Image from "next/image";
 import { NAV_ITEMS, navByRole } from "@/lib/nav";
 import { useSessionStore } from "@/lib/sessionStore";
 import type { Role } from "@/lib/sessionStore";
-
+ 
 // =======================================================
 // CORRECCIÓN: Función para centralizar la lógica de routing
 // (Reduce la duplicación de código en handleLogin y useEffect)
