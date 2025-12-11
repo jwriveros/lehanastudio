@@ -59,9 +59,18 @@ type SpecialistRecord = {
     color: string;
 };
 
+// FIX 1: Lista completa y correcta de estados, incluyendo la etiqueta que usa el formulario.
+const ALL_APPOINTMENT_STATUSES: AppointmentStatus[] = [
+    "Cita pendiente" as AppointmentStatus,
+    "Cita confirmada" as AppointmentStatus,
+    "Cita pagada" as AppointmentStatus,
+    "Cita cancelada" as AppointmentStatus,
+    "No presentada" as AppointmentStatus,
+    "Nueva reserva creada" as AppointmentStatus,
+];
 
 const MINUTES_START = 7 * 60; // 07:00
-const MINUTES_END = 20 * 60; // 20:00
+const MINUTES_END = 20.5 * 60; // 20:30 (Asegura que 20:00 se muestre completo)
 const STEP = 30; // 30 minutes
 const ROW_HEIGHT = 52;
 const TOTAL_MINUTES = MINUTES_END - MINUTES_START;
@@ -100,9 +109,9 @@ function getAppointmentDetails(isoString: string | null) {
 }
 
 function minutesToTimeString(minutes: number) {
-  const h = Math.floor(minutes / 60).toString().padStart(2, "0");
-  const m = (minutes % 60).toString().padStart(2, "0");
-  return `${h}:${m}`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 }
 
 function normalizeAppointment(appt: Appointment): Appointment {
@@ -114,14 +123,27 @@ function normalizeAppointment(appt: Appointment): Appointment {
 
 const dayFormatter = new Intl.DateTimeFormat("es", { weekday: "short" });
 
+// FIX 1.2: Función para obtener la fecha actual anclada a medianoche local (para evitar desfase por TimeZone)
+function getLocalMidnight(date: Date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
 export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true, onBookingClose }: AgendaBoardProps) {
   const [appointmentList, setAppointmentList] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
-  const [baseDate, setBaseDate] = useState<Date>(new Date()); 
+  
+  // FIX 1.3: Usar getLocalMidnight(new Date()) para inicializar baseDate
+  const [baseDate, setBaseDate] = useState<Date>(getLocalMidnight(new Date())); 
+  
   const [serviceFilter, setServiceFilter] = useState<string>("ALL");
   const [specialistFilter, setSpecialistFilter] = useState<string>("ALL");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  
+  // FIX 3: ESTADO MULTI-SELECT: Inicializado con todos los estados
+  const [statusFilter, setStatusFilter] = useState<AppointmentStatus[]>(ALL_APPOINTMENT_STATUSES); 
+  const [showStatusMenu, setShowStatusMenu] = useState(false); 
 
   const [clientRecords, setClientRecords] = useState<ClientRecord[]>([]);
   const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>([]);
@@ -136,7 +158,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
         const { data, error } = await supabase
             .from("app_users")
             .select("id, name, role, color")
-            .or('role.eq.ESPECIALISTA,role.eq.SPECIALIST') // Filtramos por ambos roles
+            .or('role.eq.ESPECIALISTA,role.eq.SPECIALIST')
             .returns<SpecialistRecord[]>();
 
         if (error) {
@@ -149,30 +171,49 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   }, []);
 
   const specialistOptions = useMemo(
-    // Usamos specialistRecords para la lista de selección
     () => specialistRecords.map(u => u.name).sort(), 
     [specialistRecords]
   );
   
-  // Sincronizar el estado inicial CON VALORES VACÍOS
   const [bookingForm, setBookingForm] = useState({
     open: false,
     customer: "",
     phone: "",
     guests: 1,
-    service: "", // <-- Inicialmente vacío
-    specialist: "", // <-- Inicialmente vacío
-    price: 0, // <-- Inicialmente 0
+    service: "", 
+    specialist: "", 
+    price: 0, 
     date: formatDateISO(baseDate),
     time: "09:00",
     location: "Miraflores",
     notes: "",
-    status: "Nueva Reserva Creada",
+    status: "Cita pendiente" as AppointmentStatus, // FIX 1: Usar el estado correcto
   });
 
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [editAppointment, setEditAppointment] = useState<Appointment | null>(null);
 
+  // **********************************************
+  // Lógica de Toggling de Estados
+  // **********************************************
+  const toggleStatusFilter = (status: AppointmentStatus) => {
+    setStatusFilter(prev => {
+        const isSelected = prev.includes(status);
+        if (isSelected) {
+            const next = prev.filter(s => s !== status);
+            return next.length > 0 ? next : prev; 
+        } else {
+            return [...prev, status];
+        }
+    });
+  };
+
+  const handleSelectAllStatuses = () => {
+    // Usar la lista completa local
+    setStatusFilter(ALL_APPOINTMENT_STATUSES);
+    setShowStatusMenu(false);
+  };
+  
   // **********************************************
   // Lógica de Carga de Servicios
   // **********************************************
@@ -186,8 +227,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
           if (error) {
               console.error("Error fetching services:", error);
           } else if (data) {
-              setServiceRecords(data.map(s => ({...s, Precio: Number(s.Precio), duracion: Number(s.duracion)}))); // Asegurar tipos numéricos
-              // NOTA: Se eliminó la lógica de setear el primer servicio por defecto.
+              setServiceRecords(data.map(s => ({...s, Precio: Number(s.Precio), duracion: Number(s.duracion)}))); 
           }
       };
       fetchServices();
@@ -311,7 +351,6 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
       setBookingForm(prev => ({ 
           ...prev, 
           service: selectedService,
-          // Si no se encuentra un matching service, el precio será 0 (prev.price es 0 por defecto)
           price: matchingService?.Precio ?? 0, 
       }));
   };
@@ -354,13 +393,17 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
   const serviceOptions = useMemo(() => Array.from(new Set(appointmentList.map((a) => a.servicio))), [appointmentList]);
 
+  // Lógica de Filtrado de Citas usando el array de estados seleccionados
   const filteredAppointments = useMemo(
     () =>
       appointmentList.filter((appt) => {
         const matchesService = serviceFilter === "ALL" || appt.servicio === serviceFilter;
         const matchesSpecialist = specialistFilter === "ALL" || appt.especialista === specialistFilter;
-        const matchesStatus = statusFilter === "ALL" || appt.estado === statusFilter;
-        return matchesService && matchesSpecialist && matchesStatus;
+        
+        // Comprobar si el estado de la cita está incluido en el array de filtros
+        const okStatus = statusFilter.includes(appt.estado); 
+        
+        return matchesService && matchesSpecialist && okStatus;
       }),
     [appointmentList, serviceFilter, specialistFilter, statusFilter]
   );
@@ -457,9 +500,12 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     for (let m = MINUTES_START; m <= MINUTES_END; m += STEP) {
       const hours = Math.floor(m / 60);
       const minutes = m % 60;
-      const label = `${hours % 12 === 0 ? 12 : hours % 12}:${minutes === 0 ? "00" : minutes.toString().padStart(2, "0")}`;
-      const suffix = hours < 12 ? "AM" : "PM";
-      items.push({ label: `${label} ${suffix}`, minutes: m, dashed: minutes === 30 });
+      // Ajuste para el formato AM/PM en las etiquetas de la hora
+      const ampm = hours >= 12 && hours < 24 ? "PM" : "AM";
+      const displayHour = hours % 12 === 0 ? (hours === 24 ? 12 : 12) : hours % 12;
+      const label = `${displayHour}:${minutes.toString().padStart(2, "0")} ${ampm}`;
+      
+      items.push({ label: label, minutes: m, dashed: minutes === 30 });
     }
     return items;
   }, []);
@@ -469,7 +515,8 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     if (viewMode === "day") next.setDate(baseDate.getDate() + direction);
     else if (viewMode === "week") next.setDate(baseDate.getDate() + 7 * direction);
     else next.setMonth(baseDate.getMonth() + direction);
-    setBaseDate(next);
+    // FIX 1.4: Asegurar que baseDate siempre sea local midnight después de navegar
+    setBaseDate(getLocalMidnight(next));
   };
 
   const openBooking = (dateIso: string, time?: string, specialist?: string) => {
@@ -513,8 +560,18 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
   const handleCancelAppointment = () => {
     if (!selectedAppointment) return;
-    updateAppointment(selectedAppointment.id, () => ({ estado: "CANCELLED" as AppointmentStatus }));
-    setSelectedAppointment((prev) => (prev ? { ...prev, estado: "CANCELLED" as AppointmentStatus } : prev));
+
+    const isConfirmed = window.confirm(
+        `¿Está seguro de cancelar la cita para ${selectedAppointment.cliente} (${selectedAppointment.servicio})? Esta acción marcará la cita como CANCELADA.`
+    );
+    
+    if (isConfirmed) {
+        updateAppointment(selectedAppointment.id, () => ({ 
+            estado: "Cita cancelada" as AppointmentStatus // FIX 1: Usar el estado correcto
+        }));
+        
+        setSelectedAppointment(null); 
+    }
   };
 
   const saveEditedAppointment = async (event: FormEvent<HTMLFormElement>) => {
@@ -543,7 +600,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     event.preventDefault();
 
     // Obtener la duración del servicio seleccionado para enviar a la BD
-    const selectedService = serviceRecords.find(s => s.Servicio === bookingForm.service);
+    const selectedService = mockServices.find(s => s.Servicio === bookingForm.service);
     const serviceDuration = selectedService?.duracion ?? 60; // Default to 60 min if not found
 
     const appointmentDate = `${bookingForm.date}T${bookingForm.time}:00.000Z`;
@@ -556,8 +613,8 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
       appointment_at: appointmentDate,
       sede: bookingForm.location,
       notas: bookingForm.notes,
-      estado: 'Nueva Reserva Creada' as AppointmentStatus,
-      bg_color: specialistRecords.find((u: any) => u.name === bookingForm.specialist)?.color ?? '#94a3b8',
+      estado: 'Cita pendiente' as AppointmentStatus, // FIX 1: Usar el estado correcto por defecto
+      bg_color: mockUsers.find((u: any) => u.name === bookingForm.specialist)?.color ?? '#94a3b8',
       is_paid: false,
       duration: serviceDuration, // Incluir la duración
     };
@@ -580,14 +637,20 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   return (
     <>
       {renderCalendarShell ? (
-        <div className="flex h-full min-h-[720px] flex-col overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="fixed inset-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-950">
+
           {/* Header del Calendario */}
           <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-gradient-to-r from-white via-indigo-50 to-white px-4 py-3 text-sm dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900/60 dark:to-zinc-900">
             <div className="flex items-center gap-2">
               <button className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-sm hover:border-indigo-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" onClick={() => handleNavigate(-1)}>←</button>
-              <button className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-sm hover:border-indigo-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" onClick={() => setBaseDate(new Date())}>Hoy</button>
+              <button className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-sm hover:border-indigo-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" onClick={() => setBaseDate(getLocalMidnight(new Date()))}>Hoy</button>
               <button className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-sm hover:border-indigo-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200" onClick={() => handleNavigate(1)}>→</button>
-              <input type="date" className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-inner outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" value={formatDateISO(baseDate)} onChange={(e) => setBaseDate(new Date(e.target.value))} />
+              <input 
+                type="date" 
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-inner outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" 
+                value={formatDateISO(baseDate)} 
+                onChange={(e) => setBaseDate(getLocalMidnight(new Date(e.target.value)))} 
+              />
             </div>
             <div className="flex items-center gap-2">
               {([{ key: "day", label: "Día" }, { key: "week", label: "Semana" }, { key: "month", label: "Mes" }] as const).map((option) => (
@@ -595,19 +658,60 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {/* Filtros de la vista Calendario (Mantienen mockServices) */}
               <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-inner outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
                 <option value="ALL">Todos los servicios</option>
-                {serviceRecords.map((s) => <option key={s.Servicio} value={s.Servicio}>{s.Servicio}</option>)}
+                {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
               <select value={specialistFilter} onChange={(e) => setSpecialistFilter(e.target.value)} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-inner outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
                 <option value="ALL">Todos los especialistas</option>
                 {specialistOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-inner outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
-                <option value="ALL">Todos los estados</option>
-                {appointmentStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+
+              {/* MULTI-SELECT DE ESTADOS */}
+              <div className="relative">
+                  <button
+                      onClick={() => setShowStatusMenu(v => !v)}
+                      className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 shadow-inner outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 flex items-center gap-2"
+                  >
+                      Estado: {statusFilter.length === ALL_APPOINTMENT_STATUSES.length ? 'Todos' : `${statusFilter.length} Seleccionados`}
+                      <span className="text-[8px] transform">{showStatusMenu ? '▲' : '▼'}</span>
+                  </button>
+
+                  {showStatusMenu && (
+                      <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-zinc-200 bg-white p-3 shadow-lg z-50 dark:border-zinc-700 dark:bg-zinc-900">
+                          <div className="space-y-2">
+                              <button
+                                  onClick={handleSelectAllStatuses}
+                                  className={`w-full text-left p-2 rounded-lg text-xs font-semibold transition ${
+                                      statusFilter.length === ALL_APPOINTMENT_STATUSES.length
+                                      ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200"
+                                      : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                  }`}
+                              >
+                                  Seleccionar Todos
+                              </button>
+                              <div className="border-t border-zinc-100 dark:border-zinc-800 pt-2 grid grid-cols-2 gap-2">
+                                  {ALL_APPOINTMENT_STATUSES.map((status) => {
+                                      const isSelected = statusFilter.includes(status);
+                                      return (
+                                          <button
+                                              key={status}
+                                              onClick={() => toggleStatusFilter(status)}
+                                              className={`p-2 rounded-lg text-xs font-semibold text-center transition border ${
+                                                  isSelected
+                                                  ? "bg-indigo-600 text-white border-indigo-600"
+                                                  : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-200 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                                              }`}
+                                          >
+                                              {status}
+                                          </button>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+                      </div>
+                  )}
+              </div>
             </div>
           </div>
 
@@ -945,7 +1049,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
                 <input
                   type="date"
-                  className="border p-2 rounded"
+                  className="col-span-2 border p-2 rounded" // Se corrigió el layout a col-span-2 aquí, asumiendo que es el intento de código que ya funciona
                   value={editAppointment?.fecha}
                   onChange={(e) =>
                     setEditAppointment((prev) => ({
@@ -957,7 +1061,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
                 <input
                   type="time"
-                  className="border p-2 rounded"
+                  className="col-span-2 border p-2 rounded" // Se corrigió el layout a col-span-2 aquí
                   value={editAppointment?.hora}
                   onChange={(e) =>
                     setEditAppointment((prev) => ({
@@ -1009,7 +1113,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
       {/* ------------------------- MODAL NUEVA CITA -------------------------- */}
       {bookingForm.open && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up relative">
             <div className="bg-indigo-600 p-4 flex justify-between items-center text-white">
               <h2 className="font-bold text-lg">Nueva Reserva</h2>
@@ -1094,7 +1198,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
                       value={bookingForm.specialist}
                       onChange={(e) => setBookingForm({ ...bookingForm, specialist: e.target.value })}
                   >
-                      <option value="">Seleccionar Especialista</option> {/* Opción en blanco */}
+                      <option value="">Seleccionar Especialista</option>
                       {specialistRecords.map((u) => (
                           <option key={u.id} value={u.name}>{u.name}</option>
                       ))}
@@ -1153,8 +1257,6 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
                       value={bookingForm.location}
                       onChange={(e) => setBookingForm({ ...bookingForm, location: e.target.value })}
                   >
-                      <option value="Miraflores">Miraflores</option>
-                      <option value="San Isidro">San Isidro</option>
                       <option value="Marquetalia">Marquetalia</option>
                   </select>
               </div>
