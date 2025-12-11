@@ -14,10 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lizto-style CRM | Lehana Studio",
+  title: "Lehana Studio",
   description:
-    "CRM demo with dashboards, agenda, WhatsApp inbox, Supabase-ready APIs, and n8n-friendly webhooks",
-  applicationName: "Lizto CRM PWA",
+    "",
+  applicationName: "Lehana Studio",
   manifest: "/manifest.json",
 };
 
