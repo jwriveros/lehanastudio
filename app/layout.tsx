@@ -15,8 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Lehana Studio",
-  description:
-    "",
+  description: "",
   applicationName: "Lehana Studio",
   manifest: "/manifest.json",
 };
@@ -25,17 +24,21 @@ export const viewport: Viewport = {
   themeColor: "#4f46e5",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+    <html lang="es" className="h-full">
+      <body className="h-full flex flex-col overflow-hidden">
+
+        {/* 🔹 NAVBAR (altura automática) */}
+        <header className="shrink-0">
+          {/* Aquí va tu navbar */}
+        </header>
+
+        {/* 🔹 CONTENIDO PRINCIPAL: debe tener min-h-0 */}
+        <main className="flex-1 min-h-0 overflow-hidden">
+          {children}
+        </main>
+
       </body>
     </html>
   );
