@@ -4,6 +4,7 @@ export { AgendaBoard } from "./AgendaBoard";
 export { ChatPanel } from "./ChatPanel";
 export { ClientsPanel } from "./ClientsPanel";
 export { DashboardCards } from "./DashboardCards";
+export { Header } from "./Header";
 export { ProgressPanel } from "./ProgressPanel";
 export { ServicesPanel } from "./ServicesPanel";
 export { SettingsPanel } from "./SettingsPanel";
