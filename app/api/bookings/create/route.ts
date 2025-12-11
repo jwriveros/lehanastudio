@@ -1,5 +1,11 @@
+// app/api/bookings/create/route.ts
+
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseClient"; 
+
+// --- CAMBIO CLAVE: Cambiar el webhook a la ruta estructurada 'app' ---
+// La URL es deducida de la URL anterior de 'crm-outgoing' y el path 'app' del JSON que proporcionaste.
+const N8N_STRUCTURED_WEBHOOK_URL = "https://n8n.srv1151368.hstgr.cloud/webhook/app"; 
 
 export async function POST(request: Request) {
   const payload = await request.json();
@@ -11,7 +17,8 @@ export async function POST(request: Request) {
   }
 
   // Desestructuramos para obtener los datos necesarios y EXCLUIR campos que causan el error.
-  const { duration, notes, notas, cliente, celular, appointment_at, ...restOfPayload } = payload; 
+  // Extraemos service, specialist, price, date, time, location para el mensaje.
+  const { duration, notes, notas, cliente, celular, appointment_at, service, specialist, price, date, time, location, ...restOfPayload } = payload; 
 
   // Objeto de datos limpios para insertar en appointments
   const appointmentPayload = {
@@ -19,7 +26,9 @@ export async function POST(request: Request) {
       cliente,
       celular,
       appointment_at,
-      price: Number(restOfPayload.price), 
+      servicio: service, // Usamos 'service' del payload del formulario para 'servicio' en la DB
+      especialista: specialist,
+      price: Number(price), 
       is_paid: !!restOfPayload.is_paid,
       // NOTA: 'duration', 'notes', y 'notas' han sido excluidos del payload de appointments.
   };
@@ -29,10 +38,10 @@ export async function POST(request: Request) {
 
   try {
     // **********************************************
-    // LÓGICA DE CREACIÓN/VERIFICACIÓN DE CLIENTE (CORRECCIÓN DE ESQUEMA)
+    // 1. LÓGICA DE CREACIÓN/VERIFICACIÓN DE CLIENTE
     // **********************************************
     
-    // 1. Buscar si el cliente ya existe por número de celular
+    // Buscar si el cliente ya existe por número de celular
     const { data: existingClient } = await supabaseAdmin
         .from('clients')
         .select('nombre')
@@ -41,13 +50,12 @@ export async function POST(request: Request) {
         .maybeSingle(); 
 
     
-    // 2. Si el cliente NO existe, crearlo con valores por defecto para campos obligatorios
+    // Si el cliente NO existe, crearlo con valores por defecto
     if (!existingClient) {
         const newClientData = {
             nombre: cliente,
             celular: normalizedCelular,
             creado_desde: 'CRM_BOOKING',
-            // FIX: Asumimos que estos campos son obligatorios en 'clients'
             tipo: 'Contacto', 
             estado: 'Activo', 
         };
@@ -57,18 +65,15 @@ export async function POST(request: Request) {
             .insert([newClientData]);
 
         if (clientInsertError) {
-             // Esto imprime un error en la consola del servidor, pero no bloquea la creación de la cita (paso 3)
              console.error(`DB WARNING: Client insertion failed for ${cliente}. Details:`, clientInsertError);
-             // NOTA: La reserva continuará creándose aunque el cliente no se haya registrado.
         }
     }
 
 
     // **********************************************
-    // LÓGICA DE CREACIÓN DE CITA
+    // 2. LÓGICA DE CREACIÓN DE CITA
     // **********************************************
     
-    // 3. Insertar la cita principal en la tabla 'appointments'
     const { data: appointmentData, error: appointmentError } = await supabaseAdmin
       .from('appointments')
       .insert([appointmentPayload]) 
@@ -84,21 +89,65 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    // 4. Insertar el registro de la solicitud en 'booking_requests'
+    // 3. Insertar el registro de la solicitud en 'booking_requests'
     await supabaseAdmin
       .from('booking_requests')
       .insert([{ 
           status: 'PENDING',
           created_at: appointment_at || new Date().toISOString(), 
           appointment_id: appointmentData.id,
-          client_phone: celular,
+          client_phone: normalizedCelular,
       }]);
     
+    // **********************************************
+    // 4. LÓGICA DE ENVÍO DE CONFIRMACIÓN POR WHATSAPP (ESTRUCTURADO)
+    // **********************************************
+    let whatsappStatus = "NOT_SENT";
+    
+    // Formatear la fecha para el mensaje (el n8n espera 'formattedDate' como solo la fecha)
+    const apptDate = new Date(appointment_at);
+    // Usamos 'es-ES' ya que el formato de fecha del Confirmar node es como '17 de Febrero de 2025'
+    const dateStr = apptDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+    
+    // Construir el payload que coincide con lo que el n8n flow espera (acción: CREATE y campos de datos)
+    const whatsappPayload = {
+        action: "CREATE", // Clave para que el nodo Switch lo redirija a 'Confirmar'
+        customerPhone: `+${normalizedCelular}`, 
+        customerName: cliente,
+        formattedDate: dateStr, // Requerido por el nodo Confirmar
+        time: time,             // Requerido por el nodo Confirmar
+        location: location,
+        service: service,
+        price: price,           
+        appointmentId: appointmentData.id,
+    };
+    
+    try {
+        // Enviar el payload estructurado al nuevo webhook
+        const n8nResponse = await fetch(N8N_STRUCTURED_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(whatsappPayload),
+        });
 
+        if (n8nResponse.ok) {
+            whatsappStatus = "SENT_TO_N8N_OK";
+        } else {
+            const errorText = await n8nResponse.text();
+            console.error(`Error de n8n al enviar WhatsApp: ${n8nResponse.status} - ${errorText}`);
+            whatsappStatus = `N8N_ERROR: ${n8nResponse.status}`;
+        }
+    } catch (e) {
+        console.error("Error de red al llamar a n8n para WhatsApp:", e);
+        whatsappStatus = "NETWORK_ERROR";
+    }
+
+    // 5. Devolver la respuesta al cliente
     return NextResponse.json({
       created: true,
       status: "PENDING",
       message: "Reserva agendada y cliente verificado/creado con éxito.",
+      whatsapp_status: whatsappStatus,
       appointment_id: appointmentData.id,
     });
 
