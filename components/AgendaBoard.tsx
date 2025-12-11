@@ -642,10 +642,36 @@ useEffect(() => {
     );
   };
   
-  const handleMarkPaid = () => {
+  const handleMarkPaid = async () => {
     if (!selectedAppointment) return;
-    updateAppointment(selectedAppointment.id, () => ({ is_paid: true })); 
-    setSelectedAppointment((prev) => (prev ? { ...prev, is_paid: true } : prev));
+
+    const appointmentId = selectedAppointment.id;
+
+    const response = await fetch('/api/bookings/mark-as-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId }),
+    });
+
+    if (response.ok) {
+        // Update local state to reflect the change immediately
+        const newStatus = "Cita pagada" as AppointmentStatus;
+        const newIsPaid = true;
+
+        setAppointmentList((prev) =>
+            prev.map((appt) =>
+                appt.id === appointmentId
+                    ? getNormalizedAppointment({ ...appt, is_paid: newIsPaid, estado: newStatus } as Appointment)
+                    : appt
+            )
+        );
+        setSelectedAppointment((prev) => (prev ? { ...prev, is_paid: newIsPaid, estado: newStatus } : prev));
+        await fetchAppointments();
+    } else {
+        const errorData = await response.json().catch(() => ({ error: "Error de red o JSON inválido." }));
+        console.error("Error al marcar como pagada (API):", errorData);
+        alert(`Error al marcar la cita como pagada. Error: ${errorData.error || 'Desconocido'}.`);
+    }
   };
 
   const handleCancelAppointment = async () => {
