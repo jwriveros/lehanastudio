@@ -203,7 +203,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     time: "09:00",
     location: "Miraflores",
     notes: "",
-    status: "Cita pendiente" as AppointmentStatus, // FIX 1: Usar el estado correcto
+    status: "Nueva reserva creada" as AppointmentStatus, // FIX 1: Usar el estado correcto
   });
 
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -619,7 +619,7 @@ useEffect(() => {
     setSelectedAppointment((prev) => (prev ? { ...prev, is_paid: true } : prev));
   };
 
-  const handleCancelAppointment = () => {
+  const handleCancelAppointment = async () => {
     if (!selectedAppointment) return;
 
     const isConfirmed = window.confirm(
@@ -627,11 +627,43 @@ useEffect(() => {
     );
     
     if (isConfirmed) {
-        updateAppointment(selectedAppointment.id, () => ({ 
-            estado: "Cita cancelada" as AppointmentStatus // FIX 1: Usar el estado correcto
-        }));
-        
-        setSelectedAppointment(null); 
+        const appointmentId = selectedAppointment.id;
+        const newStatus = "Cita cancelada" as AppointmentStatus;
+
+        // 1. Llamar al endpoint de API para cancelar con privilegios
+        const response = await fetch("/api/bookings/cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ appointmentId }),
+        });
+
+        if (!response.ok) {
+            // Captura de error mejorada
+            const errorData = await response.json().catch(() => ({ error: "Error de red o JSON inválido." }));
+            console.error("Error al cancelar cita (API):", errorData);
+            alert(`Error al actualizar la cita. Error: ${errorData.error || 'Desconocido'}.`);
+            return; 
+        }
+
+        const result = await response.json();
+
+        if (result.success !== true) {
+            alert(`Error al actualizar la cita. El servidor no confirmó el éxito.`);
+            return;
+        }
+
+        // 2. Si la API es exitosa, actualizar el estado local y cerrar el modal
+        setAppointmentList((prev) =>
+            prev.map((appt) =>
+                appt.id === appointmentId
+                    ? getNormalizedAppointment({ ...appt, estado: newStatus } as Appointment)
+                    : appt
+            )
+        );
+        setSelectedAppointment(null); // Esto cierra el modal de detalle/edición
+        setEditAppointment(null);
+        await fetchAppointments(); 
+
     }
   };
 
@@ -659,6 +691,8 @@ useEffect(() => {
     setAppointmentList((prev) => prev.map((appt) => (appt.id === normalizedUpdatedAppt.id ? normalizedUpdatedAppt : appt)));
     setSelectedAppointment(normalizedUpdatedAppt);
     setEditAppointment(null);
+    await fetchAppointments(); 
+
   };
 
   const submitBooking = async (event: FormEvent<HTMLFormElement>) => {
@@ -681,7 +715,7 @@ useEffect(() => {
       appointment_at: appointmentDate,
       sede: bookingForm.location,
       notas: bookingForm.notes,
-      estado: 'Cita pendiente' as AppointmentStatus, // FIX 1: Usar el estado correcto por defecto
+      estado: 'Nueva reserva creada' as AppointmentStatus, // FIX 1: Usar el estado correcto por defecto
       bg_color: specialistColor, // Usar el color del especialista
       is_paid: false,
       duration: serviceDuration, // Incluir la duración
@@ -693,6 +727,7 @@ useEffect(() => {
     });
     if (response.ok) {
         alert("¡Solicitud de reserva enviada! Pendiente de confirmación.");
+        await fetchAppointments();
         closeBooking();
     } else {
         alert("Error al enviar la solicitud.");
