@@ -1,29 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import type { NavItem } from "@/lib/nav";
 
-const items = [
-  { href: "/support", label: "Soporte" },
-  { href: "/business", label: "Mi negocio" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/settings", label: "Ajustes" },
-];
+interface BottomNavProps {
+  currentPath: string;
+  items: NavItem[];
+}
 
-export function BottomNav() {
-  const pathname = usePathname();
-
+export function BottomNav({ currentPath, items }: BottomNavProps) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white md:hidden">
-      <ul className="flex h-14 items-stretch justify-around text-xs">
+    <nav className="flex h-full items-center justify-center">
+      <ul className="flex h-full items-stretch justify-center gap-2 text-sm">
         {items.map((item) => {
-          const active = pathname.startsWith(item.href);
+          const active = currentPath.startsWith(item.href);
           return (
-            <li key={item.href} className="flex-1">
+            <li key={item.href} className="flex">
               <Link
                 href={item.href}
-                className={`flex h-full flex-col items-center justify-center ${
-                  active ? "text-indigo-600 font-semibold" : "text-gray-500"
+                className={`flex h-full items-center justify-center rounded-md px-4 ${
+                  active
+                    ? "bg-indigo-100 font-semibold text-indigo-700"
+                    : "text-gray-600 hover:bg-gray-100"
                 }`}
               >
                 <span>{item.label}</span>
