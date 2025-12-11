@@ -555,26 +555,26 @@ const filteredThreads = threads.filter((t) => {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 w-full overflow-hidden p-4">
-  {isMobileView ? (
-    <>
-      {/* 📱 Vista móvil: SOLO lista de chats */}
-      {!showMobileChat && (
-        <div className="h-full">
-          {/* ⬇️ TU LISTA DE CHATS VA AQUÍ (NO LA MUEVAS DEL JSX ORIGINAL) */}
-        </div>
-      )}
+      <div className="flex-1 w-full h-full min-h-0 overflow-hidden p-4">
+        {isMobileView ? (
+          <>
+            {/* 📱 Vista móvil: SOLO lista de chats */}
+            {!showMobileChat && (
+              <div className="h-full">
+                {/* ⬇️ TU LISTA DE CHATS VA AQUÍ (NO LA MUEVAS DEL JSX ORIGINAL) */}
+              </div>
+            )}
 
-      {/* 📱 Vista móvil: SOLO el chat seleccionado */}
-      {showMobileChat && activeId && (
-        <div className="h-full">
-          {/* ⬇️ TU PANEL DE CHAT VA AQUÍ (NO LA MUEVAS DEL JSX ORIGINAL) */}
-        </div>
-      )}
-    </>
-  ) : (
+            {/* 📱 Vista móvil: SOLO el chat seleccionado */}
+            {showMobileChat && activeId && (
+              <div className="h-full">
+                {/* ⬇️ TU PANEL DE CHAT VA AQUÍ (NO LA MUEVAS DEL JSX ORIGINAL) */}
+              </div>
+            )}
+          </>
+        ) : (
     /* 🖥 Desktop: vista doble */
-    <div className="grid flex-1 w-full gap-4 grid-cols-[1fr_1.3fr]">
+    <div className="grid flex-1 min-h-0 w-full gap-4 grid-cols-[1fr_1.3fr] overflow-hidden">
       {/* ⬇️ LISTA DE CHATS */}
       <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full">
           <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-zinc-500">
