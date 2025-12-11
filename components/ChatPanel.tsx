@@ -1,3 +1,4 @@
+// jwriveros/lehanastudio/lehanastudio-96f5232a8f8811af1eab69428dde275c2bc1a958/components/ChatPanel.tsx
 "use client";
 
 import { useEffect, useMemo, useState, useRef } from "react";
@@ -62,7 +63,7 @@ export function ChatPanel() {
     () => new Map()
   );
 
-  // ---------------------- 1. Cargar lista de hilos ----------------------
+  // ---------------------- 1. Cargar lista de hilos (CORREGIDO PARA INCLUIR PENDING_AGENT) ----------------------
   useEffect(() => {
     const fetchThreads = async () => {
       setLoadingThreads(true);
@@ -103,7 +104,7 @@ export function ChatPanel() {
       // guardamos el cache para realtime
       setClientCache(cache);
 
-      // 2. Mensajes para construir hilos
+      // 2. Mensajes para construir hilos (solo necesitamos los más recientes)
       const { data: messagesData, error: messagesError } = await supabase
         .from("mensajes")
         .select("client_phone, content, message, created_at, sender_role")
@@ -113,7 +114,7 @@ export function ChatPanel() {
         console.error("Error cargando mensajes:", messagesError);
       }
 
-      // 2. Obtener sesiones de chat
+      // 3. Obtener sesiones de chat (fuente de verdad del estado)
       const { data: sessions, error: sessionsError } = await supabase
         .from("chat_sessions")
         .select("*");
@@ -122,53 +123,81 @@ export function ChatPanel() {
 
       // Convertir en map para acceso rápido:
       const sessionMap = new Map<string, any>();
+      const threadsMap = new Map<string, ChatUser>(); // Usaremos este mapa para construir la lista final
+
       if (sessions) {
         sessions.forEach((s) => {
-          const phone = normalizePhone(s.client_phone);
-          sessionMap.set(phone, s); // guardar sesión por teléfono
+          const phoneNorm = normalizePhone(s.client_phone);
+          if (!phoneNorm) return;
+          
+          sessionMap.set(phoneNorm, s); 
+
+          const realStatus = s.status as ChatStatus;
+
+          // CORRECCIÓN CLAVE: Inicializamos el hilo con data de la sesión (status, cliente)
+          if (realStatus !== 'resolved') {
+             const clientName = cache.get(phoneNorm) || cache.get(phoneNorm.slice(-10));
+             const finalName = clientName && clientName.length > 0 ? clientName : `+${phoneNorm}`;
+             
+             threadsMap.set(phoneNorm, {
+                id: phoneNorm,
+                cliente: finalName,
+                phone: phoneNorm,
+                lastMessage: s.last_menu_sent || "Esperando mensaje...", 
+                lastActivity: s.updated_at, 
+                unread: 0, 
+                status: realStatus, 
+             });
+          }
         });
       }
 
 
-      const unique = new Map<string, ChatUser>();
-
+      // 4. Recorrer los mensajes para ENRIQUECER los hilos y agregar nuevos si es necesario
       if (messagesData) {
         messagesData.forEach((m: any) => {
           const phoneNorm = normalizePhone(m.client_phone);
+          if (!phoneNorm) return;
 
-          if (!phoneNorm || unique.has(phoneNorm)) return;
-
-          // ⚠️ AQUÍ ESTABA EL BUG:
-          // antes se usaba clientCache (vacío todavía). Debe usarse *cache*.
-          const clientName =
-            cache.get(phoneNorm) ||
-            cache.get(phoneNorm.slice(-10)); // por si hay ligeras variaciones
-
-          const finalName =
-            clientName && clientName.length > 0
-              ? clientName
-              : `+${phoneNorm}`;
-
-          const isClientMsg = getSenderRole(m) === "client";
-
-          // Determinar estado REAL desde chat_sessions
           const session = sessionMap.get(phoneNorm);
-          const realStatus = session?.status || "active";
+          const realStatus = session?.status as ChatStatus || "active" as ChatStatus;
+          const isClientMsg = getSenderRole(m) === "client";
+          
+          if (realStatus === 'resolved') return;
 
-          unique.set(phoneNorm, {
-            id: phoneNorm,
-            cliente: finalName,
-            phone: phoneNorm,
-            lastMessage: m.content || m.message || "",
-            lastActivity: m.created_at,
-            unread: isClientMsg ? 1 : 0,
-            status: realStatus, // <-- aquí aplicamos el estado real
-          });
+          // Si el hilo ya existe (lo agregamos desde sessions)
+          if (threadsMap.has(phoneNorm)) {
+            const existing = threadsMap.get(phoneNorm)!;
+            
+            // Aseguramos que la última actividad y mensaje sea del mensaje más reciente
+            // Usamos m.created_at ya que messagesData está ordenado descendente
+            if (m.created_at > existing.lastActivity) {
+                existing.lastMessage = m.content || m.message || "";
+                existing.lastActivity = m.created_at;
+                // Si el último mensaje es del cliente, marcamos como 1 no leído (luego Realtime lo acumula)
+                existing.unread = isClientMsg ? 1 : 0; 
+            }
 
+          } else {
+            // Si el hilo no existe (es un hilo muy nuevo sin sesión o que el default debe ser 'active')
+            const clientName = cache.get(phoneNorm) || cache.get(phoneNorm.slice(-10));
+            const finalName = clientName && clientName.length > 0 ? clientName : `+${phoneNorm}`;
+
+            threadsMap.set(phoneNorm, {
+                id: phoneNorm,
+                cliente: finalName,
+                phone: phoneNorm,
+                lastMessage: m.content || m.message || "",
+                lastActivity: m.created_at,
+                unread: isClientMsg ? 1 : 0,
+                status: realStatus, 
+            });
+          }
         });
       }
 
-      const list = Array.from(unique.values()).sort((a, b) =>
+
+      const list = Array.from(threadsMap.values()).sort((a, b) =>
         a.lastActivity > b.lastActivity ? -1 : 1
       );
 
@@ -216,7 +245,7 @@ export function ChatPanel() {
                   lastMessage: n.content || n.message,
                   lastActivity: n.created_at,
                   unread: isClientMsg ? 1 : 0,
-                  status: "active",
+                  status: "active" as ChatStatus,
                 },
                 ...prev,
               ];
@@ -420,25 +449,41 @@ export function ChatPanel() {
 };
 
   const handleResolveChat = async () => {
-  if (
-    !activeId ||
-    !confirm(
-      "¿Estás seguro de marcar este chat como resuelto? Desaparecerá de la lista activa."
-    )
-  ) return;
+    if (
+      !activeId ||
+      !confirm(
+        "¿Estás seguro de marcar este chat como resuelto? Desaparecerá de la lista activa."
+      )
+    ) return;
 
-  // 🔥 Marcar la sesión como resuelta
-  await supabase
-    .from("chat_sessions")
-    .update({
-      status: "resolved",
-      updated_at: new Date().toISOString()
-    })
-    .eq("client_phone", activeId);
+    // 🔥 LLAMADA AL ENDPOINT DE API (USANDO SERVICE ROLE KEY)
+    const response = await fetch("/api/chat/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneId: activeId }), // activeId es el número de teléfono sin el '+'
+    });
 
-  setThreads((prev) => prev.filter((t) => t.id !== activeId));
-  setActiveId(null);
-};
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Error de red o JSON inválido." }));
+        console.error("Error al resolver chat:", errorData);
+        alert(`Error al resolver chat. Revisa la consola del navegador para más detalles.`);
+        return; 
+    }
+
+    const result = await response.json();
+    
+    if (result.success !== true) {
+        alert("Error desconocido al resolver el chat en el servidor.");
+        return;
+    }
+    
+    // ** ESTA ES LA COMPROBACIÓN FINAL **
+    // Si la API tuvo éxito, actualizamos el estado local de este hilo a 'resolved'.
+    setThreads((prev) => 
+        prev.map((t) => (t.id === activeId ? { ...t, status: "resolved" as ChatStatus, unread: 0 } : t))
+    );
+    setActiveId(null); // Deseleccionamos el chat
+  };
 
 
   const currentChat = useMemo(
@@ -452,6 +497,7 @@ const filteredThreads = threads.filter((t) => {
   if (tab === "active") {
     return (
       t.status === "active" ||
+      t.status === "agent_active" ||
       t.status === "bot_active" ||
       t.status === "new"
     );
@@ -462,7 +508,9 @@ const filteredThreads = threads.filter((t) => {
   }
 
   if (tab === "abandoned") {
-    return t.status === "resolved";
+    return (
+      t.status === "resolved"
+    );
   }
 
   return true;

@@ -1,13 +1,12 @@
+// jwriveros/lehanastudio/lehanastudio-96f5232a8f8811af1eab69428dde275c2bc1a958/components/AgendaBoard.tsx
 "use client";
 
-import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 import {
   AppointmentStatus,
   appointmentStatuses,
-  services as mockServices, 
-  sampleUsers as mockUsers, 
 } from "@/lib/mockData";
 
 type AgendaBoardProps = {
@@ -115,13 +114,6 @@ function minutesToTimeString(minutes: number) {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 }
 
-function normalizeAppointment(appt: Appointment): Appointment {
-  const matchedService = mockServices.find((service) => service.Servicio === appt.servicio);
-  const duration = appt.duration ?? matchedService?.duracion ?? 60;
-  const { dateISO, timeString } = getAppointmentDetails(appt.appointment_at);
-  return { ...appt, duration, fecha: dateISO, hora: timeString };
-}
-
 const dayFormatter = new Intl.DateTimeFormat("es", { weekday: "short" });
 
 // FIX 1.2: Función para obtener la fecha actual anclada a medianoche local (para evitar desfase por TimeZone)
@@ -149,6 +141,29 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   const [clientRecords, setClientRecords] = useState<ClientRecord[]>([]);
   const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>([]);
   const [specialistRecords, setSpecialistRecords] = useState<SpecialistRecord[]>([]);
+
+  // 1. Crear un mapa para la búsqueda rápida de color por especialista.
+  const specialistColorMap = useMemo(() => {
+    return new Map(specialistRecords.map(s => [s.name, s.color]));
+  }, [specialistRecords]);
+
+  // 2. Definir una función utilitaria local para normalizar citas y establecer el color correcto.
+  const getNormalizedAppointment = useCallback((appt: Appointment): Appointment => {
+    const matchedService = serviceRecords.find((service) => service.Servicio === appt.servicio);
+    const duration = appt.duration ?? matchedService?.duracion ?? 60;
+    const { dateISO, timeString } = getAppointmentDetails(appt.appointment_at);
+    
+    // NEW LOGIC: Look up color by specialist name, and fallback to current or default grey
+    const specialistColor = specialistColorMap.get(appt.especialista) ?? appt.bg_color ?? '#94a3b8';
+
+    return { 
+        ...appt, 
+        duration, 
+        fecha: dateISO, 
+        hora: timeString,
+        bg_color: specialistColor, // <-- OVERWRITE bg_color con el color actual del especialista
+    };
+  }, [serviceRecords, specialistColorMap]);
 
 
   // **********************************************
@@ -408,7 +423,8 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
       console.error("Error fetching appointments:", error);
     } else {
       const validData = data ? data.filter(a => a.appointment_at) : [];
-      setAppointmentList(validData.map(normalizeAppointment));
+      // Usar la nueva función para normalizar y actualizar el color
+      setAppointmentList(validData.map(getNormalizedAppointment));
     }
     setLoading(false);
 };
@@ -417,7 +433,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 useEffect(() => {
     fetchAppointments();
 // Añadimos las dependencias para que se refresque cuando el usuario cambie la fecha o vista
-}, [baseDate, viewMode, renderCalendarShell]); 
+}, [baseDate, viewMode, renderCalendarShell, getNormalizedAppointment]); 
 
 // El otro useEffect que usa externalBookingSignal se mantiene:
 useEffect(() => {
@@ -581,7 +597,11 @@ useEffect(() => {
     const existing = appointmentList.find(a => a.id === id);
     if (!existing) return;
     const updates = updater(existing);
-    const { duration, fecha, hora, ...dbUpdates } = updates as any; 
+    
+    // Al actualizar, volvemos a normalizar para refrescar el color de la especialista
+    const updatedAppt = getNormalizedAppointment({ ...existing, ...updates } as Appointment);
+    
+    const { duration, fecha, hora, ...dbUpdates } = updatedAppt as any; 
     const { error } = await supabase.from('appointments').update(dbUpdates).eq('id', id);
     if (error) {
       console.error("Error al actualizar la cita:", error);
@@ -589,7 +609,7 @@ useEffect(() => {
       return;
     }
     setAppointmentList((prev) =>
-      prev.map((appt) => (appt.id === id ? normalizeAppointment({ ...appt, ...updates } as Appointment) : appt))
+      prev.map((appt) => (appt.id === id ? updatedAppt : appt))
     );
   };
   
@@ -624,16 +644,20 @@ useEffect(() => {
     const h = editAppt.hora || "09:00";
     const appointmentDate = `${f}T${h}:00.000Z`;
 
-    const updates: Appointment = { ...editAppt, price: Number(editAppt.price), duration: Number(editAppt.duration), appointment_at: appointmentDate };
-    const { duration, fecha, hora, ...dbUpdates } = updates as any; 
-    const { error } = await supabase.from('appointments').update(dbUpdates).eq('id', updates.id);
+    const updatedAppt: Appointment = { ...editAppt, price: Number(editAppt.price), duration: Number(editAppt.duration), appointment_at: appointmentDate };
+    
+    // OBTENER EL COLOR ACTUALIZADO DE LA ESPECIALISTA ANTES DE GUARDAR EN EL ESTADO
+    const normalizedUpdatedAppt = getNormalizedAppointment(updatedAppt); 
+
+    const { duration, fecha, hora, ...dbUpdates } = normalizedUpdatedAppt as any; 
+    const { error } = await supabase.from('appointments').update(dbUpdates).eq('id', normalizedUpdatedAppt.id);
     if (error) {
         console.error("Error al guardar cambios:", error);
         alert("Error al guardar cambios.");
         return;
     }
-    setAppointmentList((prev) => prev.map((appt) => (appt.id === updates.id ? normalizeAppointment(updates) : appt)));
-    setSelectedAppointment(normalizeAppointment(updates));
+    setAppointmentList((prev) => prev.map((appt) => (appt.id === normalizedUpdatedAppt.id ? normalizedUpdatedAppt : appt)));
+    setSelectedAppointment(normalizedUpdatedAppt);
     setEditAppointment(null);
   };
 
@@ -641,10 +665,13 @@ useEffect(() => {
     event.preventDefault();
 
     // Obtener la duración del servicio seleccionado para enviar a la BD
-    const selectedService = mockServices.find(s => s.Servicio === bookingForm.service);
+    const selectedService = serviceRecords.find(s => s.Servicio === bookingForm.service);
     const serviceDuration = selectedService?.duracion ?? 60; // Default to 60 min if not found
 
     const appointmentDate = `${bookingForm.date}T${bookingForm.time}:00.000Z`;
+    // NEW: Obtener el color del mapa de especialistas
+    const specialistColor = specialistColorMap.get(bookingForm.specialist) ?? '#94a3b8';
+
     const newAppointment = {
       cliente: bookingForm.customer,
       celular: bookingForm.phone,
@@ -655,7 +682,7 @@ useEffect(() => {
       sede: bookingForm.location,
       notas: bookingForm.notes,
       estado: 'Cita pendiente' as AppointmentStatus, // FIX 1: Usar el estado correcto por defecto
-      bg_color: mockUsers.find((u: any) => u.name === bookingForm.specialist)?.color ?? '#94a3b8',
+      bg_color: specialistColor, // Usar el color del especialista
       is_paid: false,
       duration: serviceDuration, // Incluir la duración
     };
@@ -775,7 +802,8 @@ useEffect(() => {
                             {dayAppointments.map((appt) => {
                               const { timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
                               return (
-                                <div key={appt.id} data-appointment onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: dateISO, hora: timeString } as Appointment); }} className="rounded-lg border border-zinc-200 bg-white/90 p-2 text-[11px] leading-tight shadow-sm transition hover:border-indigo-200 dark:border-zinc-700 dark:bg-zinc-800">
+                                // Usamos getNormalizedAppointment al hacer clic para asegurar el color correcto en el modal.
+                                <div key={appt.id} data-appointment onClick={(e) => { e.stopPropagation(); setSelectedAppointment(getNormalizedAppointment(appt)); }} className="rounded-lg border border-zinc-200 bg-white/90 p-2 text-[11px] leading-tight shadow-sm transition hover:border-indigo-200 dark:border-zinc-700 dark:bg-zinc-800">
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="font-semibold text-zinc-800 dark:text-zinc-100">{timeString}</span>
                                     <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ backgroundColor: appt.bg_color }}>{appt.estado}</span>
@@ -862,13 +890,13 @@ useEffect(() => {
                                             style={{ backgroundImage: `repeating-linear-gradient(to bottom, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent ${ROW_HEIGHT}px)` }} 
                                         />
 
-                                        {group.specialists.map((specialist, specialistIdx) => {
+                                        {group.specialists.map((specialist) => {
                                             const specialistAppointments = filteredAppointments
                                                 .filter((appt) => 
                                                     getAppointmentDetails(appt.appointment_at).dateISO === dayIso && 
                                                     appt.especialista === specialist
-                                                )
-                                                .map(normalizeAppointment);
+                                                );
+                                                // No es necesario mapear con getNormalizedAppointment aquí si ya se hizo al cargar
 
                                             const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
                                                 const rect = event.currentTarget.getBoundingClientRect();
@@ -902,7 +930,8 @@ useEffect(() => {
                                                                 key={appt.id} 
                                                                 type="button" 
                                                                 data-appointment 
-                                                                onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: dateISO, hora: timeString } as Appointment); }} 
+                                                                // Usamos getNormalizedAppointment al hacer clic para asegurar el color correcto en el modal.
+                                                                onClick={(e) => { e.stopPropagation(); setSelectedAppointment(getNormalizedAppointment(appt)); }} 
                                                                 // CLASE CORREGIDA: Eliminamos el degradado para ver el color plano
                                                                 className="group absolute left-0.5 right-0.5 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 p-1 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
                                                                 style={{ backgroundColor: apptColor, top, height }} 
@@ -979,8 +1008,8 @@ useEffect(() => {
                                     .filter((appt) => 
                                         getAppointmentDetails(appt.appointment_at).dateISO === currentDay?.iso && 
                                         appt.especialista === specialist
-                                    )
-                                    .map(normalizeAppointment);
+                                    );
+                                    // No es necesario mapear con getNormalizedAppointment aquí si ya se hizo al cargar
 
                                 const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
                                     const rect = event.currentTarget.getBoundingClientRect();
@@ -1015,7 +1044,8 @@ useEffect(() => {
                                                     key={appt.id} 
                                                     type="button" 
                                                     data-appointment 
-                                                    onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: dateISO, hora: timeString } as Appointment); }} 
+                                                    // Usamos getNormalizedAppointment al hacer clic para asegurar el color correcto en el modal.
+                                                    onClick={(e) => { e.stopPropagation(); setSelectedAppointment(getNormalizedAppointment(appt)); }} 
                                                     className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
                                                     style={{ backgroundColor: apptColor, top, height }} 
                                                     title={`${appt.servicio} · ${appt.cliente}`}
@@ -1052,7 +1082,7 @@ useEffect(() => {
           
           <div className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-y-auto rounded-2xl bg-white shadow-2xl dark:bg-zinc-900">
             <div className="flex items-center justify-between gap-2 bg-zinc-900 px-5 py-4 text-white dark:bg-zinc-800">
-              <h3 className="text-lg font-bold">
+              <h3 className="text-lg font-bold" style={{ color: selectedAppointment.bg_color }}>
                 {selectedAppointment.servicio}
               </h3>
               <button
