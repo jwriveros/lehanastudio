@@ -1,57 +1,37 @@
-// jwriveros/lehanastudio/lehanastudio-910f6b2f23845520141757de8a19232a7486021d/components/BottomNav.tsx (Ajuste para Header)
-
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { usePathname } from "next/navigation";
 
-export type BottomNavItem = {
-  id: string;
-  label: string;
-  emoji?: string;
-  href: string;
-};
+const items = [
+  { href: "/support", label: "Soporte" },
+  { href: "/business", label: "Mi negocio" },
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/settings", label: "Ajustes" },
+];
 
-type Props = {
-  currentPath: string;
-  items: BottomNavItem[];
-};
+export function BottomNav() {
+  const pathname = usePathname();
 
-export function BottomNav({ currentPath, items }: Props) {
-  const normalized = useMemo(() => items.filter(Boolean), [items]);
-
-  // CAMBIO 3: Eliminar bordes, fondos y sombreados innecesarios. Usamos h-full para alineación.
   return (
-    <nav className="h-full flex items-center justify-center">
-      
-      {/* CAMBIO 4: Reducimos el padding y la separación para que encaje en una línea compacta. 
-           Eliminamos flex-1 de este div para evitar que se estire demasiado. */}
-      <div className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-300 h-full">
-        {normalized.map((item) => {
-          const isActive = currentPath.startsWith(item.href);
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white md:hidden">
+      <ul className="flex h-14 items-stretch justify-around text-xs">
+        {items.map((item) => {
+          const active = pathname.startsWith(item.href);
           return (
-            <Link
-              key={item.id}
-              href={item.href}
-              // CAMBIO 5: Cambiamos flex-col a flex-row (o simplemente flex) y removemos el emoji. 
-              // Usamos items-center para centrar texto y emoji.
-              className={`flex items-center justify-center gap-1 rounded-xl px-3 py-1 transition ${
-                isActive
-                  ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200"
-                  : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              }`}
-              aria-label={item.label}
-            >
-              {/* Eliminamos el span del emoji para una vista compacta si es necesario,
-                 o lo cambiamos para que se muestre en línea. */}
-              <span className="text-base">{item.emoji ?? "•"}</span>
-              <span className="hidden sm:inline">{item.label}</span> {/* Ocultar label en móvil si es necesario, para mantener el emoji */}
-              <span className="sm:hidden text-sm">{item.label}</span> {/* Dejar solo el label sin emoji en móvil */}
-
-            </Link>
+            <li key={item.href} className="flex-1">
+              <Link
+                href={item.href}
+                className={`flex h-full flex-col items-center justify-center ${
+                  active ? "text-indigo-600 font-semibold" : "text-gray-500"
+                }`}
+              >
+                <span>{item.label}</span>
+              </Link>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </nav>
   );
 }

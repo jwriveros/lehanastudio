@@ -39,7 +39,7 @@ export default function SupportPage() {
 
   return (
     // 🔴 IMPORTANTE: aquí ya NO usamos h-screen
-    <section className="relative flex-1 min-h-0 overflow-hidden bg-white flex flex-col">
+    <section className="relative h-full overflow-hidden bg-white flex flex-col">
       {/* Botones flotantes */}
       <div className="absolute top-4 right-4 flex items-center gap-3 z-50">
         <button
