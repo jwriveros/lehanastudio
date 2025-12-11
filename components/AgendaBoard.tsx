@@ -123,7 +123,10 @@ function getLocalMidnight(date: Date) {
     return d;
 }
 
+import { useUIStore } from "@/lib/uiStore";
+
 export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true, onBookingClose }: AgendaBoardProps) {
+  const { openBookingModal } = useUIStore();
   const [appointmentList, setAppointmentList] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
@@ -208,6 +211,21 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [editAppointment, setEditAppointment] = useState<Appointment | null>(null);
+  const [isEditingDate, setIsEditingDate] = useState(false);
+
+  const closeEditModal = () => {
+    setSelectedAppointment(null);
+    setIsEditingDate(false);
+  };
+
+  const formatDateForDisplay = (isoDate: string | undefined) => {
+      if (!isoDate) return '';
+      // Adding T12:00:00 to avoid timezone issues that could shift the date.
+      const date = new Date(`${isoDate}T12:00:00`);
+      const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      const formatted = date.toLocaleDateString('es-ES', options);
+      return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  }
 
   // **********************************************
   // Lógica de Toggling de Estados
@@ -444,9 +462,20 @@ useEffect(() => {
 // Fin de la zona de modificación de carga de citas
 
   useEffect(() => {
-    if (!selectedAppointment) return;
-    setEditAppointment(selectedAppointment);
-  }, [selectedAppointment]);
+    if (!selectedAppointment) {
+      setEditAppointment(null);
+      return;
+    };
+    
+    const matchedService = serviceRecords.find(s => s.Servicio === selectedAppointment.servicio);
+
+    setEditAppointment({
+        ...selectedAppointment,
+        price: matchedService?.Precio ?? selectedAppointment.price,
+        duration: matchedService?.duracion ?? selectedAppointment.duration,
+    });
+
+  }, [selectedAppointment, serviceRecords]);
 
   const serviceOptions = useMemo(() => Array.from(new Set(appointmentList.map((a) => a.servicio))), [appointmentList]);
 
@@ -667,6 +696,35 @@ useEffect(() => {
     }
   };
 
+  const handleDeleteAppointment = async () => {
+    if (!selectedAppointment) return;
+
+    const isConfirmed = window.confirm(
+        `¿Está seguro de que desea ELIMINAR PERMANENTEMENTE la cita para ${selectedAppointment.cliente} (${selectedAppointment.servicio})? Esta acción no se puede deshacer.`
+    );
+    
+    if (isConfirmed) {
+        const appointmentId = selectedAppointment.id;
+
+        const { error } = await supabase
+            .from('appointments')
+            .delete()
+            .eq('id', appointmentId);
+
+        if (error) {
+            console.error("Error deleting appointment:", error);
+            alert(`Error al eliminar la cita: ${error.message}`);
+            return;
+        }
+
+        setAppointmentList((prev) =>
+            prev.filter((appt) => appt.id !== appointmentId)
+        );
+        closeEditModal();
+        await fetchAppointments(); 
+    }
+  };
+
   const saveEditedAppointment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editAppointment) return;
@@ -674,18 +732,18 @@ useEffect(() => {
     // Comprobar que fecha y hora existan antes de concatenar
     const f = editAppt.fecha || formatDateISO(new Date());
     const h = editAppt.hora || "09:00";
-    const appointmentDate = `${f}T${h}:00.000Z`;
+    const appointmentDate = new Date(`${f}T${h}:00`).toISOString();
 
     const updatedAppt: Appointment = { ...editAppt, price: Number(editAppt.price), duration: Number(editAppt.duration), appointment_at: appointmentDate };
     
     // OBTENER EL COLOR ACTUALIZADO DE LA ESPECIALISTA ANTES DE GUARDAR EN EL ESTADO
     const normalizedUpdatedAppt = getNormalizedAppointment(updatedAppt); 
 
-    const { duration, fecha, hora, ...dbUpdates } = normalizedUpdatedAppt as any; 
+    const { id, duration, fecha, hora, ...dbUpdates } = normalizedUpdatedAppt as any; 
     const { error } = await supabase.from('appointments').update(dbUpdates).eq('id', normalizedUpdatedAppt.id);
     if (error) {
-        console.error("Error al guardar cambios:", error);
-        alert("Error al guardar cambios.");
+        console.error("Error al guardar cambios:", JSON.stringify(error, null, 2));
+        alert(`Error al guardar cambios: ${error.message}`);
         return;
     }
     setAppointmentList((prev) => prev.map((appt) => (appt.id === normalizedUpdatedAppt.id ? normalizedUpdatedAppt : appt)));
@@ -702,7 +760,7 @@ useEffect(() => {
     const selectedService = serviceRecords.find(s => s.Servicio === bookingForm.service);
     const serviceDuration = selectedService?.duracion ?? 60; // Default to 60 min if not found
 
-    const appointmentDate = `${bookingForm.date}T${bookingForm.time}:00.000Z`;
+    const appointmentDate = new Date(`${bookingForm.date}T${bookingForm.time}:00`).toISOString();
     // NEW: Obtener el color del mapa de especialistas
     const specialistColor = specialistColorMap.get(bookingForm.specialist) ?? '#94a3b8';
 
@@ -736,6 +794,10 @@ useEffect(() => {
         
         let successMessage = "¡Reserva agendada y cliente verificado con éxito!";
         
+        if (result.warning) {
+          alert(`Advertencia: ${result.warning}`);
+        }
+
         // --- LÓGICA DE CONFIRMACIÓN DE WHATSAPP ---
         if (result.whatsapp_status === "SENT_TO_N8N_OK") {
             successMessage += " Se ha enviado un mensaje de confirmación por WhatsApp.";
@@ -759,8 +821,17 @@ useEffect(() => {
 
   return (
     <>
+      <datalist id="services-list">
+          {Object.entries(serviceOptionsGrouped).map(([category, services]) => (
+              <optgroup key={category} label={category}>
+                  {services.map((s) => (
+                      <option key={s.SKU} value={s.Servicio} />
+                  ))}
+              </optgroup>
+          ))}
+      </datalist>
       {renderCalendarShell ? (
-        <div className="fixed inset-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-950">
+        <div className="fixed inset-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-950 z-50">
 
           {/* Header del Calendario */}
           <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-gradient-to-r from-white via-indigo-50 to-white px-4 py-3 text-sm dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900/60 dark:to-zinc-900">
@@ -775,6 +846,13 @@ useEffect(() => {
                 onChange={(e) => setBaseDate(getLocalMidnight(new Date(e.target.value)))} 
               />
             </div>
+             <button
+                onClick={openBookingModal}
+                className="sm:ml-auto mt-2 sm:mt-0 flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg hover:bg-indigo-700 active:scale-95"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+                <span>Nueva Reserva</span>
+              </button>
             <div className="flex items-center gap-2">
               {([{ key: "day", label: "Día" }, { key: "week", label: "Semana" }, { key: "month", label: "Mes" }] as const).map((option) => (
                 <button key={option.key} onClick={() => setViewMode(option.key)} className={`rounded-full px-3 py-2 text-xs font-semibold transition ${viewMode === option.key ? "bg-indigo-600 text-white shadow" : "border border-zinc-200 bg-white text-zinc-700 hover:border-indigo-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"}`}>{option.label}</button>
@@ -853,19 +931,21 @@ useEffect(() => {
                             <span className="uppercase text-[10px]">{day.label}</span>
                             <span className="text-sm">{day.dayNumber}</span>
                           </div>
-                          <div className="mt-2 space-y-2">
+                          <div className="mt-2 flex flex-wrap gap-1">
                             {dayAppointments.map((appt) => {
-                              const { timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
+                              const { timeString } = getAppointmentDetails(appt.appointment_at);
                               return (
-                                // Usamos getNormalizedAppointment al hacer clic para asegurar el color correcto en el modal.
-                                <div key={appt.id} data-appointment onClick={(e) => { e.stopPropagation(); setSelectedAppointment(getNormalizedAppointment(appt)); }} className="rounded-lg border border-zinc-200 bg-white/90 p-2 text-[11px] leading-tight shadow-sm transition hover:border-indigo-200 dark:border-zinc-700 dark:bg-zinc-800">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="font-semibold text-zinc-800 dark:text-zinc-100">{timeString}</span>
-                                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ backgroundColor: appt.bg_color }}>{appt.estado}</span>
-                                  </div>
-                                  <div className="truncate text-zinc-700 dark:text-zinc-200">{appt.servicio}</div>
-                                  <div className="truncate text-[10px] text-zinc-500">{appt.cliente}</div>
-                                </div>
+                                <div
+                                  key={appt.id}
+                                  data-appointment
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedAppointment(getNormalizedAppointment(appt));
+                                  }}
+                                  className="h-3 w-3 rounded-full cursor-pointer"
+                                  style={{ backgroundColor: appt.bg_color }}
+                                  title={`${timeString} - ${appt.servicio} (${appt.cliente})`}
+                                />
                               );
                             })}
                           </div>
@@ -1131,7 +1211,7 @@ useEffect(() => {
         <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 overflow-y-auto">
           <div
             className="absolute inset-0 bg-black/50"
-            onClick={() => setSelectedAppointment(null)}
+            onClick={closeEditModal}
             aria-hidden
           />
           
@@ -1142,7 +1222,7 @@ useEffect(() => {
               </h3>
               <button
                 className="rounded-full bg-white/20 px-3 py-1 text-xs"
-                onClick={() => setSelectedAppointment(null)}
+                onClick={closeEditModal}
               >
                 Cerrar
               </button>
@@ -1154,51 +1234,151 @@ useEffect(() => {
                 onSubmit={saveEditedAppointment}
               >
                 <label className="col-span-2 text-xs font-semibold text-zinc-500">
+                  Cliente
+                </label>
+                <input
+                  className="col-span-2 border p-2 rounded"
+                  value={editAppointment?.cliente || ''}
+                  onChange={(e) =>
+                    setEditAppointment((prev) => ({
+                      ...prev!,
+                      cliente: e.target.value,
+                    }))
+                  }
+                />
+                <label className="col-span-2 text-xs font-semibold text-zinc-500">
+                  Especialista
+                </label>
+                <select
+                  className="col-span-2 w-full border p-2 rounded bg-white"
+                  value={editAppointment?.especialista || ''}
+                  onChange={(e) =>
+                    setEditAppointment((prev) => ({
+                      ...prev!,
+                      especialista: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Seleccionar Especialista</option>
+                  {specialistRecords.map((u) => (
+                      <option key={u.id} value={u.name}>{u.name}</option>
+                  ))}
+                </select>
+
+                <label className="col-span-2 text-xs font-semibold text-zinc-500">
                   Servicio
                 </label>
                 <input
-                  className="col-span-2 border p-2 rounded"
-                  value={editAppointment?.servicio || ''} // FIX: Asegura que el valor nunca es undefined
-                  onChange={(e) =>
+                  className="col-span-2 w-full border p-2 rounded bg-white"
+                  list="services-list"
+                  placeholder="Escribe o selecciona un servicio..."
+                  value={editAppointment?.servicio || ''}
+                  onChange={(e) => {
+                    const newServiceName = e.target.value;
+                    const matchedService = serviceRecords.find(s => s.Servicio.trim().toLowerCase() === newServiceName.trim().toLowerCase());
                     setEditAppointment((prev) => ({
-                      ...prev!,
-                      servicio: e.target.value,
-                    }))
-                  }
+                        ...prev!,
+                        servicio: newServiceName,
+                        price: matchedService?.Precio ?? prev!.price,
+                        duration: matchedService?.duracion ?? prev!.duration,
+                    }));
+                  }}
                 />
 
-                <label className="text-xs font-semibold text-zinc-500">
-                  Fecha
-                </label>
-                <label className="text-xs font-semibold text-zinc-500">
-                  Hora
-                </label>
+                <div className="col-span-1">
+                  <label className="text-xs font-semibold text-zinc-500">
+                    Duración (min)
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full mt-1 border p-2 rounded"
+                    value={editAppointment?.duration || 0}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => ({
+                        ...prev!,
+                        duration: Number(e.target.value),
+                      }))
+                    }
+                  />
+                  {editAppointment?.duration && editAppointment.duration >= 60 && (
+                    <p className="text-xs text-zinc-500 mt-1">
+                      ({(editAppointment.duration / 60).toLocaleString('es-ES', { maximumFractionDigits: 2 })} horas)
+                    </p>
+                  )}
+                </div>
 
-                <input
-                  type="date"
-                  className="col-span-2 border p-2 rounded"
-                  value={editAppointment?.fecha || ''} // FIX: Asegura que el valor nunca es undefined
-                  onChange={(e) =>
-                    setEditAppointment((prev) => ({
-                      ...prev!,
-                      fecha: e.target.value,
-                    }))
-                  }
-                />
+                <div className="col-span-1">
+                  <label className="text-xs font-semibold text-zinc-500">
+                    Precio
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full mt-1 border p-2 rounded"
+                    value={editAppointment?.price || 0}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => ({
+                        ...prev!,
+                        price: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
 
-                <input
-                  type="time"
-                  className="col-span-2 border p-2 rounded"
-                  value={editAppointment?.hora || ''} // FIX: Asegura que el valor nunca es undefined
-                  onChange={(e) =>
-                    setEditAppointment((prev) => ({
-                      ...prev!,
-                      hora: e.target.value,
-                    }))
-                  }
-                />
+                <div className="col-span-1">
+                  <label className="text-xs font-semibold text-zinc-500">
+                    Fecha
+                  </label>
+                  {isEditingDate ? (
+                    <input
+                      type="date"
+                      className="w-full mt-1 border p-2 rounded"
+                      value={editAppointment?.fecha || ''}
+                      onChange={(e) => {
+                        setEditAppointment((prev) => ({
+                          ...prev!,
+                          fecha: e.target.value,
+                        }));
+                        setIsEditingDate(false);
+                      }}
+                      onBlur={() => setIsEditingDate(false)}
+                      autoFocus
+                    />
+                  ) : (
+                    <p 
+                      className="w-full mt-1 p-2 rounded border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 cursor-pointer"
+                      onClick={() => setIsEditingDate(true)}
+                    >
+                      {formatDateForDisplay(editAppointment?.fecha)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="col-span-1">
+                  <label className="text-xs font-semibold text-zinc-500">
+                    Hora
+                  </label>
+                  <input
+                    type="time"
+                    className="w-full mt-1 border p-2 rounded"
+                    value={editAppointment?.hora || ''}
+                    onChange={(e) =>
+                      setEditAppointment((prev) => ({
+                        ...prev!,
+                        hora: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
                 
                 <div className="col-span-2 flex justify-end gap-2 mt-4">
+                  <button
+                    type="button"
+                    title="Eliminar permanentemente"
+                    onClick={handleDeleteAppointment}
+                    className="p-2 border rounded text-red-600 hover:bg-red-50 flex items-center gap-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                  </button>
                   <button
                     type="button"
                     onClick={handleCancelAppointment}
@@ -1219,7 +1399,7 @@ useEffect(() => {
                 <div className="col-span-2 flex justify-end gap-2 mt-4">
                   <button
                     type="button"
-                    onClick={() => setSelectedAppointment(null)}
+                    onClick={closeEditModal}
                     className="p-2 border rounded"
                   >
                     Cerrar
@@ -1302,18 +1482,7 @@ useEffect(() => {
                       value={bookingForm.service}
                       onChange={handleServiceChange} 
                   />
-                  {/* DATALIST CON AGRUPACIÓN POR CATEGORÍA */}
-                  <datalist id="services-list">
-                      {Object.entries(serviceOptionsGrouped).map(([category, services]) => (
-                          // Usamos optgroup para agrupar visualmente
-                          <optgroup key={category} label={category}>
-                              {services.map((s) => (
-                                  // El value ahora es solo el nombre del servicio para mantener el campo limpio
-                                  <option key={s.SKU} value={s.Servicio} /> 
-                              ))}
-                          </optgroup>
-                      ))}
-                  </datalist>
+
               </div>
 
               {/* Especialista (ACTUALIZADO para usar specialistRecords) */}

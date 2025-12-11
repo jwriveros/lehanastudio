@@ -38,7 +38,36 @@ export async function POST(request: Request) {
 
   try {
     // **********************************************
-    // 1. LÓGICA DE CREACIÓN/VERIFICACIÓN DE CLIENTE
+    // 1. VERIFICACIÓN DE CONFLICTOS DE HORARIO
+    // **********************************************
+    let warning = null;
+    const newAppointmentDate = new Date(appointment_at);
+    const newAppointmentEnd = new Date(newAppointmentDate.getTime() + duration * 60000);
+
+    const { data: existingAppointments } = await supabaseAdmin
+      .from('appointments')
+      .select('appointment_at, duration')
+      .eq('especialista', specialist)
+      .gte('appointment_at', new Date(newAppointmentDate.setHours(0, 0, 0, 0)).toISOString())
+      .lt('appointment_at', new Date(newAppointmentDate.setHours(23, 59, 59, 999)).toISOString());
+
+    if (existingAppointments) {
+      for (const existing of existingAppointments) {
+        const existingAppointmentDate = new Date(existing.appointment_at);
+        const existingAppointmentEnd = new Date(existingAppointmentDate.getTime() + existing.duration * 60000);
+
+        if (
+          (newAppointmentDate >= existingAppointmentDate && newAppointmentDate < existingAppointmentEnd) ||
+          (newAppointmentEnd > existingAppointmentDate && newAppointmentEnd <= existingAppointmentEnd)
+        ) {
+          warning = 'La especialista ya tiene una reserva en este horario.';
+          break;
+        }
+      }
+    }
+
+    // **********************************************
+    // 2. LÓGICA DE CREACIÓN/VERIFICACIÓN DE CLIENTE
     // **********************************************
     
     // Buscar si el cliente ya existe por número de celular
@@ -71,7 +100,7 @@ export async function POST(request: Request) {
 
 
     // **********************************************
-    // 2. LÓGICA DE CREACIÓN DE CITA
+    // 3. LÓGICA DE CREACIÓN DE CITA
     // **********************************************
     
     const { data: appointmentData, error: appointmentError } = await supabaseAdmin
@@ -89,7 +118,7 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    // 3. Insertar el registro de la solicitud en 'booking_requests'
+    // 4. Insertar el registro de la solicitud en 'booking_requests'
     await supabaseAdmin
       .from('booking_requests')
       .insert([{ 
@@ -100,7 +129,7 @@ export async function POST(request: Request) {
       }]);
     
     // **********************************************
-    // 4. LÓGICA DE ENVÍO DE CONFIRMACIÓN POR WHATSAPP (ESTRUCTURADO)
+    // 5. LÓGICA DE ENVÍO DE CONFIRMACIÓN POR WHATSAPP (ESTRUCTURADO)
     // **********************************************
     let whatsappStatus = "NOT_SENT";
     
@@ -142,14 +171,27 @@ export async function POST(request: Request) {
         whatsappStatus = "NETWORK_ERROR";
     }
 
-    // 5. Devolver la respuesta al cliente
-    return NextResponse.json({
+    // 6. Devolver la respuesta al cliente
+    const response: {
+      created: boolean;
+      status: string;
+      message: string;
+      whatsapp_status: string;
+      appointment_id: any;
+      warning?: string | null;
+    } = {
       created: true,
       status: "PENDING",
       message: "Reserva agendada y cliente verificado/creado con éxito.",
       whatsapp_status: whatsappStatus,
       appointment_id: appointmentData.id,
-    });
+    };
+
+    if (warning) {
+      response.warning = warning;
+    }
+
+    return NextResponse.json(response);
 
   } catch (e: any) {
     console.error("API Processing Error:", e);
