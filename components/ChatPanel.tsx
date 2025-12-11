@@ -536,7 +536,7 @@ const filteredThreads = threads.filter((t) => {
 });
 
   return (
-    <div className="flex flex-col w-full h-screen overflow-hidden">
+    <div className="flex flex-col w-full h-full overflow-hidden">
       {/* Tabs */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
         {(["active", "reservations", "abandoned"] as const).map((t) => (
@@ -560,16 +560,179 @@ const filteredThreads = threads.filter((t) => {
           <>
             {/* 📱 Vista móvil: SOLO lista de chats */}
             {!showMobileChat && (
-              <div className="h-full">
-                {/* ⬇️ TU LISTA DE CHATS VA AQUÍ (NO LA MUEVAS DEL JSX ORIGINAL) */}
+              // Usamos la estructura de lista de chats de escritorio adaptada a la vista móvil
+              <div className="h-full flex flex-col rounded-2xl border bg-white overflow-hidden">
+                  <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-zinc-500">
+                      <span>Chats Recientes ({threads.length})</span>
+                  </div>
+                <div className="flex-1 overflow-y-auto divide-y">
+                  {loadingThreads ? (
+                    <p className="p-4 text-sm text-zinc-400">Cargando chats...</p>
+                  ) : filteredThreads.length === 0 ? (
+                    <p className="p-4 text-sm text-zinc-500">No hay hilos en esta pestaña.</p>
+                  ) : (
+                    filteredThreads.map((chat) => (
+                      <div
+                        key={chat.id}
+                        onClick={() => handleThreadClick(chat.id)}
+                        className={`flex items-center justify-between px-4 py-3 cursor-pointer ${
+                          activeId === chat.id
+                            ? "bg-indigo-50 border-l-4 border-indigo-500"
+                            : "border-l-4 border-transparent hover:bg-zinc-50"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div
+                            className={`truncate ${
+                              chat.unread > 0
+                                ? "font-bold text-indigo-800"
+                                : "font-semibold"
+                            }`}
+                          >
+                            {chat.cliente}
+                          </div>
+                          <div className="truncate text-xs text-zinc-500">
+                            {chat.lastMessage}
+                          </div>
+                          <div className="text-[10px] text-zinc-400">
+                            {new Date(chat.lastActivity).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </div>
+
+                        {chat.unread > 0 && (
+                          <span className="flex-shrink-0 ml-2 rounded-full bg-red-500 w-5 h-5 flex items-center justify-center text-white text-xs font-bold">
+                            {chat.unread > 9 ? "9+" : chat.unread}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
             {/* 📱 Vista móvil: SOLO el chat seleccionado */}
-            {showMobileChat && activeId && (
-              <div className="h-full">
-                {/* ⬇️ TU PANEL DE CHAT VA AQUÍ (NO LA MUEVAS DEL JSX ORIGINAL) */}
+            {showMobileChat && currentChat ? (
+              <div className="absolute inset-0 z-10 flex flex-col bg-white overflow-hidden h-full"> {/* Usamos absolute inset-0 para la vista completa */}
+                <div className="flex items-center justify-between border-b p-4 bg-white shadow-sm">
+                  
+                  {/* Botón de Atrás y Título */}
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setShowMobileChat(false)}
+                      className="p-1 rounded-full text-zinc-600 hover:bg-zinc-100 transition"
+                      title="Volver a la lista"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    </button>
+                    
+                    <div>
+                      <div className="text-lg font-semibold">
+                        {currentChat.cliente}
+                      </div>
+                      <p className="text-sm text-zinc-500">{currentChat.phone}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Acciones (Resolver, WA Web) */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleResolveChat}
+                      className="p-2 rounded-full bg-green-500 text-white hover:bg-green-600 transition"
+                      title="Marcar como Resuelto"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="lucide lucide-check"
+                      >
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    </button>
+                    <a
+                      href={`https://wa.me/${currentChat.phone}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full bg-emerald-100 px-3 py-1 text-xs text-emerald-800"
+                    >
+                      WA Web
+                    </a>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 bg-zinc-50 space-y-3">
+                  {/* Mensajes (misma lógica de escritorio) */}
+                  {loadingMessages ? (
+                    <p className="text-center text-xs text-zinc-400">Cargando...</p>
+                  ) : messages.length === 0 ? (
+                    <p className="text-center text-sm text-zinc-400 py-10">
+                      No hay mensajes previos.
+                    </p>
+                  ) : (
+                    messages.map((msg, i) => (
+                      <div
+                        key={i}
+                        className={`flex ${
+                          msg.from === "client" ? "justify-start" : "justify-end"
+                        }`}
+                      >
+                        <div
+                          className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm shadow ${
+                            msg.from === "client"
+                              ? "bg-white border"
+                              : "bg-indigo-600 text-white"
+                          }`}
+                        >
+                          <div>{msg.text}</div>
+                          <div className="text-[10px] mt-1 text-right opacity-60">
+                            {new Date(msg.created_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                <div className="p-4 border-t bg-white">
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 rounded-xl border px-4 py-3 text-sm"
+                      placeholder="Escribe un mensaje..."
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                    />
+                    <button
+                      onClick={sendMessage}
+                      className="rounded-xl bg-indigo-600 px-6 py-2 text-sm font-semibold text-white"
+                    >
+                      Enviar
+                    </button>
+                  </div>
+                </div>
               </div>
+            ) : (
+              /* Si no hay chat activo y estamos en vista móvil, se muestra un mensaje */
+              showMobileChat && (
+                <div className="flex items-center justify-center rounded-2xl border text-sm text-zinc-500 h-full">
+                  Selecciona un cliente o usa el botón Atrás.
+                  <button onClick={() => setShowMobileChat(false)} className="ml-2 text-indigo-600 underline">Volver</button>
+                </div>
+              )
             )}
           </>
         ) : (
