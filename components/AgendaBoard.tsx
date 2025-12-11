@@ -76,6 +76,7 @@ const ROW_HEIGHT = 52;
 const TOTAL_MINUTES = MINUTES_END - MINUTES_START;
 const COLUMN_HEIGHT = ((MINUTES_END - MINUTES_START) / STEP) * ROW_HEIGHT;
 
+
 function startOfWeek(date: Date) {
   const d = new Date(date);
   const day = (d.getDay() + 6) % 7;
@@ -356,35 +357,75 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   };
 
   // **********************************************
-  // Lógica de Agenda (código existente)
+  // Lógica de Agenda (código existente y optimizado)
   // **********************************************
-  
-  useEffect(() => {
-    const fetchAppointments = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*') 
-        .order('appointment_at', { ascending: true })
-        .returns<Appointment[]>();
 
-      if (error) {
-        console.error("Error fetching appointments:", error);
-      } else {
-        // Filtramos citas inválidas para evitar errores
-        const validData = data ? data.filter(a => a.appointment_at) : [];
-        setAppointmentList(validData.map(normalizeAppointment));
-      }
-      setLoading(false);
-    };
+  // Función estable para cargar citas (optimizado con filtrado por rango)
+  const fetchAppointments = async () => {
+    // Si no se renderiza la shell del calendario (ej. es modal de booking), no cargar la lista grande.
+    if (!renderCalendarShell) {
+        setAppointmentList([]); // Limpiar la lista para evitar renderizado inútil
+        return;
+    }
+    
+    setLoading(true);
+
+    // 1. Determinar las fechas de inicio y fin del rango visible (Día, Semana o Mes)
+    let dateStart = getLocalMidnight(new Date(baseDate)); 
+    let dateEnd = new Date(dateStart);
+
+    if (viewMode === "day") {
+        // Rango de 1 día (el día actual)
+        dateEnd.setDate(dateStart.getDate() + 1); 
+    } else if (viewMode === "week") {
+        // Rango de 7 días (la semana visible)
+        dateStart = startOfWeek(dateStart);
+        dateEnd = new Date(dateStart);
+        dateEnd.setDate(dateStart.getDate() + 7);
+    } else if (viewMode === "month") {
+        // Rango de 6 semanas para cubrir la vista mensual completa (42 días)
+        // La baseDate en vista de mes es el día en que se inició. Necesitamos el primer día visible.
+        dateStart = startOfWeek(new Date(baseDate.getFullYear(), baseDate.getMonth(), 1));
+        dateEnd = new Date(dateStart);
+        dateEnd.setDate(dateStart.getDate() + 42); 
+    }
+
+    // Formatear fechas a ISO para la consulta de Supabase
+    // Usamos .toISOString() ya que la base de datos almacena en UTC (típico de Supabase).
+    const startISO = dateStart.toISOString();
+    const endISO = dateEnd.toISOString();
+    
+    // FIX PRINCIPAL: FILTRADO POR RANGO DE FECHAS VISIBLE (gte y lt)
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*') 
+      .gte('appointment_at', startISO) // Mayor o igual a la fecha de inicio visible
+      .lt('appointment_at', endISO)   // Menor a la fecha de fin visible (exclusiva)
+      .order('appointment_at', { ascending: true })
+      .returns<Appointment[]>();
+
+    if (error) {
+      console.error("Error fetching appointments:", error);
+    } else {
+      const validData = data ? data.filter(a => a.appointment_at) : [];
+      setAppointmentList(validData.map(normalizeAppointment));
+    }
+    setLoading(false);
+};
+
+// Reemplazo del useEffect original (Ahora reactivo a la navegación y modo de vista)
+useEffect(() => {
     fetchAppointments();
-  }, []);
+// Añadimos las dependencias para que se refresque cuando el usuario cambie la fecha o vista
+}, [baseDate, viewMode, renderCalendarShell]); 
 
-  useEffect(() => {
+// El otro useEffect que usa externalBookingSignal se mantiene:
+useEffect(() => {
     if (externalBookingSignal == null) return;
     openBooking(formatDateISO(baseDate));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalBookingSignal]);
+}, [externalBookingSignal]); 
+// Fin de la zona de modificación de carga de citas
 
   useEffect(() => {
     if (!selectedAppointment) return;
@@ -862,7 +903,8 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
                                                                 type="button" 
                                                                 data-appointment 
                                                                 onClick={(e) => { e.stopPropagation(); setSelectedAppointment({ ...appt, fecha: dateISO, hora: timeString } as Appointment); }} 
-                                                                className="group absolute left-0.5 right-0.5 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-1 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
+                                                                // CLASE CORREGIDA: Eliminamos el degradado para ver el color plano
+                                                                className="group absolute left-0.5 right-0.5 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 p-1 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
                                                                 style={{ backgroundColor: apptColor, top, height }} 
                                                                 title={`${appt.servicio} · ${appt.cliente} (${appt.especialista})`}
                                                             >
@@ -1031,7 +1073,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
                 </label>
                 <input
                   className="col-span-2 border p-2 rounded"
-                  value={editAppointment?.servicio}
+                  value={editAppointment?.servicio || ''} // FIX: Asegura que el valor nunca es undefined
                   onChange={(e) =>
                     setEditAppointment((prev) => ({
                       ...prev!,
@@ -1049,8 +1091,8 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
                 <input
                   type="date"
-                  className="col-span-2 border p-2 rounded" // Se corrigió el layout a col-span-2 aquí, asumiendo que es el intento de código que ya funciona
-                  value={editAppointment?.fecha}
+                  className="col-span-2 border p-2 rounded"
+                  value={editAppointment?.fecha || ''} // FIX: Asegura que el valor nunca es undefined
                   onChange={(e) =>
                     setEditAppointment((prev) => ({
                       ...prev!,
@@ -1061,8 +1103,8 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
                 <input
                   type="time"
-                  className="col-span-2 border p-2 rounded" // Se corrigió el layout a col-span-2 aquí
-                  value={editAppointment?.hora}
+                  className="col-span-2 border p-2 rounded"
+                  value={editAppointment?.hora || ''} // FIX: Asegura que el valor nunca es undefined
                   onChange={(e) =>
                     setEditAppointment((prev) => ({
                       ...prev!,
