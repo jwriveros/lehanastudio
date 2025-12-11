@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Lizto CRM PWA",
-    short_name: "Lizto CRM",
+    name: "Lehana Studio",
+    short_name: "Lehana CRM",
     description: "CRM de reservas, chat y agenda optimizado para móvil",
     start_url: "/",
     display: "standalone",
