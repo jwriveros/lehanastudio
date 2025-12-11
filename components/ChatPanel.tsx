@@ -536,7 +536,14 @@ const filteredThreads = threads.filter((t) => {
 });
 
   return (
-    <div className="flex flex-col w-full h-full overflow-hidden">
+    <div
+      className="
+        flex flex-col w-full 
+        h-[calc(100vh-120px)] 
+        max-h-[calc(100vh-120px)]
+        overflow-hidden
+      "
+    >
       {/* Tabs */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
         {(["active", "reservations", "abandoned"] as const).map((t) => (
@@ -796,7 +803,7 @@ const filteredThreads = threads.filter((t) => {
       {/* ⬇️ PANEL DE CHAT */}
       {/* Panel de mensajes */}
         {currentChat ? (
-          <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full">
+          <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full"> 
             <div className="flex items-center justify-between border-b p-4">
               <div className="flex items-center gap-3">
                 <button
