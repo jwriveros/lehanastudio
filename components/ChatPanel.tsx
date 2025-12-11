@@ -202,7 +202,6 @@ export function ChatPanel() {
       );
 
       setThreads(list);
-      if (list.length > 0 && !activeId) setActiveId(list[0].id);
 
       setLoadingThreads(false);
     };
