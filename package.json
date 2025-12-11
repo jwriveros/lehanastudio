@@ -12,6 +12,7 @@
     "@fullcalendar/resource-daygrid": "^6.1.19",
     "@fullcalendar/resource-timegrid": "^6.1.19",
     "@fullcalendar/resource-timeline": "^6.1.19",
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.87.1",
     "next": "16.0.7",
     "react": "19.2.0",

@@ -537,13 +537,8 @@ const filteredThreads = threads.filter((t) => {
 
   return (
     <div
-      className="
-        flex flex-col w-full 
-        h-[calc(100vh-120px)] 
-        max-h-[calc(100vh-120px)]
-        overflow-hidden
-      "
-    >
+        className="flex flex-col w-full h-full min-h-0 overflow-hidden"
+      >
       {/* Tabs */}
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
         {(["active", "reservations", "abandoned"] as const).map((t) => (
@@ -562,13 +557,13 @@ const filteredThreads = threads.filter((t) => {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 w-full h-full min-h-0 overflow-hidden p-4">
-        {isMobileView ? (
-          <>
-            {/* 📱 Vista móvil: SOLO lista de chats */}
-            {!showMobileChat && (
-              // Usamos la estructura de lista de chats de escritorio adaptada a la vista móvil
-              <div className="h-full flex flex-col rounded-2xl border bg-white overflow-hidden">
+      <div className="flex-1 w-full min-h-0 overflow-hidden p-4">
+          {isMobileView ? (
+            <>
+              {/* 📱 Vista móvil: SOLO lista de chats */}
+              {!showMobileChat && (
+                // Usamos la estructura de lista de chats de escritorio adaptada a la vista móvil
+                <div className="h-full min-h-0 flex flex-col rounded-2xl border bg-white overflow-hidden">
                   <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-zinc-500">
                       <span>Chats Recientes ({threads.length})</span>
                   </div>
@@ -623,7 +618,7 @@ const filteredThreads = threads.filter((t) => {
 
             {/* 📱 Vista móvil: SOLO el chat seleccionado */}
             {showMobileChat && currentChat ? (
-              <div className="absolute inset-0 z-10 flex flex-col bg-white overflow-hidden h-full"> {/* Usamos absolute inset-0 para la vista completa */}
+              <div className="absolute inset-0 z-10 flex flex-col bg-white overflow-hidden h-full min-h-0"> {/* Usamos absolute inset-0 para la vista completa */}
                 <div className="flex items-center justify-between border-b p-4 bg-white shadow-sm">
                   
                   {/* Botón de Atrás y Título */}
@@ -744,9 +739,9 @@ const filteredThreads = threads.filter((t) => {
           </>
         ) : (
     /* 🖥 Desktop: vista doble */
-    <div className="grid flex-1 min-h-0 w-full gap-4 grid-cols-[1fr_1.3fr] overflow-hidden">
+    <div className="grid h-full w-full gap-4 grid-cols-[1fr_1.3fr] overflow-hidden">
       {/* ⬇️ LISTA DE CHATS */}
-      <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full">
+     <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full min-h-0">
           <div className="flex items-center justify-between border-b px-4 py-3 text-sm text-zinc-500">
             <span>Chats Recientes ({threads.length})</span>
           </div>
@@ -803,7 +798,7 @@ const filteredThreads = threads.filter((t) => {
       {/* ⬇️ PANEL DE CHAT */}
       {/* Panel de mensajes */}
         {currentChat ? (
-          <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full"> 
+          <div className="flex flex-col rounded-2xl border bg-white overflow-hidden h-full min-h-0">
             <div className="flex items-center justify-between border-b p-4">
               <div className="flex items-center gap-3">
                 <button
