@@ -201,7 +201,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     price: 0, 
     date: formatDateISO(baseDate),
     time: "09:00",
-    location: "Miraflores",
+    location: "Marquetalia",
     notes: "",
     status: "Nueva reserva creada" as AppointmentStatus, // FIX 1: Usar el estado correcto
   });
@@ -695,7 +695,7 @@ useEffect(() => {
 
   };
 
-  const submitBooking = async (event: FormEvent<HTMLFormElement>) => {
+ const submitBooking = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     // Obtener la duración del servicio seleccionado para enviar a la BD
@@ -709,24 +709,44 @@ useEffect(() => {
     const newAppointment = {
       cliente: bookingForm.customer,
       celular: bookingForm.phone,
-      servicio: bookingForm.service,
-      especialista: bookingForm.specialist,
+      // Se pasa 'service', 'specialist', 'price', 'date', 'time', 'location' para facilitar el mensaje en el API
+      service: bookingForm.service,
+      specialist: bookingForm.specialist,
       price: bookingForm.price,
+      date: bookingForm.date, 
+      time: bookingForm.time,
+      location: bookingForm.location,
       appointment_at: appointmentDate,
       sede: bookingForm.location,
       notas: bookingForm.notes,
-      estado: 'Nueva reserva creada' as AppointmentStatus, // FIX 1: Usar el estado correcto por defecto
-      bg_color: specialistColor, // Usar el color del especialista
+      estado: 'Nueva reserva creada' as AppointmentStatus, 
+      bg_color: specialistColor, 
       is_paid: false,
-      duration: serviceDuration, // Incluir la duración
+      duration: serviceDuration, 
     };
+    
     const response = await fetch('/api/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newAppointment),
     });
+    
     if (response.ok) {
-        alert("¡Solicitud de reserva enviada! Pendiente de confirmación.");
+        const result = await response.json();
+        
+        let successMessage = "¡Reserva agendada y cliente verificado con éxito!";
+        
+        // --- LÓGICA DE CONFIRMACIÓN DE WHATSAPP ---
+        if (result.whatsapp_status === "SENT_TO_N8N_OK") {
+            successMessage += " Se ha enviado un mensaje de confirmación por WhatsApp.";
+        } else if (result.whatsapp_status && result.whatsapp_status.includes("ERROR")) {
+             successMessage += " ⚠️ Advertencia: No se pudo enviar el mensaje de confirmación por WhatsApp. Revisa el log del servidor.";
+        } else {
+             successMessage += " Pendiente de envío de confirmación por WhatsApp.";
+        }
+        // --- FIN LÓGICA WHATSAPP ---
+        
+        alert(successMessage);
         await fetchAppointments();
         closeBooking();
     } else {
