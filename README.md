@@ -1,4 +1,4 @@
-Lizto-style CRM demo ready to connect with Supabase tables (`app_users`, `appointments`, `booking_requests`, `clients`, `services`, `mensajes`, `n8n_chat_histories`, `encuestas`) and n8n webhooks.
+CRM Lehana demo ready to connect with Supabase tables (`app_users`, `appointments`, `booking_requests`, `clients`, `services`, `mensajes`, `n8n_chat_histories`, `encuestas`) and n8n webhooks.
 
 ## Features
 
