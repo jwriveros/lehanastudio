@@ -145,6 +145,10 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>([]);
   const [specialistRecords, setSpecialistRecords] = useState<SpecialistRecord[]>([]);
 
+  const serviceRecordMap = useMemo(() => {
+    return new Map(serviceRecords.map(s => [s.Servicio, s]));
+  }, [serviceRecords]);
+
   // 1. Crear un mapa para la búsqueda rápida de color por especialista.
   const specialistColorMap = useMemo(() => {
     return new Map(specialistRecords.map(s => [s.name, s.color]));
@@ -152,21 +156,22 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
 
   // 2. Definir una función utilitaria local para normalizar citas y establecer el color correcto.
   const getNormalizedAppointment = useCallback((appt: Appointment): Appointment => {
-    const matchedService = serviceRecords.find((service) => service.Servicio === appt.servicio);
+    const matchedService = serviceRecordMap.get(appt.servicio);
     const duration = appt.duration ?? matchedService?.duracion ?? 60;
     const { dateISO, timeString } = getAppointmentDetails(appt.appointment_at);
     
-    // NEW LOGIC: Look up color by specialist name, and fallback to current or default grey
     const specialistColor = specialistColorMap.get(appt.especialista) ?? appt.bg_color ?? '#94a3b8';
+    // Paid appointments are gray, otherwise use specialist color
+    const finalColor = appt.is_paid ? '#94a3b8' : specialistColor;
 
     return { 
         ...appt, 
         duration, 
         fecha: dateISO, 
         hora: timeString,
-        bg_color: specialistColor, // <-- OVERWRITE bg_color con el color actual del especialista
+        bg_color: finalColor,
     };
-  }, [serviceRecords, specialistColorMap]);
+  }, [serviceRecordMap, specialistColorMap]);
 
 
   // **********************************************
@@ -212,6 +217,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [editAppointment, setEditAppointment] = useState<Appointment | null>(null);
   const [isEditingDate, setIsEditingDate] = useState(false);
+  const [mobileSelectedSpecialist, setMobileSelectedSpecialist] = useState<string | null>(null);
 
   const closeEditModal = () => {
     setSelectedAppointment(null);
@@ -548,6 +554,14 @@ useEffect(() => {
     
     return specialists;
   }, [viewMode, days, filteredAppointments, specialistOptions, specialistFilter]);
+
+  useEffect(() => {
+    if (viewMode === 'day' && dayViewSpecialists.length > 0) {
+        if (!mobileSelectedSpecialist || !dayViewSpecialists.includes(mobileSelectedSpecialist)) {
+            setMobileSelectedSpecialist(dayViewSpecialists[0]);
+        }
+    }
+  }, [viewMode, dayViewSpecialists, mobileSelectedSpecialist]);
   
   // Nuevo: Columnas para la vista de Semana (Día + Especialista)
   const weeklySpecialistGroups = useMemo(() => {
@@ -658,15 +672,16 @@ useEffect(() => {
         const newStatus = "Cita pagada" as AppointmentStatus;
         const newIsPaid = true;
 
+        const updatedAppointment = getNormalizedAppointment({ ...selectedAppointment, is_paid: newIsPaid, estado: newStatus });
+
         setAppointmentList((prev) =>
             prev.map((appt) =>
                 appt.id === appointmentId
-                    ? getNormalizedAppointment({ ...appt, is_paid: newIsPaid, estado: newStatus } as Appointment)
+                    ? updatedAppointment
                     : appt
             )
         );
-        setSelectedAppointment((prev) => (prev ? { ...prev, is_paid: newIsPaid, estado: newStatus } : prev));
-        await fetchAppointments();
+        setSelectedAppointment(updatedAppointment);
     } else {
         const errorData = await response.json().catch(() => ({ error: "Error de red o JSON inválido." }));
         console.error("Error al marcar como pagada (API):", errorData);
@@ -945,7 +960,7 @@ useEffect(() => {
           {/* Cuerpo del Calendario */}
           {viewMode === "month" ? (
             <div className="flex-1 overflow-auto">
-              <div className="grid min-h-[520px] min-w-[1100px] sm:min-w-full grid-cols-7 gap-3 p-4 sm:p-6">
+              <div className="grid min-h-[520px] grid-cols-7 gap-3 p-4 sm:p-6">
                 {loading ? (
                     <p className="col-span-7 text-center py-12 text-lg text-indigo-500">Cargando Agenda...</p>
                 ) : (
@@ -966,7 +981,7 @@ useEffect(() => {
                                   data-appointment
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedAppointment(getNormalizedAppointment(appt));
+                                    setSelectedAppointment(appt);
                                   }}
                                   className="h-3 w-3 rounded-full cursor-pointer"
                                   style={{ backgroundColor: appt.bg_color }}
@@ -995,8 +1010,7 @@ useEffect(() => {
                         {weeklySpecialistGroups.map((group) => (
                             <div 
                                 key={group.day.iso} 
-                                className={`flex flex-1 flex-col border-r border-zinc-300 last:border-r-0 ${group.day.iso === formatDateISO(new Date()) ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
-                                style={{ minWidth: 120 }} 
+                                className={`flex flex-1 flex-col min-w-0 border-r border-zinc-300 last:border-r-0 ${group.day.iso === formatDateISO(new Date()) ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
                             >
                                 {/* Día y Fecha */}
                                 <div className={`p-2 text-center border-b border-zinc-300 dark:border-zinc-800`}>
@@ -1009,7 +1023,7 @@ useEffect(() => {
                                 {/* Sub-Encabezado de Especialistas */}
                                 <div className="flex bg-zinc-50 dark:bg-zinc-800/50">
                                     {group.specialists.map(specialist => (
-                                        <div key={specialist} className="flex-1 p-1 text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 truncate border-r last:border-r-0 border-zinc-200 dark:border-zinc-700">
+                                        <div key={specialist} className="flex-1 min-w-0 p-1 text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 truncate border-r last:border-r-0 border-zinc-200 dark:border-zinc-700">
                                             {specialist}
                                         </div>
                                     ))}
@@ -1044,7 +1058,7 @@ useEffect(() => {
                                     <div 
                                         key={dayIso}
                                         className={`relative flex flex-1 border-r border-zinc-300 last:border-r-0 ${group.day.iso === formatDateISO(new Date()) ? "bg-indigo-50/40 dark:bg-indigo-950/30" : "bg-white dark:bg-zinc-900"}`}
-                                        style={{ height: COLUMN_HEIGHT, minWidth: 120 }}
+                                        style={{ height: COLUMN_HEIGHT }}
                                     >
                                         <div 
                                             className="pointer-events-none absolute inset-0" 
@@ -1092,7 +1106,7 @@ useEffect(() => {
                                                                 type="button" 
                                                                 data-appointment 
                                                                 // Usamos getNormalizedAppointment al hacer clic para asegurar el color correcto en el modal.
-                                                                onClick={(e) => { e.stopPropagation(); setSelectedAppointment(getNormalizedAppointment(appt)); }} 
+                                                                onClick={(e) => { e.stopPropagation(); setSelectedAppointment(appt); }} 
                                                                 // CLASE CORREGIDA: Eliminamos el degradado para ver el color plano
                                                                 className="group absolute left-0.5 right-0.5 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 p-1 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
                                                                 style={{ backgroundColor: apptColor, top, height }} 
@@ -1117,115 +1131,220 @@ useEffect(() => {
                     </div>
                 </div>
               ) : (
-                /* ------------------------- VISTA DIA (SPECIALIST COLUMNS) -------------------------- */
-                <div className="min-w-[900px] sm:min-w-full">
-                    {/* Encabezado Principal del Día */}
-                    {currentDay && (
-                        <div className="sticky top-0 z-20 flex flex-col border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
-                            <div className="flex items-center justify-center p-3">
-                                <h3 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">
-                                    {currentDay!.label}. {currentDay!.dayNumber}{" "}
-                                    <span className="text-sm font-normal text-zinc-500">
-                                        {currentDay!.date.toLocaleString("es", { month: "long" })}
-                                    </span>
-                                </h3>
+                <>
+                    {/* ------------------------- VISTA DIA (MOBILE) -------------------------- */}
+                    <div className="md:hidden">
+                        {/* Day Header */}
+                        {currentDay && (
+                            <div className="sticky top-0 z-20 flex flex-col border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+                                <div className="flex items-center justify-center p-3">
+                                    <h3 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">
+                                        {currentDay.label}. {currentDay.dayNumber}{" "}
+                                        <span className="text-sm font-normal text-zinc-500">
+                                            {currentDay.date.toLocaleString("es", { month: "long" })}
+                                        </span>
+                                    </h3>
+                                </div>
                             </div>
+                        )}
+
+                        {/* Specialist Tabs */}
+                        <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+                            {dayViewSpecialists.map(specialist => (
+                                <button
+                                    key={specialist}
+                                    onClick={() => setMobileSelectedSpecialist(specialist)}
+                                    className={`flex-shrink-0 p-3 text-sm font-semibold ${mobileSelectedSpecialist === specialist ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-zinc-500'}`}
+                                >
+                                    {specialist}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Timeline for the selected specialist */}
+                        <div className="overflow-y-auto p-2">
+                            {loading && <p className="text-center py-12 text-lg text-indigo-500">Cargando Citas...</p>}
                             
-                            {/* Sub-Encabezado de Especialistas */}
-                            <div className="flex border-t border-zinc-300 dark:border-zinc-800">
-                                <div className="w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-[11px] font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/95">Hora</div>
-                                {dayViewSpecialists.map((specialist) => (
-                                    <div 
-                                        key={specialist} 
-                                        className="flex-1 border-r border-zinc-300 p-2 text-xs font-semibold text-indigo-700 dark:border-zinc-800 dark:text-indigo-300"
-                                    >
-                                        {specialist}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* Cuerpo de la Agenda (Slots y Citas) */}
-                    <div className="relative flex" aria-label="Agenda por especialista">
-                        
-                        {/* Columna Horas */}
-                        <div className="sticky left-0 z-20 w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
-                            <div className="relative" style={{ height: COLUMN_HEIGHT }}>
-                                {slots.map((slot, idx) => (
-                                    <div key={slot.minutes} className={`absolute inset-x-0 flex items-start justify-center border-b ${slot.dashed ? "border-dashed" : "border-solid"} border-zinc-200 px-1 text-[11px] font-medium leading-none text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`} style={{ top: idx * ROW_HEIGHT, height: ROW_HEIGHT }}>
-                                        <span className="mt-1 block">{slot.label}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        
-                        {/* Columnas de Especialistas */}
-                        {loading ? (
-                            <div className="flex-1 flex items-center justify-center" style={{ height: COLUMN_HEIGHT }}><p className="text-xl text-indigo-500">Cargando Citas...</p></div>
-                        ) : (
-                            dayViewSpecialists.map((specialist) => {
+                            {!loading && mobileSelectedSpecialist && (() => {
                                 const specialistAppointments = filteredAppointments
                                     .filter((appt) => 
                                         getAppointmentDetails(appt.appointment_at).dateISO === currentDay?.iso && 
-                                        appt.especialista === specialist
+                                        appt.especialista === mobileSelectedSpecialist
                                     );
-                                    // No es necesario mapear con getNormalizedAppointment aquí si ya se hizo al cargar
 
                                 const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
                                     const rect = event.currentTarget.getBoundingClientRect();
                                     const offsetY = event.clientY - rect.top;
                                     const minutesFromStart = Math.min(Math.max(offsetY / COLUMN_HEIGHT, 0), 1) * TOTAL_MINUTES;
                                     const roundedSlot = Math.floor(minutesFromStart / STEP) * STEP + MINUTES_START;
-                                    openBooking(currentDay!.iso, minutesToTimeString(roundedSlot), specialist);
+                                    openBooking(currentDay!.iso, minutesToTimeString(roundedSlot), mobileSelectedSpecialist);
                                 };
 
                                 return (
-                                    <div 
-                                        key={specialist} 
-                                        onClick={handleColumnClick} 
-                                        className="relative flex min-w-[160px] sm:min-w-0 flex-1 border-r border-zinc-300 last:border-r-0 bg-white dark:bg-zinc-900" 
-                                        style={{ height: COLUMN_HEIGHT }}
-                                    >
-                                        <div 
-                                            className="pointer-events-none absolute inset-0" 
-                                            style={{ backgroundImage: `repeating-linear-gradient(to bottom, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent ${ROW_HEIGHT}px)` }} 
-                                        />
-
-                                        {specialistAppointments.map((appt) => {
-                                            const { minutes, timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
-                                            const top = Math.max(0, ((minutes - MINUTES_START) / STEP) * ROW_HEIGHT);
-                                            const height = Math.min(COLUMN_HEIGHT - top, Math.max((appt.duration! / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75));
-                                            
-                                            // Usar appt.bg_color directamente (ya está normalizado)
-                                            const apptColor = appt.bg_color;
-                                            
-                                            return (
-                                                <button 
-                                                    key={appt.id} 
-                                                    type="button" 
-                                                    data-appointment 
-                                                    // Usamos getNormalizedAppointment al hacer clic para asegurar el color correcto en el modal.
-                                                    onClick={(e) => { e.stopPropagation(); setSelectedAppointment(getNormalizedAppointment(appt)); }} 
-                                                    className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
-                                                    style={{ backgroundColor: apptColor, top, height }} 
-                                                    title={`${appt.servicio} · ${appt.cliente}`}
-                                                >
-                                                    <div className="flex items-center justify-between gap-2 text-[10px] font-semibold leading-none uppercase">
-                                                        <span>{timeString}</span>
-                                                        <span className="rounded-full bg-black/20 px-2 py-0.5 text-[9px] text-white">{appt.estado}</span>
+                                    <div className="flex">
+                                        {/* Hours Column */}
+                                        <div className="w-16 flex-shrink-0 text-center text-zinc-700">
+                                            <div className="relative" style={{ height: COLUMN_HEIGHT }}>
+                                                {slots.map((slot, idx) => (
+                                                    <div key={slot.minutes} className={`absolute inset-x-0 flex items-start justify-center border-b ${slot.dashed ? "border-dashed" : "border-solid"} border-zinc-200 px-1 text-[11px] font-medium leading-none text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`} style={{ top: idx * ROW_HEIGHT, height: ROW_HEIGHT }}>
+                                                        <span className="mt-1 block">{slot.label}</span>
                                                     </div>
-                                                    <div className="truncate text-[11px] font-semibold leading-tight">{appt.servicio}</div>
-                                                    <div className="truncate text-[10px] leading-tight opacity-90">{appt.cliente}</div>
-                                                </button>
-                                            );
-                                        })}
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Appointments Column */}
+                                        <div 
+                                            onClick={handleColumnClick} 
+                                            className="relative flex-1 bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800"
+                                            style={{ height: COLUMN_HEIGHT }}
+                                        >
+                                            <div 
+                                                className="pointer-events-none absolute inset-0" 
+                                                style={{ backgroundImage: `repeating-linear-gradient(to bottom, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent ${ROW_HEIGHT}px)` }} 
+                                            />
+
+                                            {specialistAppointments.map((appt) => {
+                                                const { minutes } = getAppointmentDetails(appt.appointment_at);
+                                                const top = Math.max(0, ((minutes - MINUTES_START) / STEP) * ROW_HEIGHT);
+                                                const height = Math.min(COLUMN_HEIGHT - top, Math.max((appt.duration! / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75));
+                                                return (
+                                                    <button 
+                                                        key={appt.id} 
+                                                        type="button" 
+                                                        data-appointment 
+                                                        onClick={(e) => { e.stopPropagation(); setSelectedAppointment(appt); }} 
+                                                        className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
+                                                        style={{ backgroundColor: appt.bg_color, top, height }} 
+                                                        title={`${appt.servicio} · ${appt.cliente}`}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2 text-[10px] font-semibold leading-none uppercase">
+                                                            <span>{getAppointmentDetails(appt.appointment_at).timeString}</span>
+                                                            <span className="rounded-full bg-black/20 px-2 py-0.5 text-[9px] text-white">{appt.estado}</span>
+                                                        </div>
+                                                        <div className="truncate text-[11px] font-semibold leading-tight">{appt.servicio}</div>
+                                                        <div className="truncate text-[10px] leading-tight opacity-90">{appt.cliente}</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 );
-                            })
-                        )}
+                            })()}
+
+                            {!loading && dayViewSpecialists.length === 0 && (
+                                <p className="text-center text-zinc-500 py-12">No hay especialistas con citas para este día.</p>
+                            )}
+                        </div>
                     </div>
-                </div>
+
+                    {/* ------------------------- VISTA DIA (DESKTOP - SPECIALIST COLUMNS) -------------------------- */}
+                    <div className="hidden md:block">
+                        {/* Encabezado Principal del Día */}
+                        {currentDay && (
+                            <div className="sticky top-0 z-20 flex flex-col border-b border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+                                <div className="flex items-center justify-center p-3">
+                                    <h3 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">
+                                        {currentDay!.label}. {currentDay!.dayNumber}{" "}
+                                        <span className="text-sm font-normal text-zinc-500">
+                                            {currentDay!.date.toLocaleString("es", { month: "long" })}
+                                        </span>
+                                    </h3>
+                                </div>
+                                
+                                {/* Sub-Encabezado de Especialistas */}
+                                <div className="flex border-t border-zinc-300 dark:border-zinc-800">
+                                    <div className="w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-[11px] font-semibold uppercase text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/95">Hora</div>
+                                    {dayViewSpecialists.map((specialist) => (
+                                        <div 
+                                            key={specialist} 
+                                            className="flex-1 border-r border-zinc-300 p-2 text-xs font-semibold text-indigo-700 dark:border-zinc-800 dark:text-indigo-300"
+                                        >
+                                            {specialist}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Cuerpo de la Agenda (Slots y Citas) */}
+                        <div className="relative flex" aria-label="Agenda por especialista">
+                            
+                            {/* Columna Horas */}
+                            <div className="sticky left-0 z-20 w-16 flex-shrink-0 border-r border-zinc-300 bg-white/95 text-center text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+                                <div className="relative" style={{ height: COLUMN_HEIGHT }}>
+                                    {slots.map((slot, idx) => (
+                                        <div key={slot.minutes} className={`absolute inset-x-0 flex items-start justify-center border-b ${slot.dashed ? "border-dashed" : "border-solid"} border-zinc-200 px-1 text-[11px] font-medium leading-none text-zinc-500 dark:border-zinc-800 dark:text-zinc-400`} style={{ top: idx * ROW_HEIGHT, height: ROW_HEIGHT }}>
+                                            <span className="mt-1 block">{slot.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            
+                            {/* Columnas de Especialistas */}
+                            {loading ? (
+                                <div className="flex-1 flex items-center justify-center" style={{ height: COLUMN_HEIGHT }}><p className="text-xl text-indigo-500">Cargando Citas...</p></div>
+                            ) : (
+                                dayViewSpecialists.map((specialist) => {
+                                    const specialistAppointments = filteredAppointments
+                                        .filter((appt) => 
+                                            getAppointmentDetails(appt.appointment_at).dateISO === currentDay?.iso && 
+                                            appt.especialista === specialist
+                                        );
+
+                                    const handleColumnClick = (event: MouseEvent<HTMLDivElement>) => {
+                                        const rect = event.currentTarget.getBoundingClientRect();
+                                        const offsetY = event.clientY - rect.top;
+                                        const minutesFromStart = Math.min(Math.max(offsetY / COLUMN_HEIGHT, 0), 1) * TOTAL_MINUTES;
+                                        const roundedSlot = Math.floor(minutesFromStart / STEP) * STEP + MINUTES_START;
+                                        openBooking(currentDay!.iso, minutesToTimeString(roundedSlot), specialist);
+                                    };
+
+                                    return (
+                                        <div 
+                                            key={specialist} 
+                                            onClick={handleColumnClick} 
+                                            className="relative flex flex-1 border-r border-zinc-300 last:border-r-0 bg-white dark:bg-zinc-900" 
+                                            style={{ height: COLUMN_HEIGHT }}
+                                        >
+                                            <div 
+                                                className="pointer-events-none absolute inset-0" 
+                                                style={{ backgroundImage: `repeating-linear-gradient(to bottom, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent ${ROW_HEIGHT}px)` }} 
+                                            />
+
+                                            {specialistAppointments.map((appt) => {
+                                                const { minutes, timeString, dateISO } = getAppointmentDetails(appt.appointment_at);
+                                                const top = Math.max(0, ((minutes - MINUTES_START) / STEP) * ROW_HEIGHT);
+                                                const height = Math.min(COLUMN_HEIGHT - top, Math.max((appt.duration! / STEP) * ROW_HEIGHT, ROW_HEIGHT * 0.75));
+                                                
+                                                const apptColor = appt.bg_color;
+                                                
+                                                return (
+                                                    <button 
+                                                        key={appt.id} 
+                                                        type="button" 
+                                                        data-appointment 
+                                                        onClick={(e) => { e.stopPropagation(); setSelectedAppointment(appt); }} 
+                                                        className="group absolute left-1 right-1 flex flex-col gap-0.5 truncate rounded-xl border border-white/50 bg-gradient-to-br from-black/10 via-black/5 to-white/10 p-2 text-left text-white shadow-md ring-1 ring-black/5 backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" 
+                                                        style={{ backgroundColor: apptColor, top, height }} 
+                                                        title={`${appt.servicio} · ${appt.cliente}`}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2 text-[10px] font-semibold leading-none uppercase">
+                                                            <span>{timeString}</span>
+                                                            <span className="rounded-full bg-black/20 px-2 py-0.5 text-[9px] text-white">{appt.estado}</span>
+                                                        </div>
+                                                        <div className="truncate text-[11px] font-semibold leading-tight">{appt.servicio}</div>
+                                                        <div className="truncate text-[10px] leading-tight opacity-90">{appt.cliente}</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                </>
               )}
             </div>
           )}
