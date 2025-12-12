@@ -13,6 +13,11 @@ type AgendaBoardProps = {
   externalBookingSignal?: number | null;
   renderCalendarShell?: boolean;
   onBookingClose?: () => void;
+  // New props for initial data
+  initialAppointmentList: Appointment[];
+  initialClientRecords: ClientRecord[];
+  initialServiceRecords: ServiceRecord[];
+  initialSpecialistRecords: SpecialistRecord[];
 };
 
 export type Appointment = {
@@ -96,17 +101,46 @@ function parseTimeToMinutes(time: string) {
 // CORRECCIÓN DE ERROR "split of null": Manejo seguro de nulos
 function getAppointmentDetails(isoString: string | null) {
   if (!isoString) {
-     return { date: new Date(), timeString: "--:--", minutes: 0, dateISO: "" };
+    return {
+      date: new Date(),
+      timeString: "--:--",
+      time24: "",
+      minutes: 0,
+      dateISO: "",
+    };
   }
+
   const date = new Date(isoString);
   if (isNaN(date.getTime())) {
-     return { date: new Date(), timeString: "--:--", minutes: 0, dateISO: "" };
+    return {
+      date: new Date(),
+      timeString: "--:--",
+      time24: "",
+      minutes: 0,
+      dateISO: "",
+    };
   }
+
   const dateISO = isoString.split("T")[0];
-  const timeString = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
-  const minutes = parseTimeToMinutes(timeString);
-  return { date, timeString, minutes, dateISO };
+
+  // 🔴 CÁLCULO EN 24H (PARA POSICIÓN Y INPUT)
+  const h = date.getHours();
+  const m = date.getMinutes();
+  const minutes = h * 60 + m;
+
+  const time24 = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+
+  // 🟢 SOLO PARA MOSTRAR
+  const timeString = date.toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  return { date, timeString, time24, minutes, dateISO };
 }
+
+
 
 function minutesToTimeString(minutes: number) {
   const h = Math.floor(minutes / 60);
@@ -125,10 +159,18 @@ function getLocalMidnight(date: Date) {
 
 import { useUIStore } from "@/lib/uiStore";
 
-export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true, onBookingClose }: AgendaBoardProps) {
+export function AgendaBoard({
+  externalBookingSignal,
+  renderCalendarShell = true,
+  onBookingClose,
+  initialAppointmentList,
+  initialClientRecords,
+  initialServiceRecords,
+  initialSpecialistRecords,
+}: AgendaBoardProps) {
   const { openBookingModal } = useUIStore();
-  const [appointmentList, setAppointmentList] = useState<Appointment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [appointmentList, setAppointmentList] = useState<Appointment[]>(initialAppointmentList);
+  const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
   
   // FIX 1.3: Usar getLocalMidnight(new Date()) para inicializar baseDate
@@ -141,64 +183,13 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus[]>(ALL_APPOINTMENT_STATUSES); 
   const [showStatusMenu, setShowStatusMenu] = useState(false); 
 
-  const [clientRecords, setClientRecords] = useState<ClientRecord[]>([]);
-  const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>([]);
-  const [specialistRecords, setSpecialistRecords] = useState<SpecialistRecord[]>([]);
-
-  const serviceRecordMap = useMemo(() => {
-    return new Map(serviceRecords.map(s => [s.Servicio, s]));
-  }, [serviceRecords]);
-
-  // 1. Crear un mapa para la búsqueda rápida de color por especialista.
-  const specialistColorMap = useMemo(() => {
-    return new Map(specialistRecords.map(s => [s.name, s.color]));
-  }, [specialistRecords]);
-
-  // 2. Definir una función utilitaria local para normalizar citas y establecer el color correcto.
-  const getNormalizedAppointment = useCallback((appt: Appointment): Appointment => {
-    const matchedService = serviceRecordMap.get(appt.servicio);
-    const duration = appt.duration ?? matchedService?.duracion ?? 60;
-    const { dateISO, timeString } = getAppointmentDetails(appt.appointment_at);
-    
-    const specialistColor = specialistColorMap.get(appt.especialista) ?? appt.bg_color ?? '#94a3b8';
-    // Paid appointments are gray, otherwise use specialist color
-    const finalColor = appt.is_paid ? '#94a3b8' : specialistColor;
-
-    return { 
-        ...appt, 
-        duration, 
-        fecha: dateISO, 
-        hora: timeString,
-        bg_color: finalColor,
-    };
-  }, [serviceRecordMap, specialistColorMap]);
+  // FIX: Declaración de estados faltantes
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [editAppointment, setEditAppointment] = useState<Appointment | null>(null);
+  const [mobileSelectedSpecialist, setMobileSelectedSpecialist] = useState<string | null>(null);
+  const [isEditingDate, setIsEditingDate] = useState<boolean>(false);
 
 
-  // **********************************************
-  // Lógica de Carga de Especialistas (DB)
-  // **********************************************
-  useEffect(() => {
-    const fetchSpecialists = async () => {
-        const { data, error } = await supabase
-            .from("app_users")
-            .select("id, name, role, color")
-            .or('role.eq.ESPECIALISTA,role.eq.SPECIALIST')
-            .returns<SpecialistRecord[]>();
-
-        if (error) {
-            console.error("Error fetching specialists:", error);
-        } else if (data) {
-            setSpecialistRecords(data);
-        }
-    };
-    fetchSpecialists();
-  }, []);
-
-  const specialistOptions = useMemo(
-    () => specialistRecords.map(u => u.name).sort(), 
-    [specialistRecords]
-  );
-  
   const [bookingForm, setBookingForm] = useState({
     open: false,
     customer: "",
@@ -214,15 +205,145 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     status: "Nueva reserva creada" as AppointmentStatus, // FIX 1: Usar el estado correcto
   });
 
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-  const [editAppointment, setEditAppointment] = useState<Appointment | null>(null);
-  const [isEditingDate, setIsEditingDate] = useState(false);
-  const [mobileSelectedSpecialist, setMobileSelectedSpecialist] = useState<string | null>(null);
+  const [clientRecords, setClientRecords] = useState<ClientRecord[]>(initialClientRecords);
+  const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>(initialServiceRecords);
+  const [specialistRecords, setSpecialistRecords] = useState<SpecialistRecord[]>(initialSpecialistRecords);
+
+  const [serviceSuggestions, setServiceSuggestions] = useState<ServiceRecord[]>([]);
+  const [clientSuggestions, setClientSuggestions] = useState<ClientRecord[]>([]);
+
+  useEffect(() => {
+    const fetchServiceSuggestions = async () => {
+      if (bookingForm.service.length > 1) { // Only fetch if user has typed something
+        try {
+          const response = await fetch(`/api/autocomplete/services?q=${bookingForm.service}`);
+          if (response.ok) {
+            const data = await response.json();
+            setServiceSuggestions(data);
+          } else {
+            console.error("Failed to fetch service suggestions:", response.statusText);
+            setServiceSuggestions([]);
+          }
+        } catch (error) {
+          console.error("Error fetching service suggestions:", error);
+          setServiceSuggestions([]);
+        }
+      } else {
+        setServiceSuggestions([]); // Clear suggestions if query is too short
+      }
+    };
+    fetchServiceSuggestions();
+  }, [bookingForm.service]);
+
+
+  useEffect(() => {
+  const fetchClientSuggestions = async () => {
+    const nameQuery = bookingForm.customer.trim();
+    const phoneQuery = bookingForm.phone.replace(/\D/g, '').trim();
+
+    // Nada para buscar
+    if (nameQuery.length < 2 && phoneQuery.length < 2) {
+      setClientSuggestions([]);
+      return;
+    }
+
+    const q = phoneQuery.length > 1 ? phoneQuery : nameQuery;
+
+    try {
+      const response = await fetch(`/api/autocomplete/clients?q=${encodeURIComponent(q)}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        setClientSuggestions(data);
+      } else {
+        console.error("Failed to fetch client suggestions:", response.statusText);
+        setClientSuggestions([]);
+      }
+    } catch (error) {
+      console.error("Error fetching client suggestions:", error);
+      setClientSuggestions([]);
+    }
+  };
+
+  fetchClientSuggestions();
+}, [bookingForm.customer, bookingForm.phone]);
+  useEffect(() => {
+    const fetchSpecialists = async () => {
+      try {
+        const response = await fetch('/api/autocomplete/specialists');
+        if (response.ok) {
+          const data = await response.json();
+          setSpecialistRecords(data);
+        } else {
+          const errorData = await response.json().catch(() => ({ error: "Error de red o JSON inválido." }));
+          console.error("Failed to fetch specialists:", errorData.error || response.statusText);
+          setSpecialistRecords([]);
+        }
+      } catch (error) {
+        console.error("Error fetching specialists:", error);
+        setSpecialistRecords([]);
+      }
+    };
+    fetchSpecialists();
+  }, []); // Fetch specialists only once on component mount
+
+
+  const serviceRecordMap = useMemo(() => {
+    // Combine initial service records with dynamic suggestions for the map
+    // Dynamic suggestions take precedence if available
+    const allServices = [...(initialServiceRecords || []), ...(serviceSuggestions || [])];
+    const uniqueServices = Array.from(new Map(allServices.map(s => [s.Servicio, s])).values());
+    if (!uniqueServices) return new Map(); // Defensive check
+    return new Map(uniqueServices.map(s => [s.Servicio, s]));
+  }, [initialServiceRecords, serviceSuggestions]);
+
+  // 1. Crear un mapa para la búsqueda rápida de color por especialista.
+  const specialistColorMap = useMemo(() => {
+    if (!specialistRecords) return new Map(); // Defensive check
+    return new Map(specialistRecords.map(s => [s.name, s.color]));
+  }, [specialistRecords]);
+
+  // 2. Definir una función utilitaria local para normalizar citas y establecer el color correcto.
+  const getNormalizedAppointment = useCallback((appt: Appointment): Appointment => {
+    const matchedService = serviceRecordMap.get(appt.servicio);
+    const duration = appt.duration ?? matchedService?.duracion ?? 60;
+    const { dateISO, time24 } = getAppointmentDetails(appt.appointment_at);
+
+    const specialistColor = specialistColorMap.get(appt.especialista) ?? appt.bg_color ?? '#94a3b8';
+    // Paid appointments are gray, otherwise use specialist color
+    const finalColor =
+      appt.estado === "Cita pagada"
+    ? "#94a3b8"        // gris para pagadas
+    : specialistColor; // color del especialista para todo lo demás
+
+
+    return { 
+        ...appt, 
+        duration, 
+        fecha: dateISO, 
+        hora: time24,
+        bg_color: finalColor,
+    };
+  }, [serviceRecordMap, specialistColorMap]);
+
+
+  const specialistOptions = useMemo(
+    () => {
+      if (!specialistRecords) return []; // Defensive check
+      return specialistRecords.map(u => u.name).sort();
+    }, 
+    [specialistRecords]
+  );
+
+
+
 
   const closeEditModal = () => {
-    setSelectedAppointment(null);
-    setIsEditingDate(false);
-  };
+  setSelectedAppointment(null);
+  setEditAppointment(null);
+  setIsEditingDate(false);
+};
+
 
   const formatDateForDisplay = (isoDate: string | undefined) => {
       if (!isoDate) return '';
@@ -254,28 +375,11 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     setShowStatusMenu(false);
   };
   
-  // **********************************************
-  // Lógica de Carga de Servicios
-  // **********************************************
-  useEffect(() => {
-      const fetchServices = async () => {
-          const { data, error } = await supabase
-              .from("services")
-              .select("Servicio, SKU, Precio, duracion, category")
-              .returns<ServiceRecord[]>(); 
-
-          if (error) {
-              console.error("Error fetching services:", error);
-          } else if (data) {
-              setServiceRecords(data.map(s => ({...s, Precio: Number(s.Precio), duracion: Number(s.duracion)}))); 
-          }
-      };
-      fetchServices();
-  }, []);
-
   // ** Agrupación de servicios por categoría **
   const serviceOptionsGrouped = useMemo(() => {
-      return serviceRecords.reduce((acc, service) => {
+      const servicesToGroup = bookingForm.service.length > 1 ? serviceSuggestions : serviceRecords;
+      if (!servicesToGroup) return {}; // Defensive check
+      return servicesToGroup.reduce((acc, service) => {
           const category = service.category || 'Sin Categoría';
           if (!acc[category]) {
               acc[category] = [];
@@ -283,45 +387,20 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
           acc[category].push(service);
           return acc;
       }, {} as Record<string, ServiceRecord[]>);
-  }, [serviceRecords]);
+  }, [serviceRecords, serviceSuggestions, bookingForm.service]);
   
-  // **********************************************
-  // Lógica de Sugerencias de Clientes
-  // **********************************************
-  useEffect(() => {
-    const fetchClients = async () => {
-        const { data: clientsData, error } = await supabase
-            .from("clients")
-            .select("nombre, nombre_comercial, celular, telefono, numberc");
-
-        if (error) {
-            console.error("Error fetching clients for suggestions:", error);
-            return;
-        }
-
-        if (clientsData) {
-            const normalizedClients: ClientRecord[] = clientsData.map((c: any) => ({
-                nombre: c.nombre || c.nombre_comercial || '',
-                celular: String(c.celular || c.telefono || c.numberc || '').replace(/\D/g, '') || null,
-                numberc: c.numberc || c.celular || c.telefono || null,
-            })).filter(c => c.nombre || c.celular);
-            setClientRecords(normalizedClients);
-        }
-    };
-    fetchClients();
-  }, []);
-
   const suggestionOptions = useMemo(() => {
+    if (!clientSuggestions) return []; // Use clientSuggestions here
     const nameQuery = bookingForm.customer.toLowerCase().trim();
     const phoneQuery = bookingForm.phone.replace(/\D/g, '').trim(); 
     
-    const minLengthRequired = nameQuery.length >= 3 || phoneQuery.length >= 3;
-    if (!minLengthRequired) return [];
+    // Min length check is now handled by the useEffect for fetching clientSuggestions
+    // if (!minLengthRequired) return [];
 
     const suggestions: { display: string, name: string, phone: string }[] = [];
     const addedPhones = new Set<string>();
 
-    clientRecords.forEach(c => {
+    clientSuggestions.forEach(c => { // Iterate over clientSuggestions
         const primaryPhone = c.celular as string; 
         const displayName = c.nombre;
 
@@ -342,7 +421,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     });
 
     return suggestions;
-  }, [clientRecords, bookingForm.customer, bookingForm.phone]);
+  }, [clientSuggestions, bookingForm.customer, bookingForm.phone]);
 
   const handleSuggestionSelect = (inputValue: string) => {
     const selectedSuggestion = suggestionOptions.find(o => o.display === inputValue);
@@ -373,7 +452,7 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
     const normalizedInputPhone = inputValue.replace(/\D/g, '').trim();
     setBookingForm(prev => ({ ...prev, phone: inputValue }));
 
-    const matchingClient = clientRecords.find(c => c.celular === normalizedInputPhone);
+    const matchingClient = (clientRecords || []).find(c => c.celular === normalizedInputPhone);
 
     if (matchingClient && matchingClient.nombre && matchingClient.nombre !== bookingForm.customer) {
         setBookingForm(prev => ({
@@ -386,12 +465,11 @@ export function AgendaBoard({ externalBookingSignal, renderCalendarShell = true,
   // Handler para actualizar precio y duración al seleccionar un servicio
   const handleServiceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const selectedService = e.target.value;
-      const matchingService = serviceRecords.find(s => s.Servicio === selectedService);
-
-      setBookingForm(prev => ({ 
-          ...prev, 
+      const matchingService = serviceRecordMap.get(selectedService); // Use serviceRecordMap
+      setBookingForm(prev => ({
+          ...prev,
           service: selectedService,
-          price: matchingService?.Precio ?? 0, 
+          price: matchingService?.Precio ?? 0,
       }));
   };
 
@@ -473,7 +551,7 @@ useEffect(() => {
       return;
     };
     
-    const matchedService = serviceRecords.find(s => s.Servicio === selectedAppointment.servicio);
+    const matchedService = (serviceRecords || []).find(s => s.Servicio === selectedAppointment.servicio);
 
     setEditAppointment({
         ...selectedAppointment,
@@ -483,12 +561,16 @@ useEffect(() => {
 
   }, [selectedAppointment, serviceRecords]);
 
-  const serviceOptions = useMemo(() => Array.from(new Set(appointmentList.map((a) => a.servicio))), [appointmentList]);
+  const serviceOptions = useMemo(() => {
+    if (!appointmentList) return []; // Defensive check
+    return Array.from(new Set(appointmentList.map((a) => a.servicio)));
+  }, [appointmentList]);
 
   // Lógica de Filtrado de Citas usando el array de estados seleccionados
   const filteredAppointments = useMemo(
-    () =>
-      appointmentList.filter((appt) => {
+    () => {
+      if (!appointmentList) return []; // Defensive check
+      return appointmentList.filter((appt) => {
         const matchesService = serviceFilter === "ALL" || appt.servicio === serviceFilter;
         const matchesSpecialist = specialistFilter === "ALL" || appt.especialista === specialistFilter;
         
@@ -496,7 +578,8 @@ useEffect(() => {
         const okStatus = statusFilter.includes(appt.estado); 
         
         return matchesService && matchesSpecialist && okStatus;
-      }),
+      });
+    },
     [appointmentList, serviceFilter, specialistFilter, statusFilter]
   );
 
@@ -531,6 +614,7 @@ useEffect(() => {
   // Determinar qué especialistas mostrar en la vista "day"
   const dayViewSpecialists = useMemo(() => {
     if (viewMode !== 'day' || days.length === 0) return [];
+    if (!filteredAppointments) return []; // Defensive check
     
     const singleDay = days[0];
     
@@ -543,13 +627,14 @@ useEffect(() => {
     ).sort();
 
     if (specialistFilter !== 'ALL') {
-        if (!specialists.includes(specialistFilter)) {
+        // Si hay un filtro, solo mostrar ese especialista si existe, o forzarlo a mostrar.
+        if (specialists.length === 0 || (specialists.length === 1 && specialists[0] !== specialistFilter)) {
             specialists = [specialistFilter];
         } else {
-            specialists = [specialistFilter];
+            specialists = specialists.filter(s => s === specialistFilter);
         }
     } else if (specialists.length === 0) {
-        specialists = specialistOptions;
+        specialists = specialistOptions; // Si no hay filtro y no hay citas, mostrar todos los especialistas.
     }
     
     return specialists;
@@ -566,6 +651,7 @@ useEffect(() => {
   // Nuevo: Columnas para la vista de Semana (Día + Especialista)
   const weeklySpecialistGroups = useMemo(() => {
       if (viewMode !== 'week' || days.length === 0) return [];
+      if (!filteredAppointments) return []; // Defensive check
       
       return days.map(day => {
           let specialistsForDay = Array.from(
@@ -630,11 +716,9 @@ useEffect(() => {
   };
 
   const closeBooking = () => {
-    setBookingForm((prev) => ({ ...prev, open: false }));
-    if (onBookingClose && !renderCalendarShell) {
-      onBookingClose();
-    }
-  };
+  setBookingForm((prev) => ({ ...prev, open: false }));
+};
+
 
   const updateAppointment = async (id: Appointment["id"], updater: (appt: Appointment) => Partial<Appointment>) => {
     const existing = appointmentList.find(a => a.id === id);
@@ -773,9 +857,17 @@ useEffect(() => {
     // Comprobar que fecha y hora existan antes de concatenar
     const f = editAppt.fecha || formatDateISO(new Date());
     const h = editAppt.hora || "09:00";
-    const appointmentDate = new Date(`${f}T${h}:00`).toISOString();
 
-    const updatedAppt: Appointment = { ...editAppt, price: Number(editAppt.price), duration: Number(editAppt.duration), appointment_at: appointmentDate };
+    const [year, month, day] = f.split('-').map(Number);
+    const [hours, minutes] = h.split(':').map(Number);
+    
+    // Crear una fecha en UTC a partir de los componentes locales, para que .toISOString() no aplique el offset local del servidor.
+    const appointmentDateISO =
+    `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` +
+    `T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+
+
+    const updatedAppt: Appointment = { ...editAppt, price: Number(editAppt.price), duration: Number(editAppt.duration), appointment_at: appointmentDateISO };
     
     // OBTENER EL COLOR ACTUALIZADO DE LA ESPECIALISTA ANTES DE GUARDAR EN EL ESTADO
     const normalizedUpdatedAppt = getNormalizedAppointment(updatedAppt); 
@@ -788,7 +880,7 @@ useEffect(() => {
         return;
     }
     setAppointmentList((prev) => prev.map((appt) => (appt.id === normalizedUpdatedAppt.id ? normalizedUpdatedAppt : appt)));
-    setSelectedAppointment(normalizedUpdatedAppt);
+    setSelectedAppointment(null);
     setEditAppointment(null);
     await fetchAppointments(); 
 
@@ -798,10 +890,18 @@ useEffect(() => {
     event.preventDefault();
 
     // Obtener la duración del servicio seleccionado para enviar a la BD
-    const selectedService = serviceRecords.find(s => s.Servicio === bookingForm.service);
+    const selectedService = (serviceRecords || []).find(s => s.Servicio === bookingForm.service);
     const serviceDuration = selectedService?.duracion ?? 60; // Default to 60 min if not found
 
-    const appointmentDate = new Date(`${bookingForm.date}T${bookingForm.time}:00`).toISOString();
+    const [year, month, day] = bookingForm.date.split("-").map(Number);
+    const [hours, minutes] = bookingForm.time.split(":").map(Number);
+
+    // Fecha LOCAL, sin UTC
+    const appointmentDateISO =
+      `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` +
+      `T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+
+
     // NEW: Obtener el color del mapa de especialistas
     const specialistColor = specialistColorMap.get(bookingForm.specialist) ?? '#94a3b8';
 
@@ -815,7 +915,7 @@ useEffect(() => {
       date: bookingForm.date, 
       time: bookingForm.time,
       location: bookingForm.location,
-      appointment_at: appointmentDate,
+      appointment_at: appointmentDateISO,
       sede: bookingForm.location,
       notas: bookingForm.notes,
       estado: 'Nueva reserva creada' as AppointmentStatus, 
@@ -863,17 +963,21 @@ useEffect(() => {
   return (
     <>
       <datalist id="services-list">
-          {Object.entries(serviceOptionsGrouped).map(([category, services]) => (
-              <optgroup key={category} label={category}>
-                  {services.map((s) => (
-                      <option key={s.SKU} value={s.Servicio} />
-                  ))}
-              </optgroup>
-          ))}
+        {Object.entries(serviceOptionsGrouped).map(([category, services]) => (
+          <optgroup key={category} label={category}>
+            {services.map((s) => (
+              <option
+                key={s.SKU}
+                value={s.Servicio}
+                label={`$${s.Precio.toLocaleString()} — ${s.Servicio}`}
+              />
+            ))}
+          </optgroup>
+        ))}
       </datalist>
+
       {renderCalendarShell ? (
         <div className="fixed inset-0 flex flex-col overflow-hidden bg-white dark:bg-zinc-950 z-50">
-
           {/* Header del Calendario */}
           <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-gradient-to-r from-white via-indigo-50 to-white px-4 py-3 text-sm dark:border-zinc-800 dark:from-zinc-900 dark:via-zinc-900/60 dark:to-zinc-900">
             <div className="flex items-center gap-2">
@@ -1405,10 +1509,9 @@ useEffect(() => {
                   }
                 >
                   <option value="">Seleccionar Especialista</option>
-                  {specialistRecords.map((u) => (
-                      <option key={u.id} value={u.name}>{u.name}</option>
-                  ))}
-                </select>
+                                        {(specialistRecords || []).map((u) => (
+                                            <option key={u.id} value={u.name}>{u.name}</option>
+                                        ))}                </select>
 
                 <label className="col-span-2 text-xs font-semibold text-zinc-500">
                   Servicio
@@ -1420,7 +1523,7 @@ useEffect(() => {
                   value={editAppointment?.servicio || ''}
                   onChange={(e) => {
                     const newServiceName = e.target.value;
-                    const matchedService = serviceRecords.find(s => s.Servicio.trim().toLowerCase() === newServiceName.trim().toLowerCase());
+                    const matchedService = (serviceRecords || []).find(s => s.Servicio.trim().toLowerCase() === newServiceName.trim().toLowerCase());
                     setEditAppointment((prev) => ({
                         ...prev!,
                         servicio: newServiceName,
@@ -1623,7 +1726,11 @@ useEffect(() => {
                       required
                       list="services-list"
                       className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 bg-white"
-                      placeholder="Escribe o selecciona un servicio..."
+                      placeholder={
+                        Object.keys(serviceOptionsGrouped).length > 0
+                          ? "Escribe o selecciona un servicio..."
+                          : "No hay servicios disponibles"
+                      }
                       value={bookingForm.service}
                       onChange={handleServiceChange} 
                   />
@@ -1639,10 +1746,16 @@ useEffect(() => {
                       value={bookingForm.specialist}
                       onChange={(e) => setBookingForm({ ...bookingForm, specialist: e.target.value })}
                   >
-                      <option value="">Seleccionar Especialista</option>
-                      {specialistRecords.map((u) => (
-                          <option key={u.id} value={u.name}>{u.name}</option>
-                      ))}
+                      {(specialistRecords || []).length > 0 ? (
+                        <>
+                          <option value="">Seleccionar Especialista</option>
+                          {(specialistRecords || []).map((u) => (
+                              <option key={u.id} value={u.name}>{u.name}</option>
+                          ))}
+                        </>
+                      ) : (
+                        <option value="" disabled>No hay especialistas disponibles</option>
+                      )}
                   </select>
               </div>
 
@@ -1660,8 +1773,8 @@ useEffect(() => {
                   />
                   <p className="mt-1 text-xs text-gray-500">
                       Precio sugerido: 
-                      {serviceRecords.find(s => s.Servicio === bookingForm.service)?.Precio 
-                       ? `$${serviceRecords.find(s => s.Servicio === bookingForm.service)!.Precio.toLocaleString()} `
+                      {(serviceRecords || []).find(s => s.Servicio === bookingForm.service)?.Precio 
+                       ? `$${(serviceRecords || []).find(s => s.Servicio === bookingForm.service)!.Precio.toLocaleString()} `
                        : '$0'}
                   </p>
               </div>

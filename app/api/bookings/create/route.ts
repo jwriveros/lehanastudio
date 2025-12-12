@@ -138,15 +138,22 @@ export async function POST(request: Request) {
     // Usamos 'es-ES' ya que el formato de fecha del Confirmar node es como '17 de Febrero de 2025'
     const dateStr = apptDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
     
+    // Formatear la hora a AM/PM
+    const [hours, minutes] = time.split(':').map(Number);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const formattedHours = hours % 12 || 12; // Convertir 0 a 12 para medianoche/mediodía
+    const formattedTime = `${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+    
     // Construir el payload que coincide con lo que el n8n flow espera (acción: CREATE y campos de datos)
     const whatsappPayload = {
         action: "CREATE", // Clave para que el nodo Switch lo redirija a 'Confirmar'
         customerPhone: `+${normalizedCelular}`, 
         customerName: cliente,
         formattedDate: dateStr, // Requerido por el nodo Confirmar
-        time: time,             // Requerido por el nodo Confirmar
+        time: formattedTime,    // Requerido por el nodo Confirmar
         location: location,
         service: service,
+        specialist: specialist, // Añadir el especialista al payload
         price: price,           
         appointmentId: appointmentData.id,
     };

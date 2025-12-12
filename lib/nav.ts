@@ -11,6 +11,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "support", label: "Soporte", emoji: "💬", href: "/support" },
   { id: "business", label: "Mi negocio", emoji: "🏢", href: "/business" },
   { id: "dashboard", label: "Dashboard", emoji: "📊", href: "/dashboard" },
+  { id: "agenda", label: "Agenda", emoji: "🗓️", href: "/agenda" }, // Added Agenda item
   { id: "settings", label: "Ajustes", emoji: "⚙️", href: "/settings" },
 ];
 
