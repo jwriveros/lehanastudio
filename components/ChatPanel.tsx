@@ -618,7 +618,7 @@ const filteredThreads = threads.filter((t) => {
 
             {/* 📱 Vista móvil: SOLO el chat seleccionado */}
             {showMobileChat && currentChat ? (
-              <div className="absolute inset-0 z-10 flex flex-col bg-white overflow-hidden h-full min-h-0"> {/* Usamos absolute inset-0 para la vista completa */}
+              <div className="absolute inset-0 z-10 flex flex-col bg-white overflow-hidden"> {/* Usamos absolute inset-0 para la vista completa */}
                 <div className="flex items-center justify-between border-b p-4 bg-white shadow-sm">
                   
                   {/* Botón de Atrás y Título */}
