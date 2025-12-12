@@ -959,7 +959,7 @@ useEffect(() => {
 
           {/* Cuerpo del Calendario */}
           {viewMode === "month" ? (
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-auto overscroll-x-none">
               <div className="grid min-h-[520px] grid-cols-7 gap-3 p-4 sm:p-6">
                 {loading ? (
                     <p className="col-span-7 text-center py-12 text-lg text-indigo-500">Cargando Agenda...</p>
@@ -998,7 +998,7 @@ useEffect(() => {
             </div>
           ) : (
             /* ------------------------- VISTA DIA / SEMANA (GRID) -------------------------- */
-            <div className="relative flex-1 overflow-auto bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-950 dark:to-zinc-900">
+            <div className="relative flex-1 overflow-auto overscroll-x-none bg-gradient-to-b from-white to-zinc-50 dark:from-zinc-950 dark:to-zinc-900">
               {viewMode === 'week' ? (
                  /* ------------------------- VISTA SEMANA (ADAPTADA A LA IMAGEN) -------------------------- */
                 <div className="min-w-full"> {/* Elimina el scroll horizontal forzado */}
