@@ -1,12 +1,13 @@
 // jwriveros/lehanastudio/lehanastudio-96f5232a8f8811af1eab69428dde275c2bc1a958/components/ChatPanel.tsx
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { isStaffMessage, getSenderRole, normalizePhone } from "@/lib/chatUtils";
 
 type Tab = "active" | "abandoned" | "reservations";
 
-type ChatStatus =
+export type ChatStatus =
   | "active"
   | "new"
   | "bot_active"
@@ -14,7 +15,7 @@ type ChatStatus =
   | "pending_agent"
   | "resolved";
 
-type ChatUser = {
+export type ChatUser = {
   id: string;
   cliente: string;
   phone: string;
@@ -25,35 +26,25 @@ type ChatUser = {
 };
 
 
-type ChatMessage = {
+export type ChatMessage = {
   id?: number;
   from: "client" | "staff";
   text: string;
   created_at: string;
 };
 
-// ---------- Helpers de remitente ----------
-const isStaffMessage = (m: any) =>
-  m.sender_role === "staff" ||
-  m.sender_role === "agent" ||
-  m.direction === "outbound";
 
-const getSenderRole = (m: any): "client" | "staff" =>
-  isStaffMessage(m) ? "staff" : "client";
 
-// ---------- Helper de normalización de teléfono ----------
-const normalizePhone = (phone: any) =>
-  String(phone || "")
-    .replace(/\D/g, "") // quitar todo lo que no es número
-    .replace(/^57/, "57"); // dejamos 57 al inicio si está, solo limpiamos símbolos
+interface ChatPanelProps {
+}
 
 export function ChatPanel() {
   const [tab, setTab] = useState<Tab>("active");
-  const [threads, setThreads] = useState<ChatUser[]>([]);
+  const [threads, setThreads] = useState<ChatUser[]>([]); // Initialize as empty array
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
-  const [loadingThreads, setLoadingThreads] = useState(true);
+  const [loadingThreads, setLoadingThreads] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   // --- MODO MÓVIL (solo vista tipo WhatsApp) ---
   const [isMobileView, setIsMobileView] = useState(false);
@@ -61,12 +52,51 @@ export function ChatPanel() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // cache de clientes disponible para realtime
-  const [clientCache, setClientCache] = useState<Map<string, string>>(
-    () => new Map()
-  );
+  // Fetch threads function
+  const fetchThreads = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoadingThreads(true);
+    const { data: chatSessions, error: sessionsError } = await supabase
+      .from("chat_sessions")
+      .select("*")
+      .order("updated_at", { ascending: false });
 
-  // ---------------------- 1. Cargar lista de hilos (CORREGIDO PARA INCLUIR PENDING_AGENT) ----------------------
+    if (sessionsError) {
+      console.error("Error fetching chat sessions:", sessionsError.message || JSON.stringify(sessionsError));
+      if (showLoading) setLoadingThreads(false);
+      return;
+    }    let fetchedThreads: ChatUser[] = [];
+
+    if (chatSessions && chatSessions.length > 0) {
+      const phones = chatSessions.map((s: any) => s.client_phone);
+      const { data: clientsData } = await supabase
+        .from("clients")
+        .select("nombre, numberc")
+        .in("numberc", phones);
+
+      const clientsMap = new Map<string, string>();
+      if (clientsData) {
+        clientsData.forEach((c: any) => {
+          if (c.numberc) clientsMap.set(c.numberc, c.nombre);
+        });
+      }
+
+      fetchedThreads = chatSessions.map((session: any) => ({
+        id: session.client_phone,
+        cliente:
+          clientsMap.get(session.client_phone) ||
+          `Cliente (${session.client_phone})`,
+        phone: session.client_phone,
+        lastMessage: session.last_message || "",
+        unread: session.unread_count || 0,
+        status: session.status as ChatStatus,
+        lastActivity: session.updated_at,
+      }));
+    }
+
+    setThreads(fetchedThreads);
+    if (showLoading) setLoadingThreads(false);
+  }, []); // Empty dependency array as it only uses supabase and states set within the component, which are stable.
+  
   // Detectar si la vista es móvil
   useEffect(() => {
     const checkMobile = () => {
@@ -79,150 +109,10 @@ export function ChatPanel() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
+  // Initial fetch of threads on component mount
   useEffect(() => {
-    const fetchThreads = async () => {
-      setLoadingThreads(true);
-
-      // 1. Clientes
-      const { data: clientsData, error: clientsError } = await supabase
-        .from("clients")
-        .select("nombre, nombre_comercial, numberc, celular, telefono");
-
-      if (clientsError) {
-        console.error("Error cargando clients:", clientsError);
-      }
-
-      const cache = new Map<string, string>();
-
-      if (clientsData) {
-        clientsData.forEach((c: any) => {
-          const rawPhone =
-            c.numberc ??
-            c.celular ??
-            c.telefono ??
-            null;
-
-          const phone = normalizePhone(rawPhone);
-          if (!phone) return;
-
-          const nombre: string =
-            c.nombre ||
-            c.nombre_comercial ||
-            "";
-
-          if (nombre) {
-            cache.set(phone, nombre);
-          }
-        });
-      }
-
-      // guardamos el cache para realtime
-      setClientCache(cache);
-
-      // 2. Mensajes para construir hilos (solo necesitamos los más recientes)
-      const { data: messagesData, error: messagesError } = await supabase
-        .from("mensajes")
-        .select("client_phone, content, message, created_at, sender_role")
-        .order("created_at", { ascending: false });
-
-      if (messagesError) {
-        console.error("Error cargando mensajes:", messagesError);
-      }
-
-      // 3. Obtener sesiones de chat (fuente de verdad del estado)
-      const { data: sessions, error: sessionsError } = await supabase
-        .from("chat_sessions")
-        .select("*");
-
-      if (sessionsError) console.error("Error cargando sesiones:", sessionsError);
-
-      // Convertir en map para acceso rápido:
-      const sessionMap = new Map<string, any>();
-      const threadsMap = new Map<string, ChatUser>(); // Usaremos este mapa para construir la lista final
-
-      if (sessions) {
-        sessions.forEach((s) => {
-          const phoneNorm = normalizePhone(s.client_phone);
-          if (!phoneNorm) return;
-          
-          sessionMap.set(phoneNorm, s); 
-
-          const realStatus = s.status as ChatStatus;
-
-          // CORRECCIÓN CLAVE: Inicializamos el hilo con data de la sesión (status, cliente)
-          if (realStatus !== 'resolved') {
-             const clientName = cache.get(phoneNorm) || cache.get(phoneNorm.slice(-10));
-             const finalName = clientName && clientName.length > 0 ? clientName : `+${phoneNorm}`;
-             
-             threadsMap.set(phoneNorm, {
-                id: phoneNorm,
-                cliente: finalName,
-                phone: phoneNorm,
-                lastMessage: s.last_menu_sent || "Esperando mensaje...", 
-                lastActivity: s.updated_at, 
-                unread: 0, 
-                status: realStatus, 
-             });
-          }
-        });
-      }
-
-
-      // 4. Recorrer los mensajes para ENRIQUECER los hilos y agregar nuevos si es necesario
-      if (messagesData) {
-        messagesData.forEach((m: any) => {
-          const phoneNorm = normalizePhone(m.client_phone);
-          if (!phoneNorm) return;
-
-          const session = sessionMap.get(phoneNorm);
-          const realStatus = session?.status as ChatStatus || "active" as ChatStatus;
-          const isClientMsg = getSenderRole(m) === "client";
-          
-          if (realStatus === 'resolved') return;
-
-          // Si el hilo ya existe (lo agregamos desde sessions)
-          if (threadsMap.has(phoneNorm)) {
-            const existing = threadsMap.get(phoneNorm)!;
-            
-            // Aseguramos que la última actividad y mensaje sea del mensaje más reciente
-            // Usamos m.created_at ya que messagesData está ordenado descendente
-            if (m.created_at > existing.lastActivity) {
-                existing.lastMessage = m.content || m.message || "";
-                existing.lastActivity = m.created_at;
-                // Si el último mensaje es del cliente, marcamos como 1 no leído (luego Realtime lo acumula)
-                existing.unread = isClientMsg ? 1 : 0; 
-            }
-
-          } else {
-            // Si el hilo no existe (es un hilo muy nuevo sin sesión o que el default debe ser 'active')
-            const clientName = cache.get(phoneNorm) || cache.get(phoneNorm.slice(-10));
-            const finalName = clientName && clientName.length > 0 ? clientName : `+${phoneNorm}`;
-
-            threadsMap.set(phoneNorm, {
-                id: phoneNorm,
-                cliente: finalName,
-                phone: phoneNorm,
-                lastMessage: m.content || m.message || "",
-                lastActivity: m.created_at,
-                unread: isClientMsg ? 1 : 0,
-                status: realStatus, 
-            });
-          }
-        });
-      }
-
-
-      const list = Array.from(threadsMap.values()).sort((a, b) =>
-        a.lastActivity > b.lastActivity ? -1 : 1
-      );
-
-      setThreads(list);
-
-      setLoadingThreads(false);
-    };
-
     fetchThreads();
-  }, [activeId]);
+  }, []);
 
   // ---------------------- 2. Realtime lista (unread + nuevos hilos) ----------------------
   useEffect(() => {
@@ -230,66 +120,66 @@ export function ChatPanel() {
       .channel("mensajes_global_panel")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "mensajes" },
+        { event: "*", schema: "public", table: "mensajes" },
         (payload) => {
-          const n = payload.new as any;
-          const phoneNorm = normalizePhone(n.client_phone);
-          if (!phoneNorm) return;
-
-          setThreads((prev) => {
-            const exists = prev.find((t) => t.id === phoneNorm);
-            const isClientMsg = getSenderRole(n) === "client";
-
-            const clientName =
-              clientCache.get(phoneNorm) ||
-              clientCache.get(phoneNorm.slice(-10));
-
-            const finalName =
-              clientName && clientName.length > 0
-                ? clientName
-                : `Cliente (${phoneNorm})`;
-
-            // nuevo hilo
-            if (!exists) {
-              return [
-                {
-                  id: phoneNorm,
-                  cliente: finalName,
-                  phone: phoneNorm,
-                  lastMessage: n.content || n.message,
-                  lastActivity: n.created_at,
-                  unread: isClientMsg ? 1 : 0,
-                  status: "active" as ChatStatus,
-                },
-                ...prev,
-              ];
-            }
-
-            // actualizar hilo existente
-            const updated = prev.map((t) =>
-              t.id === phoneNorm
-                ? {
-                    ...t,
-                    cliente: finalName, // por si ahora sí tenemos el nombre
-                    lastMessage: n.content || n.message,
-                    lastActivity: n.created_at,
-                    unread: isClientMsg ? t.unread + 1 : t.unread,
-                  }
-                : t
-            );
-
-            return updated.sort((a, b) =>
-              a.lastActivity > b.lastActivity ? -1 : 1
-            );
-          });
+          console.log("CAMBIO EN MENSAJES:", payload);
+          fetchThreads(false); // Re-fetch all threads silently
         }
       )
       .subscribe();
 
+    // New Realtime listener for chat_sessions table status changes
+    const sessionStatusChannel = supabase
+      .channel("chat_sessions_status_panel")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "chat_sessions" },
+        (payload) => {
+          const updatedSession = payload.new as any;
+          const phoneNorm = normalizePhone(updatedSession.client_phone);
+          if (!phoneNorm) return;
+
+          setThreads((prev) =>
+            prev.map((thread) =>
+              thread.id === phoneNorm
+                ? {
+                    ...thread,
+                    status: updatedSession.status as ChatStatus,
+                    lastActivity: updatedSession.updated_at || thread.lastActivity,
+                  }
+                : thread
+            )
+          );
+        }
+      )
+      .subscribe();
+    
+    // New Realtime listener for booking_request table changes
+    const bookingRequestChannel = supabase
+      .channel("booking-request-updates")
+      .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "booking_request",
+      },
+      (payload) => {
+        console.log("CAMBIO EN RESERVACIONES:", payload);
+
+        // vuelve a cargar las reservas
+        fetchThreads(false);
+      }
+    )
+    .subscribe();
+
+
     return () => {
       supabase.removeChannel(globalChannel);
+      supabase.removeChannel(sessionStatusChannel); // Cleanup new channel
+      supabase.removeChannel(bookingRequestChannel); // Cleanup booking request channel
     };
-  }, [clientCache]);
+  }, [fetchThreads]); // Removed clientCache as it was unused
 
   // ---------------------- 3. Realtime del chat activo ----------------------
   useEffect(() => {

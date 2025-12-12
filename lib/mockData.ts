@@ -1,11 +1,13 @@
 export type Role = "ADMIN" | "SPECIALIST" | "STAFF";
 
 export type AppointmentStatus =
-  | "PENDING"
-  | "CONFIRMED"
-  | "CANCELLED"
-  | "NO SHOW"
-  | "COMPLETED";
+  | "Cita pendiente"
+  | "Cita confirmada"
+  | "Cita pagada"
+  | "Cita cancelada"
+  | "No presentada"
+  | "Nueva reserva creada";
+
 
 export const sampleUsers = [
   {
@@ -29,12 +31,14 @@ export const sampleUsers = [
 ];
 
 export const appointmentStatuses: AppointmentStatus[] = [
-  "PENDING",
-  "CONFIRMED",
-  "CANCELLED",
-  "NO SHOW",
-  "COMPLETED",
+  "Cita pendiente",
+  "Cita confirmada",
+  "Cita pagada",
+  "Cita cancelada",
+  "No presentada",
+  "Nueva reserva creada",
 ];
+
 
 export const appointments = [
   {

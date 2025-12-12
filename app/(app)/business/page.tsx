@@ -74,6 +74,10 @@ export default function BusinessPage() {
   const [services, setServices] = useState<ServiceForm[]>([]);
   const [specialists, setSpecialists] = useState<SpecialistForm[]>([]);
 
+  const [currentPage, setCurrentPage] = useState(0);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalClientCount, setTotalClientCount] = useState(0);
+
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [mode, setMode] = useState<"create" | "edit">("create");
   const [formTab, setFormTab] = useState<TabKey>("clients");
@@ -147,9 +151,18 @@ export default function BusinessPage() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      
+      const startIndex = currentPage * itemsPerPage;
+      const endIndex = startIndex + itemsPerPage - 1;
 
-      const { data: clientsData } = await supabase.from("clients").select("*");
-      if (clientsData) setClients(clientsData.map(mapDBToClient));
+      const { data: clientsData, count } = await supabase
+        .from("clients")
+        .select("*", { count: "exact" })
+        .range(startIndex, endIndex);
+      if (clientsData) {
+        setClients(clientsData.map(mapDBToClient));
+        setTotalClientCount(count || 0);
+      }
 
       const { data: servicesData } = await supabase.from("services").select("*");
       if (servicesData) setServices(servicesData.map(mapDBToService));
@@ -161,7 +174,7 @@ export default function BusinessPage() {
     };
 
     loadData();
-  }, []);
+  }, [currentPage, itemsPerPage]); // Re-run effect when page or items per page changes
 
   // Crear cliente
   const handleCreateCliente = async (data: ClientePayload) => {
@@ -237,16 +250,23 @@ export default function BusinessPage() {
     }
   };
 
+  const totalPages = useMemo(() => {
+    return Math.ceil(totalClientCount / itemsPerPage);
+  }, [totalClientCount, itemsPerPage]);
+
+
   // Filtrado
   const filteredRows = useMemo(() => {
     const t = search.toLowerCase();
 
-    if (activeTab === "clients")
+    if (activeTab === "clients") {
+      // Clients are already paginated by the API, so we only need to filter the current page
       return clients.filter(
         (c) =>
           c.nombre.toLowerCase().includes(t) ||
           c.celular.includes(t)
       );
+    }
 
     if (activeTab === "services")
       return services.filter(
@@ -461,7 +481,7 @@ export default function BusinessPage() {
         </div>
 
         {/* TABLA */}
-        <div className="overflow-x-auto rounded-2xl border border-zinc-100 bg-white/90 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/30">
+        <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-2xl border border-zinc-100 bg-white/90 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/30">
           {loading ? (
             <p className="p-4 text-sm text-indigo-500">Cargando datos...</p>
           ) : (
@@ -506,6 +526,49 @@ export default function BusinessPage() {
             <p className="p-4 text-sm text-zinc-500">
               Sin resultados para esta búsqueda.
             </p>
+          )}
+
+          {/* PAGINATION UI */}
+          {activeTab === "clients" && (
+            <div className="flex items-center justify-between p-4 border-t border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+                <span>Mostrar</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(0); // Reset to first page when changing items per page
+                  }}
+                  className="rounded-md border border-zinc-200 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  <option value={10}>10</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={1000}>1000</option>
+                </select>
+                <span>clientes por página</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+                  disabled={currentPage === 0}
+                  className="rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  Anterior
+                </button>
+                <span className="text-sm text-zinc-600 dark:text-zinc-300">
+                  Página {currentPage + 1} de {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))}
+                  disabled={currentPage + 1 >= totalPages}
+                  className="rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </section>
