@@ -6,7 +6,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("app_users")
     .select("id, name, color")
-    .or("role.eq.ESPECIALISTA,role.eq.SPECIALIST")
+    .or("role.eq.ESPECIALISTA")
     .order("name");
 
   if (error) {

@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function createSupabaseServerClient() {
-  const cookieStore = await cookies(); // ✅ OBLIGATORIO en Next 16
+  const cookieStore = await cookies(); // ✅ CORRECTO en tu versión
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +16,7 @@ export async function createSupabaseServerClient() {
           try {
             cookieStore.set({ name, value, ...options });
           } catch {
-            // Ignorar en Server Components / Route Handlers
+            // Server Components / Route Handlers
           }
         },
         remove(name: string, options: CookieOptions) {
