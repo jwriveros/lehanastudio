@@ -99,46 +99,59 @@ function parseTimeToMinutes(time: string) {
 }
 
 // CORRECCIÓN DE ERROR "split of null": Manejo seguro de nulos
+const TZ = "America/Bogota";
+
+function getTimePartsInTZ(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const hh = Number(parts.find(p => p.type === "hour")?.value ?? "0");
+  const mm = Number(parts.find(p => p.type === "minute")?.value ?? "0");
+  return { hh, mm };
+}
+
+function getDateISOInTZ(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const y = parts.find(p => p.type === "year")?.value ?? "1970";
+  const m = parts.find(p => p.type === "month")?.value ?? "01";
+  const d = parts.find(p => p.type === "day")?.value ?? "01";
+  return `${y}-${m}-${d}`;
+}
+
+// ✅ YA NO DEPENDE del timezone del servidor
 function getAppointmentDetails(isoString: string | null) {
   if (!isoString) {
-    return {
-      date: new Date(),
-      timeString: "--:--",
-      time24: "",
-      minutes: 0,
-      dateISO: "",
-    };
+    return { date: new Date(), timeString: "--:--", time24: "", minutes: 0, dateISO: "" };
   }
 
   const date = new Date(isoString);
   if (isNaN(date.getTime())) {
-    return {
-      date: new Date(),
-      timeString: "--:--",
-      time24: "",
-      minutes: 0,
-      dateISO: "",
-    };
+    return { date: new Date(), timeString: "--:--", time24: "", minutes: 0, dateISO: "" };
   }
 
-  const dateISO = isoString.split("T")[0];
+  const { hh, mm } = getTimePartsInTZ(date);
+  const minutes = hh * 60 + mm;
 
-  // 🔴 CÁLCULO EN 24H (PARA POSICIÓN Y INPUT)
-  const h = date.getHours();
-  const m = date.getMinutes();
-  const minutes = h * 60 + m;
+  const time24 = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  const hour12 = hh % 12 === 0 ? 12 : hh % 12;
+  const ampm = hh >= 12 ? "PM" : "AM";
+  const timeString = `${hour12}:${String(mm).padStart(2, "0")} ${ampm}`;
 
-  const time24 = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-
-  // 🟢 SOLO PARA MOSTRAR
-  const timeString = date.toLocaleTimeString("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const dateISO = getDateISOInTZ(date);
 
   return { date, timeString, time24, minutes, dateISO };
 }
+
 
 
 
@@ -268,6 +281,23 @@ export function AgendaBoard({
   fetchClientSuggestions();
 }, [bookingForm.customer, bookingForm.phone]);
   useEffect(() => {
+    const fetchAllServices = async () => {
+      try {
+        const response = await fetch('/api/autocomplete/services'); // Call without 'q' to get all services
+        if (response.ok) {
+          const data = await response.json();
+          setServiceRecords(data);
+        } else {
+          console.error("Failed to fetch all services:", response.statusText);
+        }
+      } catch (error) {
+        console.error("Error fetching all services:", error);
+      }
+    };
+    fetchAllServices();
+  }, []); // Empty dependency array means this runs once on mount
+
+  useEffect(() => {
     const fetchSpecialists = async () => {
       try {
         const response = await fetch('/api/autocomplete/specialists');
@@ -288,14 +318,21 @@ export function AgendaBoard({
   }, []); // Fetch specialists only once on component mount
 
 
-  const serviceRecordMap = useMemo(() => {
-    // Combine initial service records with dynamic suggestions for the map
-    // Dynamic suggestions take precedence if available
-    const allServices = [...(initialServiceRecords || []), ...(serviceSuggestions || [])];
-    const uniqueServices = Array.from(new Map(allServices.map(s => [s.Servicio, s])).values());
-    if (!uniqueServices) return new Map(); // Defensive check
-    return new Map(uniqueServices.map(s => [s.Servicio, s]));
-  }, [initialServiceRecords, serviceSuggestions]);
+
+const serviceRecordMap = useMemo(() => {
+  const allServices = [...(initialServiceRecords || []), ...(serviceSuggestions || [])];
+  const uniqueServices = Array.from(
+    new Map(allServices.map(s => [s.Servicio, s])).values()
+  );
+
+  console.log("🧩 SERVICES RAW:", allServices);
+  console.log("🧩 SERVICES UNIQUE:", uniqueServices);
+
+  return new Map(
+    uniqueServices.map(s => [s.Servicio.trim().toUpperCase(), s])
+  );
+}, [initialServiceRecords, serviceSuggestions]);
+
 
   // 1. Crear un mapa para la búsqueda rápida de color por especialista.
   const specialistColorMap = useMemo(() => {
@@ -305,9 +342,27 @@ export function AgendaBoard({
 
   // 2. Definir una función utilitaria local para normalizar citas y establecer el color correcto.
   const getNormalizedAppointment = useCallback((appt: Appointment): Appointment => {
-    const matchedService = serviceRecordMap.get(appt.servicio);
-    const duration = appt.duration ?? matchedService?.duracion ?? 60;
-    const { dateISO, time24 } = getAppointmentDetails(appt.appointment_at);
+    const matchedService = serviceRecordMap.get(
+    appt.servicio?.trim().toUpperCase()
+  );
+
+  const serviceDurationRaw = matchedService?.duracion;
+  const serviceDuration = Number(serviceDurationRaw);
+
+  const safeServiceDuration =
+    Number.isFinite(serviceDuration) && serviceDuration > 0
+      ? serviceDuration
+      : undefined;
+
+  const apptDuration = Number(appt.duration);
+
+  const safeApptDuration =
+    Number.isFinite(apptDuration) && apptDuration > 0
+      ? apptDuration
+      : undefined;
+
+  const duration = safeServiceDuration ?? safeApptDuration ?? 60;
+   const { dateISO, time24 } = getAppointmentDetails(appt.appointment_at);
 
     const specialistColor = specialistColorMap.get(appt.especialista) ?? appt.bg_color ?? '#94a3b8';
     // Paid appointments are gray, otherwise use specialist color

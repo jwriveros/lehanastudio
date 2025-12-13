@@ -13,8 +13,7 @@ export async function GET(request: Request) {
       .from("services")
       .select("Servicio, SKU, Precio, duracion, category")
       .ilike("Servicio", `%${query}%`)
-      .order("Servicio", { ascending: true })
-      .limit(10);
+      .order("Servicio", { ascending: true });
 
     if (error) {
       console.error("Error fetching services:", error);
