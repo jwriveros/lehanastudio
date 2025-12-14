@@ -1,4 +1,4 @@
-import { calendar, CALENDAR_ID } from "@/lib/googleCalendar";
+import { calendar, CALENDAR_ID } from "lib/googleCalendar";
 
 export async function createAppointmentEvent({
   title,
