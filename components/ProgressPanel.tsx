@@ -1,6 +1,5 @@
 import Image from "next/image";
 
-import { progressEntries } from "@/lib/mockData";
 
 export function ProgressPanel() {
   return (

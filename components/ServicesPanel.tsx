@@ -1,4 +1,3 @@
-import { services } from "@/lib/mockData";
 
 export function ServicesPanel() {
   return (

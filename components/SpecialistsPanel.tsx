@@ -1,4 +1,3 @@
-import { appointments, sampleUsers } from "@/lib/mockData";
 
 export function SpecialistsPanel() {
   return (

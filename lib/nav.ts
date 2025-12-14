@@ -1,7 +1,8 @@
-import type { Role } from "./mockData";
+// lib/nav.ts
+import type { Role } from "./sessionStore";
 
 export type NavItem = {
-  id: "support" | "business" | "dashboard" | "settings";
+  id: "support" | "business" | "dashboard" | "settings" | "agenda";
   label: string;
   emoji: string;
   href: string;
@@ -11,17 +12,13 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "support", label: "Soporte", emoji: "💬", href: "/support" },
   { id: "business", label: "Mi negocio", emoji: "🏢", href: "/business" },
   { id: "dashboard", label: "Dashboard", emoji: "📊", href: "/dashboard" },
-  { id: "agenda", label: "Agenda", emoji: "🗓️", href: "/agenda" }, // Added Agenda item
+  { id: "agenda", label: "Agenda", emoji: "🗓️", href: "/agenda" },
   { id: "settings", label: "Ajustes", emoji: "⚙️", href: "/settings" },
 ];
 
-export const navByRole = {
-    ADMIN: NAV_ITEMS, // El administrador ve todo
-    ESPECIALISTA: [ // Rutas para especialistas
-        NAV_ITEMS.find(item => item.href === '/dashboard')!,
-        NAV_ITEMS.find(item => item.href === '/agenda')!,
-        NAV_ITEMS.find(item => item.href === '/support')!,
-        // ... (otras rutas que quieras)
-    ],
-    STAFF: NAV_ITEMS.filter((item) => ["support", "dashboard"].includes(item.id)),
-  }
+export const navByRole: Record<Role, NavItem[]> = {
+  ADMIN: NAV_ITEMS,
+  ESPECIALISTA: NAV_ITEMS.filter((item) =>
+    ["dashboard", "agenda", "support"].includes(item.id)
+  ),
+};

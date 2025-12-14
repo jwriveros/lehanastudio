@@ -4,7 +4,7 @@ import { create } from "./zustand";
 import { supabase } from "./supabaseClient";
 
 // CORRECCIÓN: Aseguramos que el tipo Role incluye todos los valores de la DB
-export type Role = "ADMIN" | "SPECIALIST" | "STAFF" | "ESPECIALISTA"; // Agregamos ESPECIALISTA
+export type Role = "ADMIN" | "ESPECIALISTA"; // Agregamos ESPECIALISTA
 
 type Session = {
   id: string;     // ID de autenticación (UUID)

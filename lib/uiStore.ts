@@ -1,24 +1,26 @@
-
-import { create } from 'zustand';
+// lib/uiStore.ts
+import { create } from "zustand";
 
 type UIState = {
-  isCalendarOpen: boolean;
-  isBookingModalOpen: boolean;
-  bookingSignal: number | null;
-  openCalendar: () => void;
-  closeCalendar: () => void;
-  openBookingModal: () => void;
-  closeBookingModal: () => void;
-  closeAllModals: () => void;
+  isReservationDrawerOpen: boolean;
+  reservationDrawerData: any | null;
+  openReservationDrawer: (data?: any) => void;
+  closeReservationDrawer: () => void;
 };
 
 export const useUIStore = create<UIState>((set) => ({
-  isCalendarOpen: false,
-  isBookingModalOpen: false,
-  bookingSignal: null,
-  openCalendar: () => set({ isCalendarOpen: true, isBookingModalOpen: false, bookingSignal: null }),
-  closeCalendar: () => set({ isCalendarOpen: false }),
-  openBookingModal: () => set(state => ({ isBookingModalOpen: true, bookingSignal: Date.now() })),
-  closeBookingModal: () => set({ isBookingModalOpen: false, bookingSignal: null }),
-  closeAllModals: () => set({ isCalendarOpen: false, isBookingModalOpen: false, bookingSignal: null }),
+  isReservationDrawerOpen: false,
+  reservationDrawerData: null,
+
+  openReservationDrawer: (data = null) =>
+    set({
+      isReservationDrawerOpen: true,
+      reservationDrawerData: data,
+    }),
+
+  closeReservationDrawer: () =>
+    set({
+      isReservationDrawerOpen: false,
+      reservationDrawerData: null,
+    }),
 }));

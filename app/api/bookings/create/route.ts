@@ -1,207 +1,86 @@
-// app/api/bookings/create/route.ts
-
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseClient"; 
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createAppointmentEvent } from "@/lib/calendarEvents";
 
-// --- CAMBIO CLAVE: Cambiar el webhook a la ruta estructurada 'app' ---
-// La URL es deducida de la URL anterior de 'crm-outgoing' y el path 'app' del JSON que proporcionaste.
-const N8N_STRUCTURED_WEBHOOK_URL = "https://n8n.srv1151368.hstgr.cloud/webhook/app"; 
+function addMinutes(dateISO: string, durationText: string | null) {
+  const minutes = Number(durationText);
 
-export async function POST(request: Request) {
-  const payload = await request.json();
-
-  if (!supabaseAdmin) {
-    return NextResponse.json({ 
-      error: "Error de Configuración: La clave SUPABASE_SERVICE_ROLE_KEY no está configurada."
-    }, { status: 500 });
+  if (!minutes || isNaN(minutes)) {
+    throw new Error("Duración inválida");
   }
 
-  // Desestructuramos para obtener los datos necesarios y EXCLUIR campos que causan el error.
-  // Extraemos service, specialist, price, date, time, location para el mensaje.
-  const { duration, notes, notas, cliente, celular, appointment_at, service, specialist, price, date, time, location, ...restOfPayload } = payload; 
+  const date = new Date(dateISO);
+  date.setMinutes(date.getMinutes() + minutes);
+  return date.toISOString();
+}
 
-  // Objeto de datos limpios para insertar en appointments
-  const appointmentPayload = {
-      ...restOfPayload,
+export async function POST(req: Request) {
+  try {
+    const supabase = await createSupabaseServerClient(); // 👈 AQUÍ
+
+    const body = await req.json();
+
+    const {
       cliente,
+      servicio,
+      especialista,
       celular,
       appointment_at,
-      servicio: service, // Usamos 'service' del payload del formulario para 'servicio' en la DB
-      especialista: specialist,
-      price: Number(price), 
-      is_paid: !!restOfPayload.is_paid,
-      // NOTA: 'duration', 'notes', y 'notas' han sido excluidos del payload de appointments.
-  };
-  
-  const normalizedCelular = String(celular).replace(/\D/g, '');
+      duration,
+      sede,
+      cantidad,
+    } = body;
 
-
-  try {
-    // **********************************************
-    // 1. VERIFICACIÓN DE CONFLICTOS DE HORARIO
-    // **********************************************
-    let warning = null;
-    const newAppointmentDate = new Date(appointment_at);
-    const newAppointmentEnd = new Date(newAppointmentDate.getTime() + duration * 60000);
-
-    const { data: existingAppointments } = await supabaseAdmin
-      .from('appointments')
-      .select('appointment_at, duration')
-      .eq('especialista', specialist)
-      .gte('appointment_at', new Date(newAppointmentDate.setHours(0, 0, 0, 0)).toISOString())
-      .lt('appointment_at', new Date(newAppointmentDate.setHours(23, 59, 59, 999)).toISOString());
-
-    if (existingAppointments) {
-      for (const existing of existingAppointments) {
-        const existingAppointmentDate = new Date(existing.appointment_at);
-        const existingAppointmentEnd = new Date(existingAppointmentDate.getTime() + existing.duration * 60000);
-
-        if (
-          (newAppointmentDate >= existingAppointmentDate && newAppointmentDate < existingAppointmentEnd) ||
-          (newAppointmentEnd > existingAppointmentDate && newAppointmentEnd <= existingAppointmentEnd)
-        ) {
-          warning = 'La especialista ya tiene una reserva en este horario.';
-          break;
-        }
-      }
-    }
-
-    // **********************************************
-    // 2. LÓGICA DE CREACIÓN/VERIFICACIÓN DE CLIENTE
-    // **********************************************
-    
-    // Buscar si el cliente ya existe por número de celular
-    const { data: existingClient } = await supabaseAdmin
-        .from('clients')
-        .select('nombre')
-        .or(`celular.eq.${normalizedCelular},numberc.eq.${normalizedCelular}`)
-        .limit(1)
-        .maybeSingle(); 
-
-    
-    // Si el cliente NO existe, crearlo con valores por defecto
-    if (!existingClient) {
-        const newClientData = {
-            nombre: cliente,
-            celular: normalizedCelular,
-            creado_desde: 'CRM_BOOKING',
-            tipo: 'Contacto', 
-            estado: 'Activo', 
-        };
-
-        const { error: clientInsertError } = await supabaseAdmin
-            .from('clients')
-            .insert([newClientData]);
-
-        if (clientInsertError) {
-             console.error(`DB WARNING: Client insertion failed for ${cliente}. Details:`, clientInsertError);
-        }
-    }
-
-
-    // **********************************************
-    // 3. LÓGICA DE CREACIÓN DE CITA
-    // **********************************************
-    
-    const { data: appointmentData, error: appointmentError } = await supabaseAdmin
-      .from('appointments')
-      .insert([appointmentPayload]) 
-      .select('id') 
+    // 1️⃣ Insertar cita
+    const { data: appointment, error } = await supabase
+      .from("appointments")
+      .insert({
+        cliente,
+        servicio,
+        especialista,
+        celular,
+        appointment_at,
+        duration,
+        sede,
+        cantidad,
+        estado: "Confirmada",
+      })
+      .select()
       .single();
 
-    if (appointmentError) {
-      console.error("DB Error: Appointment Insertion Failed.", appointmentError);
-      return NextResponse.json({ 
-        error: "Error al registrar la cita en la tabla 'appointments'.", 
-        details: appointmentError.message,
-        hint: "El error sugiere que falta una columna NOT NULL (ej. 'idx' o 'usuario') o hay un tipo de dato incorrecto en el payload. Revisa tu esquema de 'appointments'."
-      }, { status: 500 });
-    }
+    if (error) throw error;
 
-    // 4. Insertar el registro de la solicitud en 'booking_requests'
-    await supabaseAdmin
-      .from('booking_requests')
-      .insert([{ 
-          status: 'PENDING',
-          created_at: appointment_at || new Date().toISOString(), 
-          appointment_id: appointmentData.id,
-          client_phone: normalizedCelular,
-      }]);
-    
-    // **********************************************
-    // 5. LÓGICA DE ENVÍO DE CONFIRMACIÓN POR WHATSAPP (ESTRUCTURADO)
-    // **********************************************
-    let whatsappStatus = "NOT_SENT";
-    
-    // Formatear la fecha para el mensaje (el n8n espera 'formattedDate' como solo la fecha)
-    const apptDate = new Date(appointment_at);
-    // Usamos 'es-ES' ya que el formato de fecha del Confirmar node es como '17 de Febrero de 2025'
-    const dateStr = apptDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
-    
-    // Formatear la hora a AM/PM
-    const [hours, minutes] = time.split(':').map(Number);
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const formattedHours = hours % 12 || 12; // Convertir 0 a 12 para medianoche/mediodía
-    const formattedTime = `${formattedHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-    
-    // Construir el payload que coincide con lo que el n8n flow espera (acción: CREATE y campos de datos)
-    const whatsappPayload = {
-        action: "CREATE", // Clave para que el nodo Switch lo redirija a 'Confirmar'
-        customerPhone: `+${normalizedCelular}`, 
-        customerName: cliente,
-        formattedDate: dateStr, // Requerido por el nodo Confirmar
-        time: formattedTime,    // Requerido por el nodo Confirmar
-        location: location,
-        service: service,
-        specialist: specialist, // Añadir el especialista al payload
-        price: price,           
-        appointmentId: appointmentData.id,
-    };
-    
-    try {
-        // Enviar el payload estructurado al nuevo webhook
-        const n8nResponse = await fetch(N8N_STRUCTURED_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(whatsappPayload),
-        });
+    // 2️⃣ Calcular hora final
+    const endTime = addMinutes(
+      appointment.appointment_at,
+      appointment.duration
+    );
 
-        if (n8nResponse.ok) {
-            whatsappStatus = "SENT_TO_N8N_OK";
-        } else {
-            const errorText = await n8nResponse.text();
-            console.error(`Error de n8n al enviar WhatsApp: ${n8nResponse.status} - ${errorText}`);
-            whatsappStatus = `N8N_ERROR: ${n8nResponse.status}`;
-        }
-    } catch (e) {
-        console.error("Error de red al llamar a n8n para WhatsApp:", e);
-        whatsappStatus = "NETWORK_ERROR";
-    }
+    // 3️⃣ Crear evento en Google Calendar
+    const googleEventId = await createAppointmentEvent({
+      title: `Cita – ${appointment.servicio}`,
+      start: appointment.appointment_at,
+      end: endTime,
+      specialist: appointment.especialista,
+    });
 
-    // 6. Devolver la respuesta al cliente
-    const response: {
-      created: boolean;
-      status: string;
-      message: string;
-      whatsapp_status: string;
-      appointment_id: any;
-      warning?: string | null;
-    } = {
-      created: true,
-      status: "PENDING",
-      message: "Reserva agendada y cliente verificado/creado con éxito.",
-      whatsapp_status: whatsappStatus,
-      appointment_id: appointmentData.id,
-    };
+    // 4️⃣ Guardar google_event_id
+    await supabase
+      .from("appointments")
+      .update({ google_event_id: googleEventId })
+      .eq("id", appointment.id);
 
-    if (warning) {
-      response.warning = warning;
-    }
+    return NextResponse.json({
+      ok: true,
+      appointmentId: appointment.id,
+      googleEventId,
+    });
+  } catch (err: any) {
+    console.error("CREATE BOOKING ERROR:", err);
 
-    return NextResponse.json(response);
-
-  } catch (e: any) {
-    console.error("API Processing Error:", e);
-    return NextResponse.json({ error: "Internal server error.", details: e.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }

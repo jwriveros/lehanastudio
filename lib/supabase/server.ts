@@ -1,8 +1,13 @@
+// lib/supabase/server.ts
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+/**
+ * Crea un cliente de Supabase para Server Components y Route Handlers
+ * Compatible con cookies async (Next.js actual)
+ */
 export async function createSupabaseServerClient() {
-  const cookieStore = await cookies(); // ✅ CORRECTO en tu versión
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

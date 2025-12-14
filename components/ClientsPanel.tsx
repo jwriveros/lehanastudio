@@ -1,5 +1,3 @@
-import { appointments, clients, surveys } from "@/lib/mockData";
-
 export function ClientsPanel() {
   return (
     <section id="clients" className="space-y-4">

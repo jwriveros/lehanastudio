@@ -1,34 +1,30 @@
+// app/api/autocomplete/services/route.ts
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+const supabase = await createSupabaseServerClient();
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get("q") ?? "";
+  const q = searchParams.get("q")?.trim();
 
-  // ✅ OBLIGATORIO: await
-  const supabase = await createSupabaseServerClient();
-
-  try {
-    const { data, error } = await supabase
-      .from("services")
-      .select("Servicio, SKU, Precio, duracion, category")
-      .ilike("Servicio", `%${query}%`)
-      .order("Servicio", { ascending: true });
-
-    if (error) {
-      console.error("Error fetching services:", error);
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(data ?? []);
-  } catch (err) {
-    console.error("Unexpected error:", err);
-    return NextResponse.json(
-      { error: "An unexpected error occurred" },
-      { status: 500 }
-    );
+  // Evitar queries innecesarias
+  if (!q || q.length < 2) {
+    return NextResponse.json([]);
   }
+
+  const { data, error } = await supabase
+    .from("services")
+    .select("id, name")
+    .ilike("name", `%${q}%`)
+    .order("name", { ascending: true })
+    .limit(10);
+
+  if (error) {
+    console.error("Error fetching services:", error);
+    // No exponemos error al frontend
+    return NextResponse.json([], { status: 200 });
+  }
+
+  return NextResponse.json(data ?? []);
 }
