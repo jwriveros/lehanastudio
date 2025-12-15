@@ -1,5 +1,5 @@
 import moment from "moment";
-import { CalendarAppointment } from "./CalendarSection";
+import { CalendarAppointment } from "./types";
 
 export default function CalendarEvent({
   event,

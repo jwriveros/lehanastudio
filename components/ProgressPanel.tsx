@@ -1,29 +1,79 @@
+"use client";
+
 import Image from "next/image";
 
+/* ======================
+   TYPES
+====================== */
+type ProgressEntry = {
+  id: string;
+  appointment_id: string | number;
+  client_phone: string;
+  created_at: string;
+  notes: string;
+  images: string[];
+};
 
-export function ProgressPanel() {
+interface ProgressPanelProps {
+  progressEntries?: ProgressEntry[];
+}
+
+/* ======================
+   COMPONENT
+====================== */
+export default function ProgressPanel({
+  progressEntries,
+}: ProgressPanelProps) {
+  // ⛑️ Fallback seguro
+  const safeEntries: ProgressEntry[] = progressEntries ?? [];
+
   return (
     <section id="progress" className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Progreso del cliente</h2>
-          <p className="text-sm text-zinc-500">Fotos antes/después, firma del especialista y notas clínicas</p>
+          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+            Progreso del cliente
+          </h2>
+          <p className="text-sm text-zinc-500">
+            Fotos antes/después, firma del especialista y notas clínicas
+          </p>
         </div>
-        <button className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">Subir evidencia</button>
+        <button className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+          Subir evidencia
+        </button>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        {progressEntries.map((entry) => (
-          <article key={entry.id} className="rounded-2xl border border-zinc-100 bg-white/90 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        {safeEntries.length === 0 && (
+          <div className="text-sm text-zinc-400">
+            Aún no hay evidencias registradas.
+          </div>
+        )}
+
+        {safeEntries.map((entry) => (
+          <article
+            key={entry.id}
+            className="rounded-2xl border border-zinc-100 bg-white/90 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+          >
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Cita #{entry.appointment_id}</div>
-                <p className="text-sm text-zinc-500">{entry.client_phone}</p>
+                <div className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                  Cita #{entry.appointment_id}
+                </div>
+                <p className="text-sm text-zinc-500">
+                  {entry.client_phone}
+                </p>
               </div>
-              <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-100">{new Date(entry.created_at).toLocaleString()}</span>
+              <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-100">
+                {new Date(entry.created_at).toLocaleString()}
+              </span>
             </div>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">{entry.notes}</p>
-            <div className="mt-3 flex gap-2">
+
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              {entry.notes}
+            </p>
+
+            <div className="mt-3 flex gap-2 flex-wrap">
               {entry.images.map((img, index) => (
                 <Image
                   key={index}
@@ -35,9 +85,11 @@ export function ProgressPanel() {
                 />
               ))}
             </div>
+
             <p className="mt-2 text-xs text-zinc-500">
-              Guardar en `client_progress` con `storage` de Supabase. Incluye firma del especialista y PDF adjuntos según
-              necesidad.
+              Guardar en <code>client_progress</code> con{" "}
+              <code>storage</code> de Supabase. Incluye firma del especialista
+              y PDF adjuntos según necesidad.
             </p>
           </article>
         ))}

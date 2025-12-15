@@ -299,29 +299,54 @@ export default function ReservasChat() {
      UI
   ========================= */
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
+    <div className="
+        flex h-full min-h-0 flex-col
+        bg-white
+        shadow-[inset_-1px_0_0_rgba(0,0,0,0.06)]
+      ">
+
       {/* HEADER */}
-      <div className="shrink-0 border-b px-3 py-2 flex items-center justify-between">
+        <div
+          className="
+            shrink-0
+            px-3 py-2
+            flex items-center justify-between
+            bg-white
+            border-b border-zinc-200/60
+            backdrop-blur
+          "
+        >
+
         <div className="flex items-center gap-2 min-w-0">
           {activeChat && (
             <button
               onClick={() => setActiveChat(null)}
               className="flex items-center gap-1 text-indigo-600
-                         transition-all duration-200 hover:-translate-x-1"
+                        transition-all duration-200 hover:-translate-x-1"
               title="Volver"
             >
               <ArrowLeft size={16} />
             </button>
           )}
 
-          <span className="text-sm font-semibold truncate">
-            {activeChat ? "Reserva" : "Reservas"}
-          </span>
+          {/* TÍTULO */}
+          <div className="flex flex-col min-w-0 leading-tight">
+            <span className="text-sm font-semibold truncate">
+              {activeChat ? activeChat.cliente : "Reservas"}
+            </span>
 
+            {activeChat && (
+              <span className="text-[11px] text-zinc-500 truncate">
+                {activeChat.phone}
+              </span>
+            )}
+          </div>
+
+          {/* BADGE SOLO EN LISTA */}
           {!activeChat && (
             <span
               className="ml-2 rounded-full bg-indigo-600 text-white text-[11px]
-                         px-2 py-0.5 transition-transform duration-200 hover:scale-105"
+                        px-2 py-0.5 transition-transform duration-200 hover:scale-105"
               title="Reservas pendientes"
             >
               {badgeCount}
@@ -329,21 +354,23 @@ export default function ReservasChat() {
           )}
         </div>
 
+        {/* ACCIONES */}
         {activeChat && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <a
               href={`https://wa.me/${activeChat.phone}`}
               target="_blank"
               className="p-2 rounded-full bg-emerald-100 text-emerald-700
-                         transition hover:scale-105"
+                        transition hover:scale-105"
               title="WhatsApp"
             >
               <MessageCircle size={16} />
             </a>
+
             <button
               onClick={resolveChat}
               className="p-2 rounded-full bg-green-600 text-white
-                         transition hover:scale-105"
+                        transition hover:scale-105"
               title="Resolver"
             >
               <Check size={16} />
@@ -351,6 +378,7 @@ export default function ReservasChat() {
           </div>
         )}
       </div>
+
 
       {/* BODY */}
       <div className="flex-1 min-h-0 overflow-hidden">
@@ -367,7 +395,13 @@ export default function ReservasChat() {
               <div
                 key={t.id}
                 onClick={() => setActiveChat(t)}
-                className="px-4 py-3 cursor-pointer hover:bg-zinc-50"
+                className="
+                  px-4 py-3
+                  cursor-pointer
+                  transition
+                  hover:bg-zinc-100/60
+                  active:bg-zinc-200/40
+                "
               >
                 <div className="font-medium truncate">{t.cliente}</div>
                 <div className="text-xs text-zinc-500 truncate">

@@ -1,24 +1,35 @@
-// app/api/autocomplete/clients/route.ts
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-const supabase = await createSupabaseServerClient();
-
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const q = searchParams.get("q")?.trim();
+  const supabase = await createSupabaseServerClient();
 
-  // Early return para evitar queries innecesarias
-  if (!q || q.length < 2) {
+  const { searchParams } = new URL(request.url);
+  const qRaw = searchParams.get("q")?.trim() ?? "";
+
+  // Evitar queries innecesarias
+  if (!qRaw || qRaw.length < 2) {
     return NextResponse.json([]);
   }
 
-  const { data, error } = await supabase
+  // Si viene número, buscamos en numberc (text con +) por "contiene"
+  const onlyDigits = qRaw.replace(/[^\d]/g, "");
+  const isNumeric = onlyDigits.length >= 2;
+
+  let query = supabase
     .from("clients")
-    .select("id, name")
-    .ilike("name", `%${q}%`)
-    .order("name", { ascending: true })
+    .select("nombre, celular, numberc")
+    .order("nombre", { ascending: true })
     .limit(10);
+
+  if (isNumeric) {
+    // numberc = "+<indicador><celular>", así que con contiene por dígitos funciona
+    query = query.ilike("numberc", `%${onlyDigits}%`);
+  } else {
+    query = query.ilike("nombre", `%${qRaw}%`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Error fetching clients:", error);

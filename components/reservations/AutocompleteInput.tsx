@@ -1,4 +1,3 @@
-// components/reservations/AutocompleteInput.tsx
 "use client";
 
 import React, {
@@ -8,26 +7,32 @@ import React, {
   useCallback,
 } from "react";
 
-interface AutocompleteItem {
-  id: string;
-  name: string;
-}
-
-interface AutocompleteInputProps {
+interface AutocompleteInputProps<T> {
   label: string;
   placeholder: string;
   apiEndpoint: string;
-  onSelect: (item: AutocompleteItem) => void;
+
+  /** 👉 Texto que queda en el input al seleccionar */
+  getValue: (item: T) => string;
+
+  /** 👉 Render de cada opción (ej: nombre + celular) */
+  renderItem?: (item: T) => React.ReactNode;
+
+  getKey?: (item: T, index: number) => string | number;
+  onSelect: (item: T) => void;
 }
 
-const AutocompleteInput = ({
+function AutocompleteInput<T>({
   label,
   placeholder,
   apiEndpoint,
+  getValue,
+  renderItem,
+  getKey,
   onSelect,
-}: AutocompleteInputProps) => {
+}: AutocompleteInputProps<T>) {
   const [inputValue, setInputValue] = useState("");
-  const [suggestions, setSuggestions] = useState<AutocompleteItem[]>([]);
+  const [suggestions, setSuggestions] = useState<T[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -35,7 +40,9 @@ const AutocompleteInput = ({
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Cerrar dropdown al hacer click fuera
+  /* =========================
+     Cerrar al hacer click fuera
+  ========================= */
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -47,23 +54,35 @@ const AutocompleteInput = ({
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
-  // Fetch con debounce + abort
+  /* =========================
+     Fetch con debounce (SIN null)
+  ========================= */
   useEffect(() => {
-    if (inputValue.trim().length < 2) {
+    const q = inputValue.trim();
+
+    if (q.length < 2) {
       setSuggestions([]);
       setIsOpen(false);
       return;
     }
 
+    // limpiar debounce anterior
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
 
     debounceRef.current = setTimeout(async () => {
-      abortRef.current?.abort();
+      // abortar request anterior
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
+
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -71,37 +90,48 @@ const AutocompleteInput = ({
 
       try {
         const res = await fetch(
-          `${apiEndpoint}?q=${encodeURIComponent(inputValue)}`,
+          `${apiEndpoint}?q=${encodeURIComponent(q)}`,
           { signal: controller.signal }
         );
 
-        if (!res.ok) throw new Error("Error en autocomplete");
+        if (!res.ok) {
+          throw new Error("Error en autocomplete");
+        }
 
-        const data: AutocompleteItem[] = await res.json();
+        const data: T[] = await res.json();
         setSuggestions(data);
         setIsOpen(true);
       } catch (err: any) {
         if (err.name !== "AbortError") {
           console.error("Autocomplete error:", err);
+          setSuggestions([]);
+          setIsOpen(true);
         }
       } finally {
         setIsLoading(false);
       }
     }, 300);
 
+    // ✅ cleanup VÁLIDO (nunca null)
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
     };
   }, [inputValue, apiEndpoint]);
 
+  /* =========================
+     Selección
+  ========================= */
   const handleSelect = useCallback(
-    (item: AutocompleteItem) => {
-      setInputValue(item.name);
+    (item: T) => {
+      // 👉 SOLO el valor definido (ej: nombre)
+      setInputValue(getValue(item));
       setSuggestions([]);
       setIsOpen(false);
       onSelect(item);
     },
-    [onSelect]
+    [getValue, onSelect]
   );
 
   return (
@@ -115,10 +145,9 @@ const AutocompleteInput = ({
         value={inputValue}
         placeholder={placeholder}
         onChange={(e) => setInputValue(e.target.value)}
-        onFocus={() => {
-          if (suggestions.length > 0) setIsOpen(true);
-        }}
-        className="mt-1 w-full rounded-md border px-3 py-2 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+        onFocus={() => setIsOpen(true)}
+        className="mt-1 w-full rounded-md border px-3 py-2 text-sm
+                   focus:border-indigo-500 focus:ring-indigo-500"
         autoComplete="off"
       />
 
@@ -128,21 +157,38 @@ const AutocompleteInput = ({
         </div>
       )}
 
-      {isOpen && suggestions.length > 0 && (
-        <ul className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-sm shadow-lg ring-1 ring-black ring-opacity-5">
-          {suggestions.map((item) => (
-            <li
-              key={item.id}
-              onClick={() => handleSelect(item)}
-              className="cursor-pointer px-3 py-2 hover:bg-indigo-600 hover:text-white"
-            >
-              {item.name}
-            </li>
-          ))}
-        </ul>
+      {isOpen && !isLoading && (
+        <>
+          {/* SIN resultados */}
+          {suggestions.length === 0 && inputValue.trim().length >= 2 && (
+            <div className="absolute z-20 mt-1 w-full rounded-md bg-white
+                            px-3 py-2 text-sm text-zinc-500
+                            shadow ring-1 ring-black/5">
+              No existe el cliente
+            </div>
+          )}
+
+          {/* CON resultados */}
+          {suggestions.length > 0 && (
+            <ul className="absolute z-20 mt-1 max-h-60 w-full overflow-auto
+                           rounded-md bg-white py-1 text-sm
+                           shadow ring-1 ring-black/5">
+              {suggestions.map((item, index) => (
+                <li
+                  key={getKey ? getKey(item, index) : index}
+                  onClick={() => handleSelect(item)}
+                  className="cursor-pointer px-3 py-2
+                             hover:bg-indigo-600 hover:text-white"
+                >
+                  {renderItem ? renderItem(item) : getValue(item)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
-};
+}
 
-export default React.memo(AutocompleteInput);
+export default React.memo(AutocompleteInput) as typeof AutocompleteInput;

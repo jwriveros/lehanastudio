@@ -9,6 +9,7 @@ interface Props {
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+
   view: "day" | "week" | "month";
   setView: (v: "day" | "week" | "month") => void;
 
@@ -20,6 +21,9 @@ interface Props {
 
   serviceFilter: string[];
   setServiceFilter: (v: string[]) => void;
+
+  // ✅ ÚNICO control del colapso de la agenda
+  onToggleAgendaSidebar: () => void;
 }
 
 export function AgendaHeader({
@@ -40,9 +44,13 @@ export function AgendaHeader({
     <div className="flex items-center justify-between px-4 py-2 border-b bg-white">
       {/* IZQUIERDA */}
       <div className="flex items-center gap-2">
-        <button onClick={onToday} className="px-3 py-1.5 text-xs rounded border">
+        <button
+          onClick={onToday}
+          className="px-3 py-1.5 text-xs rounded border"
+        >
           Hoy
         </button>
+
         <button onClick={onPrev}>◀</button>
         <button onClick={onNext}>▶</button>
 
@@ -53,9 +61,9 @@ export function AgendaHeader({
 
       {/* DERECHA */}
       <div className="flex items-center gap-2">
-        {/* VISTA */}
+        {/* VISTAS */}
         <div className="flex rounded-full border overflow-hidden text-xs">
-          {(["day", "week", "month"] as const).map(v => (
+          {(["day", "week", "month"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}

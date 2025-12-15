@@ -10,38 +10,40 @@ import {
 import { es } from "date-fns/locale";
 import { useEffect, useState } from "react";
 import AgendaEventCard from "./AgendaEventCard";
+import type { CalendarAppointment } from "./types";
+
+type TooltipInfo = {
+  cliente: string;
+  servicio: string;
+  estado?: string;
+  hora?: string;
+  especialista?: string;
+};
+
 
 /* =========================
    CONFIG
 ========================= */
-const START_HOUR = 7;
-const END_HOUR = 20;
+const START_HOUR = 6;
+const END_HOUR = 22;
 const SLOT_MINUTES = 30;
 const SLOT_HEIGHT = 42;
 const HEADER_HEIGHT = 48;
-const VISUAL_GAP = 6;
+const VISUAL_GAP = 2;
+const SPECIALIST_HEADER_HEIGHT = 26;
 
 const SPECIALISTS = [
   "Leslie Gutierrez",
   "Nary Cabrales",
   "Yucelis Moscote",
 ];
+const SPECIALIST_TITLES = [
+  "Leslie",
+  "Nary",
+  "Yuce",
+];
 
-/* =========================
-   TYPES
-========================= */
-export type CalendarAppointment = {
-  id: string;
-  title: string;
-  start: Date;
-  end: Date;
-  bg_color?: string;
-  raw: {
-    especialista: string;
-    cliente?: string;
-    estado?: string;
-  };
-};
+
 
 
 /* =========================
@@ -50,9 +52,13 @@ export type CalendarAppointment = {
 export default function WeeklyAgendaGrid({
   appointments,
   currentDate,
+  tooltip,
+  onViewDetails,
 }: {
   appointments: CalendarAppointment[];
   currentDate: Date;
+  tooltip?: TooltipInfo;
+  onViewDetails?: (appt: CalendarAppointment) => void;
 }) {
   const [now, setNow] = useState(new Date());
 
@@ -125,16 +131,19 @@ export default function WeeklyAgendaGrid({
       ===================== */}
       <div className="grid grid-cols-[64px_repeat(7,1fr)] h-[calc(100%-48px)] overflow-y-auto">
         {/* HORAS */}
-        <div className="text-xs text-zinc-500">
+        <div className="text-xs text-zinc-500"
+          style={{ paddingTop: SPECIALIST_HEADER_HEIGHT}}
+        >
           {hours.map((h, i) => (
             <div
               key={i}
               style={{ height: SLOT_HEIGHT }}
-              className="flex items-start justify-end pr-1"
+              className="flex items-start justify-end pr-1 text-[11px] font-medium text-zinc-500"
+
             >
               {format(
                 new Date(0, 0, 0, Math.floor(h), (h % 1) * 60),
-                "h a",
+                "h:mm a",
                 { locale: es }
               )}
             </div>
@@ -153,25 +162,58 @@ export default function WeeklyAgendaGrid({
           return (
             <div
               key={day.toISOString()}
-              className="relative"
+              className="relative hover:bg-indigo-50/20 transition-colors"
               style={{
-                height: totalHeight,
+                height: totalHeight + SPECIALIST_HEADER_HEIGHT,
                 backgroundImage: `
                   repeating-linear-gradient(
                     to bottom,
                     transparent,
                     transparent ${SLOT_HEIGHT - 1}px,
-                    rgba(0,0,0,0.06) ${SLOT_HEIGHT}px
+                    rgba(0,0,0,0.20) ${SLOT_HEIGHT}px
                   ),
                   repeating-linear-gradient(
-                    to right,
-                    transparent,
-                    transparent calc(100% / ${SPECIALISTS.length}),
-                    rgba(0,0,0,0.04) calc(100% / ${SPECIALISTS.length})
-                  )
+                      to right,
+                      transparent,
+                      transparent ${SLOT_HEIGHT - 1}px,
+                    rgba(0,0,0,0.08) ${SLOT_HEIGHT}px 
+                    )
                 `,
               }}
             >
+              {/* ⏱ BLOQUE HORA ACTUAL */}
+              {isSameDay(day, now) && nowTop > 0 && (
+                <div
+                  className="absolute left-0 right-0 z-10"
+                  style={{
+                    top: Math.floor(nowTop / SLOT_HEIGHT) * SLOT_HEIGHT,
+                    height: SLOT_HEIGHT,
+                    background:
+                      "linear-gradient(to bottom, rgba(99,102,241,0.06), rgba(99,102,241,0.02))",
+                  }}
+                />
+              )}
+              {/* HEADER ESPECIALISTAS */}
+              <div
+                className="absolute top-0 left-0 right-0 z-20
+                          grid text-[11px] font-medium text-zinc-600
+                          bg-white/90 backdrop-blur-sm border-b border-zinc-300"
+                style={{
+                  height: SPECIALIST_HEADER_HEIGHT,
+                  gridTemplateColumns: `repeat(${SPECIALISTS.length}, 1fr)`,
+                }}
+              >
+                {SPECIALIST_TITLES.map((title, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-center border-r last:border-r-0 border-zinc-300/70"
+                  >
+                    {title}
+                  </div>
+                ))}
+              </div>
+
+
               {/* 🔴 LÍNEA DEL AHORA */}
               {isSameDay(day, now) && nowTop > 0 && (
                 <>
@@ -211,7 +253,7 @@ export default function WeeklyAgendaGrid({
                 );
 
                 const top =
-                  (minutesFromStart / SLOT_MINUTES) *
+                  SPECIALIST_HEADER_HEIGHT+(minutesFromStart / SLOT_MINUTES) *
                     SLOT_HEIGHT +
                   VISUAL_GAP / 2;
 
@@ -236,15 +278,17 @@ export default function WeeklyAgendaGrid({
                   <AgendaEventCard
                     key={appt.id}
                     appointment={appt}
+                    tooltip={tooltip}
+                    onViewDetails={onViewDetails}
                     style={{
                       top,
                       height,
                       width: `${width}%`,
                       left: `${left}%`,
-                      backgroundColor:
-                        appt.bg_color || "#6366f1",
+                      backgroundColor: appt.bg_color || "#6366f1",
                     }}
                   />
+
                 );
               })}
             </div>

@@ -1,32 +1,41 @@
-
 "use client";
 
 import ReservasChat from "@/components/chat/ReservasChat";
+import { Plus } from "lucide-react";
+import { useUIStore } from "@/lib/uiStore";
 
 interface Props {
-  currentDate: Date;
-  onDateChange: (d: Date) => void;
-  children?: React.ReactNode; // 👈 CLAVE
+  collapsed: boolean;
 }
 
-
-export default function AgendaSidebar({
-  currentDate,
-  onDateChange,
-}: Props) {
+export default function AgendaSidebar({ collapsed }: Props) {
+  const openReservationDrawer = useUIStore(
+    (state) => state.openReservationDrawer
+  );
   return (
-    <div className="flex h-full w-[320px] flex-col border-r bg-white">
+    <div className="flex h-full flex-col bg-white">
+      {/* BOTÓN CREAR RESERVA */}
+      <div className="shrink-0 p-3 border-b">
+        <button onClick={() => openReservationDrawer()}
+          className={`
+            flex items-center justify-center gap-1.5
+            w-1/2 mx-auto
+            rounded-lg
+            bg-indigo-600 text-white
+            hover:bg-indigo-700 transition
+            h-9
+            text-sm
+            ${collapsed ? "px-0" : "px-3"}
+          `}
+        >
+          <Plus size={16} />
+          {!collapsed && (
+            <span className="font-medium">
+              Crear
+            </span>
+          )}
+        </button>
 
-      {/* MINI CALENDARIO */}
-      <div className="shrink-0 p-4 border-b">
-        <div className="text-xs text-zinc-500 mb-2">diciembre 2025</div>
-
-        <input
-          type="date"
-          value={currentDate.toISOString().slice(0, 10)}
-          onChange={e => onDateChange(new Date(e.target.value))}
-          className="w-full rounded-md border px-2 py-1 text-sm"
-        />
       </div>
 
       {/* CHAT DE RESERVAS */}
@@ -36,4 +45,3 @@ export default function AgendaSidebar({
     </div>
   );
 }
-
