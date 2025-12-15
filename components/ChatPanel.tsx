@@ -68,6 +68,17 @@ export function ChatPanel({
   const [bookingContext, setBookingContext] = useState<BookingContext>(null);
   const [search, setSearch] = useState("");
 
+  // Cache para nombres conocidos y evitar que se sobrescriban con "Cliente (+num)"
+  const knownNamesRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    initialThreads.forEach((t) => {
+      if (t.cliente && !t.cliente.startsWith("Cliente (")) {
+        knownNamesRef.current.set(t.id, t.cliente);
+      }
+    });
+  }, [initialThreads]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   /* =======================
@@ -113,10 +124,22 @@ export function ChatPanel({
 
     const result: ChatUser[] = sessions.map((s) => {
       const phone = normalizePhone(s.client_phone) || String(s.client_phone);
+      
+      // 1. Intentar obtener nombre de la consulta reciente
+      let name = clientsMap.get(phone);
+
+      // 2. Si falla, buscar en cache de nombres conocidos (initialThreads)
+      if (!name) {
+        name = knownNamesRef.current.get(phone);
+      } else {
+        // Si encontramos uno nuevo, actualizar cache
+        knownNamesRef.current.set(phone, name);
+      }
+
       return {
         id: phone,
         phone,
-        cliente: clientsMap.get(phone) || `Cliente (${phone})`,
+        cliente: name || `Cliente (${phone})`,
         lastMessage: s.last_message || "",
         unread: s.unread_count || 0,
         status: s.status,
