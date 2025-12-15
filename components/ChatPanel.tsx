@@ -46,15 +46,20 @@ type BookingContext = {
 
 interface Props {
   mode?: Mode; // 👈 NUEVO
+  initialThreads: ChatUser[];
 }
 
 /* =======================
    COMPONENTE
 ======================= */
 
-export function ChatPanel({ mode = "default" }: Props) {
+export function ChatPanel({
+  mode = "default",
+  initialThreads,
+}: Props) {
+
   const [tab, setTab] = useState<Tab>("active");
-  const [threads, setThreads] = useState<ChatUser[]>([]);
+  const [threads, setThreads] = useState<ChatUser[]>(initialThreads);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
