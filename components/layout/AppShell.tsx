@@ -11,7 +11,7 @@ export default function AppShell({ children }: Props) {
   return (
     <AgendaCollapseProvider>
       {/* h-screen y overflow-hidden son fundamentales para que el chat no se rompa en móvil */}
-      <div className="h-screen flex flex-col md:flex-row bg-white overflow-hidden">
+      <div className="min-h-[100dvh] h-screen flex flex-col md:flex-row bg-white overflow-hidden">
         
         {/* El sidebar ahora maneja su propio header móvil */}
         <AppSidebar />

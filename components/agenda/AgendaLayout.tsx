@@ -206,7 +206,7 @@ export default function AgendaLayout() {
       });
   }, [appointments, statusFilter, specialistFilter, serviceFilter]);
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-white">
+    <div className="min-h-[100dvh]flex h-full w-full flex-col overflow-hidden bg-white">
       <AgendaShell
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={toggleSidebar}
