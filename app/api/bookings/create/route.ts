@@ -6,9 +6,22 @@ import { randomUUID } from "crypto";
    🔥 FIX TIMEZONE (UTC-5)
 ========================= */
 function toLocalTimestamp(localDateTime: string) {
-  const date = new Date(localDateTime);
-  date.setHours(date.getHours() - 5); // Colombia UTC-5
-  return date.toISOString().slice(0, 19); // YYYY-MM-DDTHH:mm:ss
+  if (!localDateTime) return null;
+  
+  // Reemplazamos el espacio por 'T' si viene del input datetime-local
+  let ISOStr = localDateTime.replace(" ", "T");
+
+  // Si el string no tiene información de zona horaria (no termina en Z ni en +00:00)
+  // le concatenamos el offset de Colombia (-05:00)
+  if (!ISOStr.includes("Z") && !ISOStr.match(/[+-]\d{2}:\d{2}$/)) {
+    // Aseguramos que tenga segundos para formato ISO completo
+    if (ISOStr.split("T")[1]?.length === 5) {
+      ISOStr += ":00";
+    }
+    return `${ISOStr}-05:00`;
+  }
+  
+  return ISOStr;
 }
 
 export async function POST(req: Request) {
@@ -21,29 +34,20 @@ export async function POST(req: Request) {
       celular,
       sede,
       cantidad,
-      items, // 👈 cada item trae su appointment_at
+      items, 
     } = body;
 
     /* =========================
-       VALIDACIONES
+        VALIDACIONES
     ========================= */
-    if (
-      !cliente ||
-      !celular ||
-      !Array.isArray(items) ||
-      items.length === 0
-    ) {
+    if (!cliente || !celular || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
         { ok: false, error: "Datos incompletos" },
         { status: 400 }
       );
     }
 
-    // Validar que TODOS los servicios tengan fecha y hora
-    const missingDate = items.some(
-      (s: any) => !s.appointment_at
-    );
-
+    const missingDate = items.some((s: any) => !s.appointment_at);
     if (missingDate) {
       return NextResponse.json(
         { ok: false, error: "Cada servicio debe tener fecha y hora" },
@@ -53,9 +57,32 @@ export async function POST(req: Request) {
 
     const peopleCount = Number(cantidad || 1);
     const appointmentGroupId = randomUUID();
+    const normalizedCelular = String(celular).replace(/\D/g, "");
 
     /* =========================
-       1️⃣ CONSTRUIR ROWS
+       1️⃣ VERIFICAR / CREAR CLIENTE
+    ========================= */
+    const { data: existingClient } = await supabase
+      .from("clients")
+      .select("nombre")
+      .or(`celular.eq.${normalizedCelular},numberc.eq.${normalizedCelular}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!existingClient) {
+      await supabase.from("clients").insert([
+        {
+          nombre: cliente,
+          celular: normalizedCelular,
+          creado_desde: "CRM_BOOKING",
+          tipo: "Contacto",
+          estado: "Activo",
+        },
+      ]);
+    }
+
+    /* =========================
+       2️⃣ CONSTRUIR FILAS (ROWS)
     ========================= */
     const rows: any[] = [];
 
@@ -64,15 +91,13 @@ export async function POST(req: Request) {
 
       for (const s of items) {
         rows.push({
-          cliente: isPrimary ? cliente : "N/D",
+          cliente: isPrimary ? cliente : `Acompañante de ${cliente}`,
           servicio: s.servicio,
           especialista: s.especialista ?? null,
-
-          // ✅ HORA PROPIA POR SERVICIO
+          // ✅ Aplicamos el fix de zona horaria aquí
           appointment_at: toLocalTimestamp(s.appointment_at),
-
           duration: s.duration ?? null,
-          celular: isPrimary ? celular : null,
+          celular: isPrimary ? normalizedCelular : null,
           sede,
           cantidad: peopleCount,
           is_primary_client: isPrimary,
@@ -84,46 +109,59 @@ export async function POST(req: Request) {
     }
 
     /* =========================
-       2️⃣ INSERTAR
+       3️⃣ INSERTAR EN APPOINTMENTS
     ========================= */
-    const { data: inserted, error } = await supabase
+    const { data: inserted, error: insertError } = await supabase
       .from("appointments")
       .insert(rows)
       .select();
 
-    if (error) throw error;
+    if (insertError) throw insertError;
 
     /* =========================
-       3️⃣ TOTAL
+       4️⃣ REGISTRAR EN BOOKING_REQUESTS
     ========================= */
+    if (inserted && inserted.length > 0) {
+      await supabase.from("booking_requests").insert([
+        {
+          status: "PENDING",
+          appointment_id: inserted[0].id,
+          client_phone: normalizedCelular,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    }
+
     const total = inserted.reduce(
       (acc: number, r: any) => acc + Number(r.price || 0),
       0
     );
 
     /* =========================
-       4️⃣ N8N
+       5️⃣ NOTIFICAR A N8N
     ========================= */
-    await fetch(process.env.N8N_WEBHOOK_URL!, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "CREATE",
-        customerName: cliente,
-        customerPhone: String(celular).startsWith("+")
-          ? celular
-          : `+57${celular}`,
-        sede,
-        services: inserted.map((r: any) => ({
-          servicio: r.servicio,
-          especialista: r.especialista,
-          price: r.price,
-          appointment_at: r.appointment_at,
-        })),
-        total,
-        appointmentGroupId,
-      }),
-    });
+    if (process.env.N8N_WEBHOOK_URL) {
+      await fetch(process.env.N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "CREATE",
+          customerName: cliente,
+          customerPhone: normalizedCelular.startsWith("57") 
+            ? `+${normalizedCelular}` 
+            : `+57${normalizedCelular}`,
+          sede,
+          services: inserted.map((r: any) => ({
+            servicio: r.servicio,
+            especialista: r.especialista,
+            price: r.price,
+            appointment_at: r.appointment_at,
+          })),
+          total,
+          appointmentGroupId,
+        }),
+      });
+    }
 
     return NextResponse.json({
       ok: true,
@@ -131,6 +169,7 @@ export async function POST(req: Request) {
       total,
       rows_created: inserted.length,
     });
+
   } catch (err: any) {
     console.error("CREATE BOOKING ERROR:", err);
     return NextResponse.json(
