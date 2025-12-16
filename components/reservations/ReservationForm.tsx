@@ -104,7 +104,7 @@ export default function ReservationForm({
 }: ReservationFormProps) {
   const closeReservationDrawer = useUIStore((s) => s.closeReservationDrawer);
   const formRef = useRef<HTMLFormElement>(null);
-  const isEditing = Boolean(appointmentData?.id);
+  const isEditing = !!appointmentData?.id && !isNaN(Number(appointmentData.id));
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [saveClient, setSaveClient] = useState(false);
