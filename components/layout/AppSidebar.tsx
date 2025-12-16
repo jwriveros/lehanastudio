@@ -44,7 +44,7 @@ export default function AppSidebar() {
         <button onClick={toggleMobileMenu} className="p-2 text-zinc-600 dark:text-zinc-300">
           {isOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
-        <div className="font-bold text-indigo-600 text-lg">Lehana</div>
+        <div className="font-bold text-indigo-600 text-lg">Lehana Studio</div>
         <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
           L
         </div>
