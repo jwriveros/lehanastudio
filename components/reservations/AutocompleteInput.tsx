@@ -16,6 +16,7 @@ interface AutocompleteInputProps<T> {
   renderItem?: (item: T) => React.ReactNode;
   getKey?: (item: T, index: number) => string | number;
   onSelect: (item: T) => void;
+  inputClassName?: string;
 }
 function AutocompleteInput<T>({
   label,
@@ -25,6 +26,7 @@ function AutocompleteInput<T>({
   renderItem,
   getKey,
   onSelect,
+  inputClassName,
 }: AutocompleteInputProps<T>) {
   const [inputValue, setInputValue] = useState("");
   const [suggestions, setSuggestions] = useState<T[]>([]);
@@ -34,6 +36,8 @@ function AutocompleteInput<T>({
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const ignoreSearchRef = useRef(false);
+
+  const defaultInputClasses = "w-full rounded-md border border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
   /* =========================
      Cerrar al hacer click fuera
   ========================= */
@@ -136,7 +140,7 @@ function AutocompleteInput<T>({
           placeholder={placeholder}
           onChange={(e) => setInputValue(e.target.value)}
           onFocus={() => setIsOpen(true)}
-          className="w-full rounded-md border border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+          className={inputClassName || defaultInputClasses}
           autoComplete="off"
         />
         {isLoading && (
