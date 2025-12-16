@@ -1,14 +1,45 @@
-// components/reservations/ReservationDetails.tsx
 "use client";
-
 import React, { useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useUIStore } from "@/lib/uiStore";
+import {
+  User,
+  Scissors,
+  Calendar,
+  Clock,
+  CheckCircle,
+  Edit,
+  Trash2,
+  Info,
+  Building,
+} from "lucide-react";
 
 interface ReservationDetailsProps {
   appointmentData: any | null;
   onEdit: () => void;
 }
+
+const DetailRow = ({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+}) => (
+  <div className="flex items-start">
+    <div className="flex-shrink-0">{icon}</div>
+    <div className="ml-4 flex-grow">
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+        {label}
+      </p>
+      <p className="text-base font-semibold text-gray-900 dark:text-white">
+        {value}
+      </p>
+    </div>
+  </div>
+);
 
 const ReservationDetails = ({
   appointmentData,
@@ -17,30 +48,26 @@ const ReservationDetails = ({
   const closeReservationDrawer = useUIStore(
     (state) => state.closeReservationDrawer
   );
-
   const [deleting, setDeleting] = useState(false);
 
   if (!appointmentData) {
     return null;
   }
 
+  const { raw: data } = appointmentData;
+
   const handleDelete = useCallback(async () => {
     const confirmed = window.confirm(
       "¿Estás seguro de eliminar esta reserva? Esta acción no se puede deshacer."
     );
-
     if (!confirmed) return;
-
     setDeleting(true);
-
     try {
       const { error } = await supabase
-        .from("bookings")
+        .from("appointments")
         .delete()
         .eq("id", appointmentData.id);
-
       if (error) throw error;
-
       closeReservationDrawer();
     } catch (err) {
       console.error("Error eliminando reserva:", err);
@@ -51,42 +78,62 @@ const ReservationDetails = ({
   }, [appointmentData, closeReservationDrawer]);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h3 className="text-lg font-semibold text-zinc-900">
-          Detalles de la reserva
-        </h3>
-        <p className="mt-1 text-sm text-zinc-500">
-          Información completa de la cita
-        </p>
-      </div>
-
+    <div className="space-y-8">
       {/* Details */}
-      <div className="divide-y rounded-md border">
-        <DetailRow label="Cliente">
-          {appointmentData.client?.name ?? "—"}
-        </DetailRow>
-
-        <DetailRow label="Servicio">
-          {appointmentData.service?.name ?? "—"}
-        </DetailRow>
-
-        <DetailRow label="Especialista">
-          {appointmentData.specialist?.name ?? "—"}
-        </DetailRow>
-
-        <DetailRow label="Fecha y hora">
-          {appointmentData.start
-            ? new Date(appointmentData.start).toLocaleString()
-            : "—"}{" "}
-          {appointmentData.end &&
-            `– ${new Date(appointmentData.end).toLocaleString()}`}
-        </DetailRow>
-
-        <DetailRow label="Estado">
-          {appointmentData.status ?? "—"}
-        </DetailRow>
+      <div className="space-y-4 rounded-lg bg-gray-50 p-6 dark:bg-gray-700/50">
+        <DetailRow
+          icon={<User size={20} className="text-gray-500 dark:text-gray-400" />}
+          label="Cliente"
+          value={data.cliente}
+        />
+        <DetailRow
+          icon={
+            <Scissors size={20} className="text-gray-500 dark:text-gray-400" />
+          }
+          label="Servicio"
+          value={data.servicio}
+        />
+        <DetailRow
+          icon={
+            <Calendar size={20} className="text-gray-500 dark:text-gray-400" />
+          }
+          label="Fecha y hora"
+          value={
+            data.appointment_at
+              ? new Date(data.appointment_at).toLocaleString("es-CO", {
+                  dateStyle: "long",
+                  timeStyle: "short",
+                })
+              : "—"
+          }
+        />
+        <DetailRow
+          icon={<Clock size={20} className="text-gray-500 dark:text-gray-400" />}
+          label="Duración"
+          value={`${data.duration || "N/A"} minutos`}
+        />
+        <DetailRow
+          icon={
+            <CheckCircle
+              size={20}
+              className="text-gray-500 dark:text-gray-400"
+            />
+          }
+          label="Especialista"
+          value={data.especialista}
+        />
+        <DetailRow
+          icon={
+            <Building size={20} className="text-gray-500 dark:text-gray-400" />
+          }
+          label="Sede"
+          value={data.sede}
+        />
+        <DetailRow
+          icon={<Info size={20} className="text-gray-500 dark:text-gray-400" />}
+          label="Estado"
+          value={data.status || "Confirmada"}
+        />
       </div>
 
       {/* Actions */}
@@ -95,34 +142,28 @@ const ReservationDetails = ({
           type="button"
           onClick={handleDelete}
           disabled={deleting}
-          className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-700 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/20"
         >
-          {deleting ? "Eliminando…" : "Eliminar"}
+          {deleting ? (
+            "Eliminando…"
+          ) : (
+            <>
+              <Trash2 size={16} />
+              Eliminar
+            </>
+          )}
         </button>
-
         <button
           type="button"
           onClick={onEdit}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
         >
+          <Edit size={16} />
           Editar
         </button>
       </div>
     </div>
   );
 };
-
-const DetailRow = ({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) => (
-  <div className="grid grid-cols-3 gap-4 px-4 py-3 text-sm">
-    <dt className="font-medium text-zinc-500">{label}</dt>
-    <dd className="col-span-2 text-zinc-900">{children}</dd>
-  </div>
-);
 
 export default React.memo(ReservationDetails);

@@ -1,5 +1,4 @@
 "use client";
-
 import {
   startOfMonth,
   endOfMonth,
@@ -11,9 +10,6 @@ import {
   format,
 } from "date-fns";
 import { es } from "date-fns/locale";
-
-
-
 type CalendarAppointment = {
   id: string;
   title: string;
@@ -26,7 +22,6 @@ type CalendarAppointment = {
     bg_color?: string;
   };
 };
-
 export default function MonthlyAgendaGrid({
   appointments,
   currentDate,
@@ -36,79 +31,81 @@ export default function MonthlyAgendaGrid({
 }) {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
-
   const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
   const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-
   const days: Date[] = [];
   let day = gridStart;
-
   while (day <= gridEnd) {
     days.push(day);
     day = addDays(day, 1);
   }
-
   return (
     /* CONTENEDOR SCROLLABLE */
-    <div className="h-full overflow-y-auto bg-white">
-      <div className="min-h-full grid grid-cols-7 border-t border-l">
+    <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
+      <div className="grid min-h-full grid-cols-7">
         {/* HEADERS */}
-        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
-          <div
-            key={d}
-            className="sticky top-0 z-10 border-b border-r bg-zinc-50 text-center text-xs font-semibold py-2"
-          >
-            {d}
-          </div>
-        ))}
-
+        {["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"].map(
+          (d) => (
+            <div
+              key={d}
+              className="sticky top-0 z-10 border-b border-r border-gray-200 bg-gray-50 py-2 text-center text-xs font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400"
+            >
+              {d}
+            </div>
+          )
+        )}
         {/* DÍAS */}
         {days.map((dayDate) => {
           const dayAppointments = appointments.filter((a) =>
             isSameDay(a.start, dayDate)
           );
-
+          const isCurrentMonth = isSameMonth(dayDate, currentDate);
+          const isToday = isSameDay(dayDate, new Date());
           return (
             <div
               key={dayDate.toISOString()}
-              className={`border-b border-r p-1 text-xs relative min-h-[110px] ${
-                !isSameMonth(dayDate, currentDate)
-                  ? "bg-zinc-50 text-zinc-400"
-                  : "bg-white"
+              className={`relative min-h-[120px] border-b border-r p-2 text-xs transition-colors duration-300 ${
+                isCurrentMonth
+                  ? "bg-white dark:bg-gray-900"
+                  : "bg-gray-50/50 text-gray-400 dark:bg-gray-900/50 dark:text-gray-500"
               }`}
             >
               {/* NÚMERO DEL DÍA */}
               <div
-                className={`mb-1 flex justify-end ${
-                  isSameDay(dayDate, new Date())
-                    ? "font-bold text-indigo-600"
-                    : ""
+                className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                  isToday
+                    ? "bg-indigo-600 font-bold text-white"
+                    : isCurrentMonth
+                    ? "text-gray-700 dark:text-gray-300"
+                    : "text-gray-400 dark:text-gray-600"
                 }`}
               >
-                {format(dayDate, "d", { locale: es })}
+                {format(dayDate, "d")}
               </div>
-
               {/* EVENTOS */}
-              <div className="space-y-1">
-                {dayAppointments.slice(0, 4).map((a) => (
-                  <div
-                    key={a.id}
-                    className="truncate rounded px-1 py-[2px] text-[10px] text-white"
-                    style={{
-                      backgroundColor:
-                        a.raw?.bg_color || "#6366f1",
-                    }}
-                  >
-                    {format(a.start, "HH:mm")} {a.title}
-                  </div>
-                ))}
-
-                {dayAppointments.length > 4 && (
-                  <div className="text-[10px] text-zinc-500">
-                    +{dayAppointments.length - 4} más
-                  </div>
-                )}
-              </div>
+              {dayAppointments.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {dayAppointments.slice(0, 3).map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center gap-1.5 truncate rounded px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                      style={{
+                        backgroundColor: a.raw?.bg_color || "#4f46e5",
+                      }}
+                    >
+                      <span className="font-bold">
+                        {format(a.start, "HH:mm")}
+                      </span>
+                      <span className="flex-1 truncate">{a.title}</span>
+                    </div>
+                  ))}
+                  {dayAppointments.length > 3 && (
+                    <div className="text-center text-[10px] font-bold text-indigo-500 dark:text-indigo-400">
+                      + {dayAppointments.length - 3} más
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

@@ -1,31 +1,29 @@
 "use client";
-
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { FilterDropdown } from "./FilterDropdown";
-import { ChevronLeft, ChevronRight, MessageSquareText } from "lucide-react";
-
+import {
+  ChevronLeft,
+  ChevronRight,
+  MessageSquareText,
+  CalendarDays,
+  Menu,
+} from "lucide-react";
 interface Props {
   currentDate: Date;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
-
   view: "day" | "week" | "month";
   setView: (v: "day" | "week" | "month") => void;
-
   statusFilter: string[];
   setStatusFilter: (v: string[]) => void;
-
   specialistFilter: string[];
   setSpecialistFilter: (v: string[]) => void;
-
   serviceFilter: string[];
   setServiceFilter: (v: string[]) => void;
-
   onToggleAgendaSidebar: () => void;
 }
-
 export function AgendaHeader({
   currentDate,
   onPrev,
@@ -42,63 +40,73 @@ export function AgendaHeader({
   onToggleAgendaSidebar,
 }: Props) {
   return (
-    <div className="flex flex-col md:flex-row items-center justify-between px-4 py-2 border-b bg-white gap-3 md:gap-0">
-      
-      {/* IZQUIERDA: Navegación y Fecha */}
-      <div className="flex items-center justify-between w-full md:w-auto gap-2">
-        <div className="flex items-center gap-1 md:gap-2">
+    <header className="flex flex-col gap-3 border-b border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 md:flex-row md:items-center md:justify-between">
+      {/* Left Section */}
+      <div className="flex w-full items-center justify-between md:w-auto md:justify-start md:gap-4">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onToggleAgendaSidebar}
+            className="rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden"
+            aria-label="Toggle Sidebar"
+          >
+            <Menu size={20} />
+          </button>
           <button
             onClick={onToday}
-            className="px-3 py-1.5 text-xs rounded border hover:bg-zinc-50 transition-colors"
+            className="hidden items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 sm:flex"
           >
+            <CalendarDays size={16} />
             Hoy
           </button>
-
-          <div className="flex items-center">
-            <button onClick={onPrev} className="p-1 hover:bg-zinc-100 rounded">
-              <ChevronLeft size={18} />
-            </button>
-            <button onClick={onNext} className="p-1 hover:bg-zinc-100 rounded">
-              <ChevronRight size={18} />
-            </button>
-          </div>
-
-          <div className="ml-1 md:ml-2 font-bold text-sm md:text-base capitalize truncate max-w-[120px] md:max-w-none">
-            {format(currentDate, "MMMM yyyy", { locale: es })}
-          </div>
         </div>
-
-        {/* Botón Chat: Solo visible en Móvil */}
-        <button 
+        <div className="flex items-center">
+          <button
+            onClick={onPrev}
+            className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+            aria-label="Previous Period"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            onClick={onNext}
+            className="rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+            aria-label="Next Period"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+        <h2 className="w-40 truncate text-base font-semibold capitalize text-gray-800 dark:text-white md:w-auto md:text-lg">
+          {format(currentDate, "MMMM yyyy", { locale: es })}
+        </h2>
+        {/* Mobile Chat Toggle */}
+        <button
           onClick={onToggleAgendaSidebar}
-          className="md:hidden p-2 text-indigo-600 bg-indigo-50 rounded-full"
+          className="rounded-full bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400 md:hidden"
+          aria-label="Toggle Chat"
         >
           <MessageSquareText size={20} />
         </button>
       </div>
-
-      {/* DERECHA: Vistas y Filtros */}
-      <div className="flex items-center justify-between md:justify-end w-full md:w-auto gap-2 overflow-visible pb-1 md:pb-0">
-        
-        {/* SELECTOR DE VISTA */}
-        <div className="flex rounded-full border overflow-hidden text-[10px] md:text-xs shrink-0 bg-white">
+      {/* Right Section */}
+      <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-end">
+        {/* View Selector */}
+        <div className="flex overflow-hidden rounded-full border border-gray-300 bg-white text-sm dark:border-gray-700">
           {(["day", "week", "month"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-3 py-1.5 transition-colors ${
+              className={`px-4 py-1.5 transition-colors ${
                 view === v
-                  ? "bg-indigo-600 text-white font-medium"
-                  : "bg-white hover:bg-zinc-50 text-zinc-600"
+                  ? "bg-indigo-600 font-semibold text-white"
+                  : "text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
               }`}
             >
               {v === "day" ? "Día" : v === "week" ? "Semana" : "Mes"}
             </button>
           ))}
         </div>
-
-        {/* FILTROS: En móvil se verán compactos */}
-        <div className="flex items-center gap-1 md:gap-2 shrink-0">
+        {/* Filters */}
+        <div className="flex items-center gap-2">
           <FilterDropdown
             label="Estado"
             options={[
@@ -110,7 +118,6 @@ export function AgendaHeader({
             selected={statusFilter}
             onChange={setStatusFilter}
           />
-
           <FilterDropdown
             label="Especialista"
             options={[
@@ -121,8 +128,6 @@ export function AgendaHeader({
             selected={specialistFilter}
             onChange={setSpecialistFilter}
           />
-
-          {/* Ocultamos el filtro de servicio en pantallas muy pequeñas para evitar desbordamiento */}
           <div className="hidden sm:block">
             <FilterDropdown
               label="Servicio"
@@ -136,6 +141,6 @@ export function AgendaHeader({
           </div>
         </div>
       </div>
-    </div>
+    </header>
   );
 }

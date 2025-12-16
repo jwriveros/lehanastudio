@@ -1,5 +1,4 @@
 "use client";
-
 import {
   addDays,
   differenceInMinutes,
@@ -20,31 +19,18 @@ type TooltipInfo = {
   especialista?: string;
 };
 
-
 /* =========================
    CONFIG
 ========================= */
 const START_HOUR = 7;
 const END_HOUR = 22;
 const SLOT_MINUTES = 30;
-const SLOT_HEIGHT = 42;
-const HEADER_HEIGHT = 48;
-const VISUAL_GAP = 2;
-const SPECIALIST_HEADER_HEIGHT = 26;
-
-const SPECIALISTS = [
-  "Leslie Gutierrez",
-  "Nary Cabrales",
-  "Yucelis Moscote",
-];
-const SPECIALIST_TITLES = [
-  "Leslie",
-  "Nary",
-  "Yuce",
-];
-
-
-
+const SLOT_HEIGHT = 48; 
+const HEADER_HEIGHT = 64; 
+const VISUAL_GAP = 0;
+const SPECIALIST_HEADER_HEIGHT = 32;
+const SPECIALISTS = ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote"];
+const SPECIALIST_TITLES = ["Leslie", "Nary", "Yuce"];
 
 /* =========================
    COMPONENT
@@ -60,10 +46,7 @@ export default function WeeklyAgendaGrid({
   currentDate: Date;
   tooltip?: TooltipInfo;
   onViewDetails?: (appt: CalendarAppointment) => void;
-onCreateFromSlot?: (data: {
-    especialista: string;
-    start: Date;
-  }) => void;
+  onCreateFromSlot?: (data: { especialista: string; start: Date }) => void;
 }) {
   const [now, setNow] = useState(new Date());
 
@@ -73,9 +56,7 @@ onCreateFromSlot?: (data: {
   }, []);
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const days = Array.from({ length: 7 }).map((_, i) =>
-    addDays(weekStart, i)
-  );
+  const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
   const hours: number[] = [];
   for (let h = START_HOUR; h < END_HOUR; h += SLOT_MINUTES / 60) {
@@ -86,42 +67,35 @@ onCreateFromSlot?: (data: {
 
   const nowMinutesFromStart = differenceInMinutes(
     now,
-    new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      START_HOUR,
-      0
-    )
+    new Date(now.getFullYear(), now.getMonth(), now.getDate(), START_HOUR, 0)
   );
-
-  const nowTop =
-    (nowMinutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT;
+  const nowTop = (nowMinutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT;
 
   return (
-    <div className="h-full bg-white">
+    <div className="h-full bg-white dark:bg-gray-900">
       {/* =====================
           HEADER DÍAS
       ===================== */}
-      <div className="grid grid-cols-[64px_repeat(7,1fr)] border-b border-gray-200 bg-white">
-        <div style={{ height: HEADER_HEIGHT }} />
-
+      <div
+        className="sticky top-0 z-40 grid grid-cols-[64px_repeat(7,1fr)] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900"
+        style={{ minHeight: HEADER_HEIGHT }}
+      >
+        <div className="border-r border-gray-200 dark:border-gray-800" />
         {days.map((day) => {
           const isToday = isSameDay(day, now);
           return (
             <div
               key={day.toISOString()}
-              className="flex flex-col items-center justify-center"
-              style={{ height: HEADER_HEIGHT }}
+              className="flex flex-col items-center justify-center border-r border-gray-200 py-2 dark:border-gray-800"
             >
-              <div className="text-xs text-zinc-500">
+              <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
                 {format(day, "EEE", { locale: es })}
               </div>
               <div
-                className={`text-sm ${
+                className={`mt-1 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
                   isToday
-                    ? "text-red-600 font-semibold"
-                    : "text-zinc-800"
+                    ? "bg-indigo-600 text-white"
+                    : "text-gray-800 dark:text-gray-200"
                 }`}
               >
                 {format(day, "dd")}
@@ -134,25 +108,32 @@ onCreateFromSlot?: (data: {
       {/* =====================
           BODY SCROLL
       ===================== */}
-      <div className="grid grid-cols-[64px_repeat(7,1fr)] h-[calc(100%-48px)] overflow-y-auto">
+      <div
+        className="grid grid-cols-[64px_repeat(7,1fr)]"
+        style={{ height: `calc(100% - ${HEADER_HEIGHT}px)` }}
+      >
         {/* HORAS */}
-        <div className="text-xs text-zinc-500"
-          style={{ paddingTop: SPECIALIST_HEADER_HEIGHT}}
-        >
-          {hours.map((h, i) => (
-            <div
-              key={i}
-              style={{ height: SLOT_HEIGHT }}
-              className="flex items-start justify-end pr-1 text-[11px] font-medium text-zinc-500"
-
-            >
-              {format(
-                new Date(0, 0, 0, Math.floor(h), (h % 1) * 60),
-                "h:mm a",
-                { locale: es }
-              )}
-            </div>
-          ))}
+        <div className="overflow-y-auto border-r border-gray-200 dark:border-gray-800">
+          <div
+            className="relative"
+            style={{
+              height: totalHeight,
+              paddingTop: SPECIALIST_HEADER_HEIGHT,
+            }}
+          >
+            {hours.map((h, i) => (
+              <div
+                key={i}
+                style={{ height: SLOT_HEIGHT }}
+                className="flex items-start justify-end pr-2 pt-1 text-xs font-medium text-gray-400 dark:text-gray-500"
+              >
+                {format(
+                  new Date(0, 0, 0, Math.floor(h), (h % 1) * 60),
+                  "h:mm a"
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* DÍAS */}
@@ -167,66 +148,39 @@ onCreateFromSlot?: (data: {
           return (
             <div
               key={day.toISOString()}
-              className="relative hover:bg-indigo-50/20 transition-colors"
-              style={{
-                height: totalHeight + SPECIALIST_HEADER_HEIGHT,
-                backgroundImage: `
-                  repeating-linear-gradient(
-                    to bottom,
-                    transparent,
-                    transparent ${SLOT_HEIGHT - 1}px,
-                    rgba(0,0,0,0.05) ${SLOT_HEIGHT}px
-                  ),
-                  repeating-linear-gradient(
-                      to right,
-                      transparent,
-                      transparent ${SLOT_HEIGHT - 1}px,
-                    rgba(0,0,0,0.03) ${SLOT_HEIGHT}px
-                    )
-                `,
-              }}
+              className="relative border-r border-gray-200 dark:border-gray-800"
             >
-              {/* ⏱ BLOQUE HORA ACTUAL */}
-              {isSameDay(day, now) && nowTop > 0 && (
-                <div
-                  className="absolute left-0 right-0 z-10"
-                  style={{
-                    top: Math.floor(nowTop / SLOT_HEIGHT) * SLOT_HEIGHT,
-                    height: SLOT_HEIGHT,
-                    background:
-                      "linear-gradient(to bottom, rgba(99,102,241,0.06), rgba(99,102,241,0.02))",
-                  }}
-                />
-              )}
-              {/* HEADER ESPECIALISTAS */}
               {/* SLOTS VACÍOS (CLICK PARA CREAR RESERVA) */}
+              <div
+                className="absolute inset-0 z-0"
+                style={{
+                  height: totalHeight,
+                  marginTop: SPECIALIST_HEADER_HEIGHT,
+                  backgroundImage: `repeating-linear-gradient(to bottom, transparent, transparent ${
+                    SLOT_HEIGHT - 1
+                  }px, rgba(0,0,0,0.03) ${SLOT_HEIGHT}px)`,
+                }}
+              >
                 <div
-                  className="absolute left-0 right-0 top-0"
+                  className="grid h-full"
                   style={{
-                    height: totalHeight + SPECIALIST_HEADER_HEIGHT,
-                    display: "grid",
                     gridTemplateColumns: `repeat(${SPECIALISTS.length}, 1fr)`,
-                    marginTop: SPECIALIST_HEADER_HEIGHT,
                   }}
                 >
                   {SPECIALISTS.map((specialist) => (
-                    <div key={specialist}>
+                    <div
+                      key={specialist}
+                      className="border-r border-gray-200/50 dark:border-gray-700/50"
+                    >
                       {hours.map((h, idx) => {
-                        const slotStart = new Date(
-                          day.getFullYear(),
-                          day.getMonth(),
-                          day.getDate(),
-                          Math.floor(h),
-                          (h % 1) * 60
-                        );
+                        const slotStart = new Date(day);
+                        slotStart.setHours(Math.floor(h), (h % 1) * 60, 0, 0);
 
                         return (
                           <div
                             key={idx}
-                            className="cursor-pointer"
-                            style={{
-                              height: SLOT_HEIGHT,
-                            }}
+                            className="cursor-pointer transition-colors hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20"
+                            style={{ height: SLOT_HEIGHT }}
                             onClick={() =>
                               onCreateFromSlot?.({
                                 especialista: specialist,
@@ -239,12 +193,13 @@ onCreateFromSlot?: (data: {
                     </div>
                   ))}
                 </div>
+              </div>
 
+              {/* HEADER ESPECIALISTAS */}
               <div
-                className="absolute top-0 left-0 right-0 z-20
-                          grid text-[11px] font-medium text-zinc-600
-                          bg-white/90 backdrop-blur-sm border-b border-gray-200"
+                className="sticky top-0 z-20 grid bg-white/80 backdrop-blur-sm dark:bg-gray-900/80"
                 style={{
+                  top: 0,
                   height: SPECIALIST_HEADER_HEIGHT,
                   gridTemplateColumns: `repeat(${SPECIALISTS.length}, 1fr)`,
                 }}
@@ -252,91 +207,88 @@ onCreateFromSlot?: (data: {
                 {SPECIALIST_TITLES.map((title, i) => (
                   <div
                     key={i}
-                    className="flex items-center justify-center border-r last:border-r-0 border-gray-200/70"
+                    className="flex items-center justify-center border-b border-r border-gray-200 text-xs font-medium text-gray-600 dark:border-gray-700 dark:text-gray-400"
                   >
                     {title}
                   </div>
                 ))}
               </div>
 
-
-              {/* 🔴 LÍNEA DEL AHORA */}
+              {/* LÍNEA DEL AHORA */}
               {isSameDay(day, now) && nowTop > 0 && (
-                <>
-                  <div
-                    className="absolute left-0 right-0 z-30"
-                    style={{
-                      top: nowTop,
-                      height: 2,
-                      backgroundColor: "#dc2626",
-                    }}
-                  />
-                  <div
-                    className="absolute z-30"
-                    style={{
-                      top: nowTop - 4,
-                      left: -4,
-                      width: 8,
-                      height: 8,
-                      backgroundColor: "#dc2626",
-                      borderRadius: "50%",
-                    }}
-                  />
-                </>
+                <div
+                  className="absolute left-0 right-0 z-30 flex items-center pointer-events-none"
+                  style={{
+                    top: nowTop + SPECIALIST_HEADER_HEIGHT,
+                    transform: "translateY(-1px)",
+                  }}
+                >
+                  <div className="h-0.5 w-full bg-red-500" />
+                  <div className="-ml-1 h-2 w-2 rounded-full bg-red-500" />
+                </div>
               )}
 
               {/* CITAS */}
-              {dayAppointments.map((appt) => {
-                const minutesFromStart = differenceInMinutes(
-                  appt.start,
-                  new Date(
-                    appt.start.getFullYear(),
-                    appt.start.getMonth(),
-                    appt.start.getDate(),
-                    START_HOUR,
-                    0
-                  )
-                );
+              <div
+                className="relative z-10 pointer-events-none"
+                style={{
+                  height: totalHeight,
+                  marginTop: SPECIALIST_HEADER_HEIGHT,
+                }}
+              >
+                {dayAppointments.map((appt) => {
+                  const minutesFromStart = differenceInMinutes(
+                    appt.start,
+                    new Date(
+                      appt.start.getFullYear(),
+                      appt.start.getMonth(),
+                      appt.start.getDate(),
+                      START_HOUR,
+                      0
+                    )
+                  );
+                  const top =
+                    (minutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT +
+                    VISUAL_GAP / 2;
+                  const height =
+                    (differenceInMinutes(appt.end, appt.start) /
+                      SLOT_MINUTES) *
+                      SLOT_HEIGHT -
+                    VISUAL_GAP;
+                  const specialistIndex = Math.max(
+                    0,
+                    SPECIALISTS.indexOf(appt.raw.especialista)
+                  );
+                  const width = 100 / SPECIALISTS.length;
+                  const left = specialistIndex * width;
 
-                const top =
-                  SPECIALIST_HEADER_HEIGHT+(minutesFromStart / SLOT_MINUTES) *
-                    SLOT_HEIGHT +
-                  VISUAL_GAP / 2;
-
-                const height =
-                  (differenceInMinutes(
-                    appt.end,
-                    appt.start
-                  ) /
-                    SLOT_MINUTES) *
-                    SLOT_HEIGHT -
-                  VISUAL_GAP;
-
-                const specialistIndex = Math.max(
-                  0,
-                  SPECIALISTS.indexOf(appt.raw.especialista)
-                );
-
-                const width = 100 / SPECIALISTS.length;
-                const left = specialistIndex * width;
-
-                return (
-                  <AgendaEventCard
-                    key={appt.id}
-                    appointment={appt}
-                    tooltip={tooltip}
-                    onViewDetails={onViewDetails}
-                    style={{
-                      top,
-                      height,
-                      width: `${width}%`,
-                      left: `${left}%`,
-                      backgroundColor: appt.bg_color || "#6366f1",
-                    }}
-                  />
-
-                );
-              })}
+                  return (
+                    <div 
+                      key={appt.id} 
+                      className="absolute pointer-events-auto"
+                      style={{
+                        top,
+                        height,
+                        width: `calc(${width}% - 4px)`,
+                        left: `calc(${left}% + 2px)`,
+                      }}
+                    >
+                      <AgendaEventCard
+                        appointment={appt}
+                        tooltip={tooltip}
+                        onViewDetails={onViewDetails}
+                        style={{
+                          top: 0,
+                          height: '100%',
+                          width: '100%',
+                          left: 0,
+                          backgroundColor: appt.bg_color || "#6366f1",
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })}

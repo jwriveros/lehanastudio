@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { ThemeToggleButton } from "./ThemeToggleButton";
 
 export default function AppSidebar() {
   const { toggle } = useAgendaCollapse();
@@ -39,8 +40,8 @@ export default function AppSidebar() {
   return (
     <>
       {/* HEADER MÓVIL (Fijo arriba con Hamburguesa) */}
-      <header className="md:hidden flex items-center justify-between px-4 h-14 bg-white border-b border-gray-100 w-full shrink-0 z-50">
-        <button onClick={toggleMobileMenu} className="p-2 text-zinc-600">
+      <header className="md:hidden flex items-center justify-between px-4 h-14 bg-white dark:bg-zinc-900 border-b border-gray-100 dark:border-zinc-800 w-full shrink-0 z-50">
+        <button onClick={toggleMobileMenu} className="p-2 text-zinc-600 dark:text-zinc-300">
           {isOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
         <div className="font-bold text-indigo-600 text-lg">Lehana</div>
@@ -52,21 +53,21 @@ export default function AppSidebar() {
       {/* OVERLAY PARA MÓVIL (Cierra el menú al tocar fuera) */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/20 z-40 md:hidden" 
+          className="fixed inset-0 bg-black/30 z-40 md:hidden" 
           onClick={toggleMobileMenu}
         />
       )}
 
       {/* ASIDE (Desktop Fijo / Móvil Desplegable) */}
       <aside className={`
-        fixed md:relative z-50 h-full bg-white border-r border-gray-200 flex flex-col items-center py-4 transition-transform duration-300
+        fixed md:relative z-50 h-full bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex flex-col items-center py-4 transition-transform duration-300
         ${isOpen ? "translate-x-0 w-20" : "-translate-x-full md:translate-x-0 w-14"}
         md:flex shrink-0
       `}>
         {/* BOTÓN COLAPSAR AGENDA (Solo visible en Desktop) */}
         <button
           onClick={toggle}
-          className="hidden md:flex p-2 mb-4 rounded hover:bg-zinc-100"
+          className="hidden md:flex p-2 mb-4 rounded hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
           aria-label="Toggle agenda sidebar"
         >
           <Menu size={20} />
@@ -91,8 +92,8 @@ export default function AppSidebar() {
                   transition-colors h-11 w-11
                   ${
                     isActive
-                      ? "bg-indigo-50 text-indigo-600"
-                      : "text-zinc-500 hover:bg-gray-100 hover:text-indigo-600"
+                      ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400"
+                      : "text-zinc-500 hover:bg-gray-100 hover:text-indigo-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-indigo-500"
                   }`}
               >
                 <item.icon size={22} strokeWidth={isActive ? 2.5 : 2} />
@@ -101,10 +102,11 @@ export default function AppSidebar() {
           })}
         </nav>
 
-        <div className="mt-auto w-full px-3">
+        <div className="mt-auto w-full px-3 flex flex-col items-center gap-2">
+          <ThemeToggleButton />
           <button
             onClick={handleLogout}
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-red-50 hover:text-red-600"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-zinc-400 dark:hover:bg-red-900/40 dark:hover:text-red-500"
           >
             <LogOut size={22} />
           </button>

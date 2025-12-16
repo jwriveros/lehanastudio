@@ -62,25 +62,19 @@ function toLocalDateTimeString(d: Date) {
    COMPONENTE
 ========================= */
 export default function AgendaLayout() {
-  // Estado para el sidebar de la agenda
-  const [collapsed, setCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { register } = useAgendaCollapse();
-
   const [appointments, setAppointments] = useState<AgendaAppointmentDB[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [currentDate, setCurrentDate] = useState(
     normalizeLocalDate(new Date())
   );
-
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [specialistFilter, setSpecialistFilter] = useState<string[]>([]);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
-
   const [selectedAppointment, setSelectedAppointment] =
     useState<CalendarAppointment | null>(null);
-
   const isReservationDrawerOpen = useUIStore(
     (state) => state.isReservationDrawerOpen
   );
@@ -90,12 +84,9 @@ export default function AgendaLayout() {
   const openReservationDrawer = useUIStore(
     (state) => state.openReservationDrawer
   );
-
   const [editingAppointment, setEditingAppointment] =
     useState<CalendarAppointment | null>(null);
-
-  const toggleSidebar = () => setCollapsed((v) => !v);
-
+  const toggleSidebar = () => setSidebarCollapsed((v) => !v);
   /* =========================
       REGISTER COLLAPSE
   ========================= */
@@ -103,16 +94,13 @@ export default function AgendaLayout() {
     register(toggleSidebar);
     return () => register(null);
   }, [register]);
-
   /* =========================
       FETCH (Lógica original)
   ========================= */
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
-
     let from: Date;
     let to: Date;
-
     if (viewMode === "day") {
       from = startOfDay(currentDate);
       to = new Date(from.getTime() + 86400000);
@@ -123,7 +111,6 @@ export default function AgendaLayout() {
       from = startOfMonth(currentDate);
       to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
     }
-
     const { data, error } = await supabase
       .from("appointments")
       .select(
@@ -132,15 +119,12 @@ export default function AgendaLayout() {
       .gte("appointment_at", toLocalDateTimeString(from))
       .lt("appointment_at", toLocalDateTimeString(to))
       .order("appointment_at", { ascending: true });
-
     setAppointments(error ? [] : data ?? []);
     setLoading(false);
   }, [currentDate, viewMode]);
-
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
-
   /* =========================
       HANDLERS (Lógica original)
   ========================= */
@@ -157,7 +141,6 @@ export default function AgendaLayout() {
     setSelectedAppointment(null);
     fetchAppointments();
   };
-
   const handleDeleteAppointment = async (appointment: CalendarAppointment) => {
     if (!confirm("⚠️ Esta acción eliminará la cita permanentemente.")) return;
     const { error } = await supabase
@@ -171,14 +154,18 @@ export default function AgendaLayout() {
     setSelectedAppointment(null);
     fetchAppointments();
   };
-
   const handleEditAppointment = (appointment: CalendarAppointment) => {
     setSelectedAppointment(null);
     setEditingAppointment(appointment);
     openReservationDrawer();
   };
-
-  const handleCreateFromSlot = ({ especialista, start }: { especialista: string; start: Date }) => {
+  const handleCreateFromSlot = ({
+    especialista,
+    start,
+  }: {
+    especialista: string;
+    start: Date;
+  }) => {
     setEditingAppointment({
       id: "new",
       title: "",
@@ -188,21 +175,26 @@ export default function AgendaLayout() {
     });
     openReservationDrawer();
   };
-
   /* =========================
       MAP CALENDAR (Lógica original)
   ========================= */
   const calendarAppointments = useMemo(() => {
     return appointments
       .filter((a) => {
-        const statusMatch = statusFilter.length === 0 || statusFilter.includes(a.estado);
-        const specialistMatch = specialistFilter.length === 0 || specialistFilter.includes(a.especialista);
-        const serviceMatch = serviceFilter.length === 0 || serviceFilter.includes(a.servicio);
+        const statusMatch =
+          statusFilter.length === 0 || statusFilter.includes(a.estado);
+        const specialistMatch =
+          specialistFilter.length === 0 ||
+          specialistFilter.includes(a.especialista);
+        const serviceMatch =
+          serviceFilter.length === 0 || serviceFilter.includes(a.servicio);
         return statusMatch && specialistMatch && serviceMatch;
       })
       .map((a) => {
         const start = parseLocalDate(a.appointment_at);
-        const end = new Date(start.getTime() + Number(a.duration || 60) * 60000);
+        const end = new Date(
+          start.getTime() + Number(a.duration || 60) * 60000
+        );
         return {
           id: String(a.id),
           title: a.servicio,
@@ -213,25 +205,32 @@ export default function AgendaLayout() {
         };
       });
   }, [appointments, statusFilter, specialistFilter, serviceFilter]);
-
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-white">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-white">
       <AgendaShell
-        collapsed={collapsed}
-        toggleSidebar={toggleSidebar}
-        header={(toggleFn) => (
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={toggleSidebar}
+        header={
           <AgendaHeader
-            onToggleAgendaSidebar={toggleFn}
+            onToggleAgendaSidebar={toggleSidebar}
             currentDate={currentDate}
             onToday={() => setCurrentDate(normalizeLocalDate(new Date()))}
             onPrev={() =>
               setCurrentDate((d) =>
-                normalizeLocalDate(new Date(d.getTime() - 86400000 * (viewMode === "week" ? 7 : 1)))
+                normalizeLocalDate(
+                  new Date(
+                    d.getTime() - 86400000 * (viewMode === "week" ? 7 : 1)
+                  )
+                )
               )
             }
             onNext={() =>
               setCurrentDate((d) =>
-                normalizeLocalDate(new Date(d.getTime() + 86400000 * (viewMode === "week" ? 7 : 1)))
+                normalizeLocalDate(
+                  new Date(
+                    d.getTime() + 86400000 * (viewMode === "week" ? 7 : 1)
+                  )
+                )
               )
             }
             view={viewMode}
@@ -243,20 +242,21 @@ export default function AgendaLayout() {
             serviceFilter={serviceFilter}
             setServiceFilter={setServiceFilter}
           />
-        )}
-        sidebar={(isCollapsed) => <AgendaSidebar collapsed={isCollapsed} />}
+        }
+        sidebar={<AgendaSidebar collapsed={sidebarCollapsed} />}
         agenda={
           loading ? (
             <div className="flex h-full items-center justify-center text-sm text-zinc-500">
               Cargando agenda…
             </div>
           ) : (
-            <div className="w-full h-full">
+            <div className="h-full w-full">
               {viewMode === "day" ? (
                 <DailyAgendaGrid
                   appointments={calendarAppointments}
                   currentDate={currentDate}
                   onViewDetails={setSelectedAppointment}
+                  onCreateFromSlot={handleCreateFromSlot}
                 />
               ) : viewMode === "month" ? (
                 <MonthlyAgendaGrid
@@ -275,7 +275,6 @@ export default function AgendaLayout() {
           )
         }
       />
-
       {selectedAppointment && (
         <AppointmentDetailsModal
           appointment={selectedAppointment}
@@ -285,7 +284,6 @@ export default function AgendaLayout() {
           onEdit={handleEditAppointment}
         />
       )}
-
       <ReservationDrawer
         isOpen={isReservationDrawerOpen}
         onClose={() => {
