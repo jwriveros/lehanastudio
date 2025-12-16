@@ -89,6 +89,18 @@ function toDatetimeLocal(dateString: string) {
   )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Convierte datetime-local (hora local Colombia) a ISO UTC correcto
+function localDateTimeToUTC(localDateTime: string) {
+  // localDateTime: "2025-05-22T10:00"
+  const localDate = new Date(localDateTime);
+
+  // Convertimos a UTC ISO
+  return new Date(
+    localDate.getTime() - localDate.getTimezoneOffset() * 60000
+  ).toISOString();
+}
+
+
 /* =========================
    COMPONENTE
 ========================= */
@@ -289,7 +301,7 @@ export default function ReservationForm({
             servicio: l.servicio,
             especialista: l.especialista,
             duration: l.duracion,
-            appointment_at: l.appointment_at,
+            appointment_at: localDateTimeToUTC(l.appointment_at),
           })
           .eq("id", Number(appointmentData.id));
 
@@ -308,7 +320,7 @@ export default function ReservationForm({
           servicio: l.servicio,
           especialista: l.especialista,
           duration: l.duracion,
-          appointment_at: l.appointment_at,
+          appointment_at: localDateTimeToUTC(l.appointment_at),
         })),
       };
 
