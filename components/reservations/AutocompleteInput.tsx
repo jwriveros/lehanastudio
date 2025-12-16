@@ -39,6 +39,7 @@ function AutocompleteInput<T>({
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const ignoreSearchRef = useRef(false);
 
   /* =========================
      Cerrar al hacer click fuera
@@ -64,6 +65,11 @@ function AutocompleteInput<T>({
      Fetch con debounce (SIN null)
   ========================= */
   useEffect(() => {
+    if (ignoreSearchRef.current) {
+      ignoreSearchRef.current = false;
+      return;
+    }
+
     const q = inputValue.trim();
 
     if (q.length < 2) {
@@ -126,12 +132,16 @@ function AutocompleteInput<T>({
   const handleSelect = useCallback(
     (item: T) => {
       // 👉 SOLO el valor definido (ej: nombre)
-      setInputValue(getValue(item));
+      const newValue = getValue(item);
+      if (newValue !== inputValue) {
+        ignoreSearchRef.current = true;
+        setInputValue(newValue);
+      }
       setSuggestions([]);
       setIsOpen(false);
       onSelect(item);
     },
-    [getValue, onSelect]
+    [getValue, onSelect, inputValue]
   );
 
   return (

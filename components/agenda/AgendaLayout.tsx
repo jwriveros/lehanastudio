@@ -101,39 +101,89 @@ export default function AgendaLayout() {
   /* =========================
      FETCH
   ========================= */
-  useEffect(() => {
-    const fetchAppointments = async () => {
-      setLoading(true);
+  const fetchAppointments = async () => {
+  setLoading(true);
 
-      let from: Date;
-      let to: Date;
+  let from: Date;
+  let to: Date;
 
-      if (viewMode === "day") {
-        from = startOfDay(currentDate);
-        to = new Date(from.getTime() + 86400000);
-      } else if (viewMode === "week") {
-        from = startOfWeek(currentDate);
-        to = new Date(from.getTime() + 86400000 * 7);
-      } else {
-        from = startOfMonth(currentDate);
-        to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
+  if (viewMode === "day") {
+    from = startOfDay(currentDate);
+    to = new Date(from.getTime() + 86400000);
+  } else if (viewMode === "week") {
+    from = startOfWeek(currentDate);
+    to = new Date(from.getTime() + 86400000 * 7);
+  } else {
+    from = startOfMonth(currentDate);
+    to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
+  }
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .select(
+      `id, cliente, servicio, especialista, appointment_at, estado, bg_color, duration`
+    )
+    .gte("appointment_at", toLocalDateTimeString(from))
+    .lt("appointment_at", toLocalDateTimeString(to))
+    .order("appointment_at", { ascending: true });
+
+  setAppointments(error ? [] : data ?? []);
+  setLoading(false);
+};
+
+useEffect(() => {
+  fetchAppointments();
+}, [currentDate, viewMode]);
+
+useEffect(() => {
+  const channel = supabase
+    .channel("appointments-realtime")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "appointments",
+      },
+      (payload) => {
+        const inserted = payload.new;
+        if (!inserted?.appointment_at) return;
+
+        // Fecha de la cita insertada
+        const insertedDate = parseLocalDate(inserted.appointment_at);
+
+        // Rango actual visible
+        let from: Date;
+        let to: Date;
+
+        if (viewMode === "day") {
+          from = startOfDay(currentDate);
+          to = new Date(from.getTime() + 86400000);
+        } else if (viewMode === "week") {
+          from = startOfWeek(currentDate);
+          to = new Date(from.getTime() + 86400000 * 7);
+        } else {
+          from = startOfMonth(currentDate);
+          to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
+        }
+
+        // 🔥 SOLO refresca si cae dentro del rango visible
+        if (insertedDate >= from && insertedDate < to) {
+          console.log("📅 Nueva cita dentro del rango visible");
+          fetchAppointments();
+        } else {
+          console.log("⏭️ Cita fuera del rango, no refresco");
+        }
       }
+    )
+    .subscribe();
 
-      const { data, error } = await supabase
-        .from("appointments")
-        .select(
-          `id, cliente, servicio, especialista, appointment_at, estado, bg_color, duration`
-        )
-        .gte("appointment_at", toLocalDateTimeString(from))
-        .lt("appointment_at", toLocalDateTimeString(to))
-        .order("appointment_at", { ascending: true });
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [currentDate, viewMode]);
 
-      setAppointments(error ? [] : data ?? []);
-      setLoading(false);
-    };
 
-    fetchAppointments();
-  }, [currentDate, viewMode]);
 
   const calendarAppointments = useMemo(() => {
     return appointments.map((a) => {
