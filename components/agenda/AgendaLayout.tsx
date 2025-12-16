@@ -228,7 +228,10 @@ export default function AgendaLayout() {
           start,
           end,
           bg_color: a.bg_color,
-          raw: a,
+          raw: {
+            ...a,
+            appointment_at_local: start.toISOString(),
+          },
         };
       });
   }, [appointments, statusFilter, specialistFilter, serviceFilter]);

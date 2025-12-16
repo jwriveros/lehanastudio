@@ -176,9 +176,10 @@ export default function ReservationForm({
           precio: Number(raw.price ?? 0),
           duracion: String(raw.duration ?? "60"),
           especialista: raw.especialista ?? "",
-          appointment_at: raw.appointment_at
-            ? toDatetimeLocal(raw.appointment_at)
-            : "",
+          appointment_at: toDatetimeLocal(
+            raw.appointment_at_local ?? raw.appointment_at
+          ),
+
         },
       ],
     });
