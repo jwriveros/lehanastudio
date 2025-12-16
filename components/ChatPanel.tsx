@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getSenderRole, normalizePhone } from "@/lib/chatUtils";
+import { ChevronLeft, Send, ExternalLink, CheckCircle, Search } from "lucide-react";
 
 /* =======================
-   TIPOS
+    TIPOS
 ======================= */
 
 type Tab = "active" | "reservations" | "abandoned";
@@ -45,12 +46,12 @@ type BookingContext = {
 } | null;
 
 interface Props {
-  mode?: Mode; // 👈 NUEVO
+  mode?: Mode;
   initialThreads: ChatUser[];
 }
 
 /* =======================
-   COMPONENTE
+    COMPONENTE
 ======================= */
 
 export function ChatPanel({
@@ -68,7 +69,6 @@ export function ChatPanel({
   const [bookingContext, setBookingContext] = useState<BookingContext>(null);
   const [search, setSearch] = useState("");
 
-  // Cache para nombres conocidos y evitar que se sobrescriban con "Cliente (+num)"
   const knownNamesRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
@@ -81,23 +81,14 @@ export function ChatPanel({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  /* =======================
-     SCROLL ROBUSTO
-  ======================= */
-
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     requestAnimationFrame(() => {
       messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
     });
   }, []);
 
-  /* =======================
-     FETCH THREADS
-  ======================= */
-
   const fetchThreads = useCallback(async () => {
     setLoadingThreads(true);
-
     const { data: sessions } = await supabase
       .from("chat_sessions")
       .select("*")
@@ -124,17 +115,8 @@ export function ChatPanel({
 
     const result: ChatUser[] = sessions.map((s) => {
       const phone = normalizePhone(s.client_phone) || String(s.client_phone);
-      
-      // 1. Intentar obtener nombre de la consulta reciente
-      let name = clientsMap.get(phone);
-
-      // 2. Si falla, buscar en cache de nombres conocidos (initialThreads)
-      if (!name) {
-        name = knownNamesRef.current.get(phone);
-      } else {
-        // Si encontramos uno nuevo, actualizar cache
-        knownNamesRef.current.set(phone, name);
-      }
+      let name = clientsMap.get(phone) || knownNamesRef.current.get(phone);
+      if (clientsMap.get(phone)) knownNamesRef.current.set(phone, name!);
 
       return {
         id: phone,
@@ -151,143 +133,91 @@ export function ChatPanel({
     setLoadingThreads(false);
   }, []);
 
-  useEffect(() => {
-    fetchThreads();
-  }, [fetchThreads]);
-
-  /* =======================
-     CONTEXTO RESERVA
-  ======================= */
-
   const fetchBookingContext = useCallback(async (phone: string) => {
     const clean = normalizePhone(phone);
     if (!clean) {
       setBookingContext(null);
       return;
     }
-
     const { data } = await supabase
       .from("booking_request")
       .select("servicio, fecha, hora, especialista, estado")
       .eq("client_phone", clean)
       .order("created_at", { ascending: false })
       .limit(1);
-
     setBookingContext(data?.[0] ?? null);
   }, []);
-
-  /* =======================
-     MENSAJES
-  ======================= */
 
   useEffect(() => {
     if (!activeId) {
       setMessages([]);
       return;
     }
-
     const load = async () => {
       setLoadingMessages(true);
-
       const clean = normalizePhone(activeId);
       const { data } = await supabase
         .from("mensajes")
         .select("*")
-        .or(
-          `client_phone.eq.${clean},client_phone.eq.+${clean},client_id.eq.${activeId}`
-        )
+        .or(`client_phone.eq.${clean},client_phone.eq.+${clean},client_id.eq.${activeId}`)
         .order("created_at", { ascending: true });
 
       if (data) {
-        setMessages(
-          data.map((m) => ({
-            id: m.id,
-            from: getSenderRole(m),
-            text: m.content || m.message || "",
-            created_at: m.created_at,
-          }))
-        );
+        setMessages(data.map((m) => ({
+          id: m.id,
+          from: getSenderRole(m),
+          text: m.content || m.message || "",
+          created_at: m.created_at,
+        })));
       }
-
       setLoadingMessages(false);
       scrollToBottom();
     };
-
     load();
   }, [activeId, scrollToBottom]);
-
-  /* =======================
-     CLICK CHAT
-  ======================= */
 
   const handleThreadClick = async (id: string) => {
     setActiveId(id);
     fetchBookingContext(id);
-
     await supabase
       .from("chat_sessions")
-      .update({ status: "agent_active" })
+      .update({ status: "agent_active", unread_count: 0 })
       .eq("client_phone", id);
-
     setThreads((prev) =>
       prev.map((t) => (t.id === id ? { ...t, unread: 0 } : t))
     );
   };
 
-  /* =======================
-     SEND
-  ======================= */
-
   const sendMessage = async () => {
-    if (!inputText || !activeId) return;
-
+    if (!inputText.trim() || !activeId) return;
     const phone = normalizePhone(activeId);
+    const textToSend = inputText;
     setInputText("");
-
     await fetch("/api/whatsapp/outgoing", {
       method: "POST",
-      body: JSON.stringify({ client_phone: phone, content: inputText }),
+      body: JSON.stringify({ client_phone: phone, content: textToSend }),
       headers: { "Content-Type": "application/json" },
     });
-
     scrollToBottom("smooth");
   };
 
-  /* =======================
-     RESOLVER
-  ======================= */
-
   const handleResolveChat = async () => {
     if (!activeId) return;
-
     await fetch("/api/chat/resolve", {
       method: "POST",
       body: JSON.stringify({ phoneId: activeId }),
       headers: { "Content-Type": "application/json" },
     });
-
     setActiveId(null);
     fetchThreads();
   };
 
-  /* =======================
-     FILTROS
-  ======================= */
-
-  const effectiveTab: Tab =
-    mode === "reservations" ? "reservations" : tab;
+  const effectiveTab: Tab = mode === "reservations" ? "reservations" : tab;
 
   const filteredThreads = useMemo(() => {
     return threads.filter((t) => {
-      if (
-        mode === "default" &&
-        search &&
-        !t.cliente.toLowerCase().includes(search.toLowerCase())
-      )
-        return false;
-
-      if (effectiveTab === "active")
-        return ["active", "agent_active", "bot_active", "new"].includes(t.status);
+      if (mode === "default" && search && !t.cliente.toLowerCase().includes(search.toLowerCase())) return false;
+      if (effectiveTab === "active") return ["active", "agent_active", "bot_active", "new"].includes(t.status);
       if (effectiveTab === "reservations") return t.status === "pending_agent";
       if (effectiveTab === "abandoned") return t.status === "resolved";
       return true;
@@ -296,155 +226,177 @@ export function ChatPanel({
 
   const currentChat = threads.find((t) => t.id === activeId) || null;
 
-  /* =======================
-     UI
-  ======================= */
-
   return (
-    <div className="flex h-full w-full bg-white">
-      {/* LISTA */}
-      <div className="w-[360px] flex flex-col bg-zinc-50/60">
-
-        {/* TABS (solo modo default) */}
+    <div className="flex h-full w-full bg-white overflow-hidden max-w-[100vw]">
+      
+      {/* SECCIÓN 1: LISTA DE CHATS */}
+      <aside className={`
+        ${activeId ? "hidden md:flex" : "flex"} 
+        w-full md:w-[360px] flex-col bg-gray-50 border-r border-gray-200
+      `}>
+        {/* TABS */}
         {mode === "default" && (
-          <div className="flex gap-2 p-3">
+          <div className="flex flex-wrap gap-2 p-3 justify-start">
             {(["active", "reservations", "abandoned"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition
-                  ${
-                    tab === t
-                      ? "bg-indigo-600 text-white shadow-sm"
-                      : "bg-transparent text-zinc-500 hover:bg-zinc-200/50"
-                  }`}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all
+                  ${tab === t 
+                    ? "bg-indigo-600 text-white shadow-sm" 
+                    : "bg-white border border-zinc-200 text-zinc-500 hover:bg-zinc-100"}`}
               >
-                {t === "active"
-                  ? "Active"
-                  : t === "reservations"
-                  ? "Reservations"
-                  : "Abandoned"}
+                {t === "active" ? "Activos" : t === "reservations" ? "Reservas" : "Finalizados"}
               </button>
             ))}
           </div>
         )}
 
-        {/* BUSCADOR (solo modo default) */}
+        {/* BUSCADOR */}
         {mode === "default" && (
-          <div className="px-3 pb-2">
-            <input
-              placeholder="Buscar chat…"
-              className="w-full rounded-full border px-3 py-1.5 text-sm"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="px-3 pb-2 w-full">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+              <input
+                placeholder="Buscar chat…"
+                className="w-full rounded-full border border-zinc-200 bg-white pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
           </div>
         )}
 
-        <div className="px-4 text-xs text-zinc-500">
-          Chats ({filteredThreads.length})
+        <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+          Mensajes ({filteredThreads.length})
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        {/* LISTADO CON PADDING INFERIOR PARA MÓVIL (EVITAR BOTTOM NAV) */}
+        <div className="flex-1 overflow-y-auto pb-2 md:pb-0">
           {filteredThreads.map((c) => (
             <div
               key={c.id}
               onClick={() => handleThreadClick(c.id)}
-              className={`px-4 py-3 cursor-pointer ${
-                activeId === c.id ? "bg-indigo-50" : "hover:bg-zinc-50"
+              className={`px-4 py-4 cursor-pointer border-b border-gray-100 transition-colors ${
+                activeId === c.id ? "bg-white" : "hover:bg-white/70"
               }`}
             >
-              <div className="font-semibold truncate">{c.cliente}</div>
-              <div className="text-xs text-zinc-500 truncate">
-                {c.lastMessage}
+              <div className="flex justify-between items-start mb-1">
+                <div className="font-semibold text-sm truncate pr-2">{c.cliente}</div>
+                {c.unread > 0 && (
+                  <span className="bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                    {c.unread}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-zinc-500 truncate leading-relaxed">
+                {c.lastMessage || "Sin mensajes recientes"}
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </aside>
 
-      {/* CHAT */}
-      <div className="flex-1 flex flex-col">
+      {/* SECCIÓN 2: ÁREA DE CHAT */}
+      <main className={`
+        ${!activeId ? "hidden md:flex" : "flex"} 
+        flex-1 flex-col bg-white relative
+      `}>
         {!currentChat ? (
-          <div className="flex-1 flex items-center justify-center text-zinc-400">
-            Selecciona un chat
+          <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 p-8 text-center pb-2">
+            <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-4">
+              <Send size={32} className="opacity-20" />
+            </div>
+            <p className="text-sm">Selecciona una conversación para comenzar</p>
           </div>
         ) : (
           <>
-            <div className="px-5 py-3 border-b flex justify-between">
-              <div>
-                <div className="font-semibold">{currentChat.cliente}</div>
-                <div className="text-xs text-zinc-500">
-                  {currentChat.phone}
+            {/* HEADER */}
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-white z-10">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <button 
+                  onClick={() => setActiveId(null)}
+                  className="md:hidden p-1 -ml-1 text-zinc-500 hover:bg-zinc-100 rounded-full transition-colors"
+                >
+                  <ChevronLeft size={24} />
+                </button>
+                <div className="flex flex-col min-w-0">
+                  <div className="font-bold text-sm truncate">{currentChat.cliente}</div>
+                  <div className="text-[10px] text-zinc-400 truncate">{currentChat.phone}</div>
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-1">
                 <button
                   onClick={handleResolveChat}
-                  className="px-3 py-1 rounded-full bg-green-600 text-white text-xs"
+                  title="Marcar como resuelto"
+                  className="p-2 rounded-full text-green-600 hover:bg-green-50 transition-colors"
                 >
-                  Resolver
+                  <CheckCircle size={20} />
                 </button>
                 <a
                   href={`https://wa.me/${currentChat.phone}`}
                   target="_blank"
-                  className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs"
+                  className="p-2 rounded-full text-emerald-600 hover:bg-emerald-50 transition-colors"
                 >
-                  WhatsApp Web
+                  <ExternalLink size={20} />
                 </a>
               </div>
             </div>
 
+            {/* CONTEXTO DE RESERVA */}
             {bookingContext && (
-              <div className="px-5 py-2 bg-indigo-50 text-xs text-indigo-900">
-                {bookingContext.servicio} · {bookingContext.fecha} ·{" "}
-                {bookingContext.hora}
+              <div className="px-5 py-2 bg-indigo-600 text-white text-[11px] font-medium flex justify-between items-center">
+                <span className="truncate pr-4">⚡ {bookingContext.servicio} | {bookingContext.fecha} | {bookingContext.hora}</span>
+                <span className="uppercase text-[9px] bg-white/20 px-1.5 py-0.5 rounded flex-shrink-0">{bookingContext.estado}</span>
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-4 bg-zinc-50">
+            {/* MENSAJES */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#f0f2f5]">
               {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`mb-2 flex ${
-                    m.from === "client" ? "justify-start" : "justify-end"
-                  }`}
-                >
-                  <div
-                    className={`px-3 py-2 rounded-xl text-sm max-w-[70%] ${
-                      m.from === "client"
-                        ? "bg-white border"
-                        : "bg-indigo-600 text-white"
-                    }`}
-                  >
+                <div key={m.id} className={`flex ${m.from === "client" ? "justify-start" : "justify-end"}`}>
+                  <div className={`px-3 py-2 rounded-2xl text-sm shadow-sm max-w-[85%] md:max-w-[70%] ${
+                    m.from === "client" ? "bg-white text-zinc-800 rounded-tl-none" : "bg-indigo-500 text-white rounded-tr-none"
+                  }`}>
                     {m.text}
+                    <div className="text-[9px] mt-1 text-right opacity-60">
+                      {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
                   </div>
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="bg-white border-t px-4 py-3">
-              <div className="flex w-full items-center gap-3">
-                <input
-                  className="w-full flex-1 rounded-2xl bg-zinc-100 px-6 py-4 text-base focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            {/* INPUT DE MENSAJE - AJUSTADO MÁS ABAJO CON pb-24 PARA MÓVIL */}
+            <div className="bg-white border-t border-gray-100 p-3 md:p-4 pb-2 md:pb-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+              <div className="flex w-full items-end gap-2 max-w-4xl mx-auto">
+                <textarea
+                  rows={1}
+                  className="w-full flex-1 rounded-2xl bg-zinc-100 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none max-h-32"
                   placeholder="Escribe un mensaje..."
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
                 />
                 <button
                   onClick={sendMessage}
-                  className="shrink-0 rounded-2xl bg-indigo-600 px-6 py-4 text-sm font-semibold text-white hover:bg-indigo-700"
+                  disabled={!inputText.trim()}
+                  className="p-3 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md"
                 >
-                  Enviar
+                  <Send size={20} />
                 </button>
               </div>
             </div>
           </>
         )}
-      </div>
+      </main>
     </div>
   );
 }

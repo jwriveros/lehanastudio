@@ -24,7 +24,7 @@ type TooltipInfo = {
 /* =========================
    CONFIG
 ========================= */
-const START_HOUR = 6;
+const START_HOUR = 7;
 const END_HOUR = 22;
 const SLOT_MINUTES = 30;
 const SLOT_HEIGHT = 42;
@@ -54,11 +54,16 @@ export default function WeeklyAgendaGrid({
   currentDate,
   tooltip,
   onViewDetails,
+  onCreateFromSlot,
 }: {
   appointments: CalendarAppointment[];
   currentDate: Date;
   tooltip?: TooltipInfo;
   onViewDetails?: (appt: CalendarAppointment) => void;
+onCreateFromSlot?: (data: {
+    especialista: string;
+    start: Date;
+  }) => void;
 }) {
   const [now, setNow] = useState(new Date());
 
@@ -98,7 +103,7 @@ export default function WeeklyAgendaGrid({
       {/* =====================
           HEADER DÍAS
       ===================== */}
-      <div className="grid grid-cols-[64px_repeat(7,1fr)] border-b border-zinc-200 bg-white">
+      <div className="grid grid-cols-[64px_repeat(7,1fr)] border-b border-gray-200 bg-white">
         <div style={{ height: HEADER_HEIGHT }} />
 
         {days.map((day) => {
@@ -170,13 +175,13 @@ export default function WeeklyAgendaGrid({
                     to bottom,
                     transparent,
                     transparent ${SLOT_HEIGHT - 1}px,
-                    rgba(0,0,0,0.20) ${SLOT_HEIGHT}px
+                    rgba(0,0,0,0.05) ${SLOT_HEIGHT}px
                   ),
                   repeating-linear-gradient(
                       to right,
                       transparent,
                       transparent ${SLOT_HEIGHT - 1}px,
-                    rgba(0,0,0,0.08) ${SLOT_HEIGHT}px 
+                    rgba(0,0,0,0.03) ${SLOT_HEIGHT}px
                     )
                 `,
               }}
@@ -194,10 +199,51 @@ export default function WeeklyAgendaGrid({
                 />
               )}
               {/* HEADER ESPECIALISTAS */}
+              {/* SLOTS VACÍOS (CLICK PARA CREAR RESERVA) */}
+                <div
+                  className="absolute left-0 right-0 top-0"
+                  style={{
+                    height: totalHeight + SPECIALIST_HEADER_HEIGHT,
+                    display: "grid",
+                    gridTemplateColumns: `repeat(${SPECIALISTS.length}, 1fr)`,
+                    marginTop: SPECIALIST_HEADER_HEIGHT,
+                  }}
+                >
+                  {SPECIALISTS.map((specialist) => (
+                    <div key={specialist}>
+                      {hours.map((h, idx) => {
+                        const slotStart = new Date(
+                          day.getFullYear(),
+                          day.getMonth(),
+                          day.getDate(),
+                          Math.floor(h),
+                          (h % 1) * 60
+                        );
+
+                        return (
+                          <div
+                            key={idx}
+                            className="cursor-pointer"
+                            style={{
+                              height: SLOT_HEIGHT,
+                            }}
+                            onClick={() =>
+                              onCreateFromSlot?.({
+                                especialista: specialist,
+                                start: slotStart,
+                              })
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+
               <div
                 className="absolute top-0 left-0 right-0 z-20
                           grid text-[11px] font-medium text-zinc-600
-                          bg-white/90 backdrop-blur-sm border-b border-zinc-300"
+                          bg-white/90 backdrop-blur-sm border-b border-gray-200"
                 style={{
                   height: SPECIALIST_HEADER_HEIGHT,
                   gridTemplateColumns: `repeat(${SPECIALISTS.length}, 1fr)`,
@@ -206,7 +252,7 @@ export default function WeeklyAgendaGrid({
                 {SPECIALIST_TITLES.map((title, i) => (
                   <div
                     key={i}
-                    className="flex items-center justify-center border-r last:border-r-0 border-zinc-300/70"
+                    className="flex items-center justify-center border-r last:border-r-0 border-gray-200/70"
                   >
                     {title}
                   </div>

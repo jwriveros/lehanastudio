@@ -120,6 +120,7 @@ export default function ReservationForm({
 
   const [specialists, setSpecialists] = useState<SpecialistItem[]>([]);
   const [loadingSpecialists, setLoadingSpecialists] = useState(false);
+  
 
   /* =========================
      CARGAR ESPECIALISTAS
@@ -164,6 +165,12 @@ export default function ReservationForm({
     }
 
     const raw = appointmentData.raw ?? {};
+
+    const appointmentAt =
+      "appointment_at_local" in raw
+        ? raw.appointment_at_local
+        : raw.appointment_at;
+
 
     setForm({
       cliente: raw.cliente ?? "",

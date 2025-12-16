@@ -1,7 +1,7 @@
 "use client";
 
 import { useAgendaCollapse } from "@/components/layout/AgendaCollapseContext";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 import AgendaShell from "./AgendaShell";
@@ -14,8 +14,7 @@ import DailyAgendaGrid from "./DailyAgendaGrid";
 import AppointmentDetailsModal from "./AppointmentDetailsModal";
 import ReservationDrawer from "@/components/reservations/ReservationDrawer";
 import { useUIStore } from "@/lib/uiStore";
-
-import type { CalendarAppointment, AgendaAppointmentDB } from "./types";
+import { CalendarAppointment, AgendaAppointmentDB } from "./types";
 
 /* =========================
    TIPOS
@@ -23,7 +22,7 @@ import type { CalendarAppointment, AgendaAppointmentDB } from "./types";
 type ViewMode = "day" | "week" | "month";
 
 /* =========================
-   FECHAS
+   FECHAS (Lógica original intacta)
 ========================= */
 function parseLocalDate(dateString: string) {
   const [date, time = "00:00:00"] = dateString.split("T");
@@ -63,6 +62,7 @@ function toLocalDateTimeString(d: Date) {
    COMPONENTE
 ========================= */
 export default function AgendaLayout() {
+  // Estado para el sidebar de la agenda
   const [collapsed, setCollapsed] = useState(false);
   const { register } = useAgendaCollapse();
 
@@ -92,21 +92,22 @@ export default function AgendaLayout() {
   );
 
   const [editingAppointment, setEditingAppointment] =
-  useState<CalendarAppointment | null>(null);
+    useState<CalendarAppointment | null>(null);
 
+  const toggleSidebar = () => setCollapsed((v) => !v);
 
   /* =========================
-     REGISTER COLLAPSE
+      REGISTER COLLAPSE
   ========================= */
   useEffect(() => {
-    register(() => setCollapsed((v) => !v));
+    register(toggleSidebar);
     return () => register(null);
   }, [register]);
 
   /* =========================
-     FETCH
+      FETCH (Lógica original)
   ========================= */
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     setLoading(true);
 
     let from: Date;
@@ -134,134 +135,103 @@ export default function AgendaLayout() {
 
     setAppointments(error ? [] : data ?? []);
     setLoading(false);
-  };
+  }, [currentDate, viewMode]);
 
   useEffect(() => {
     fetchAppointments();
-  }, [currentDate, viewMode]);
+  }, [fetchAppointments]);
 
   /* =========================
-     🔥 CANCELAR CITA
+      HANDLERS (Lógica original)
   ========================= */
-  const handleCancelAppointment = async (
-    appointment: CalendarAppointment
-  ) => {
+  const handleCancelAppointment = async (appointment: CalendarAppointment) => {
     if (!confirm("¿Seguro que deseas cancelar esta cita?")) return;
-
     const { error } = await supabase
       .from("appointments")
       .update({ estado: "Cita cancelada" })
       .eq("id", Number(appointment.id));
-
     if (error) {
       alert("Error al cancelar la cita");
-      console.error(error);
       return;
     }
-
     setSelectedAppointment(null);
     fetchAppointments();
   };
 
-  /* =========================
-     🗑️ ELIMINAR CITA
-  ========================= */
-  const handleDeleteAppointment = async (
-    appointment: CalendarAppointment
-  ) => {
-    if (
-      !confirm(
-        "⚠️ Esta acción eliminará la cita permanentemente. ¿Deseas continuar?"
-      )
-    )
-      return;
-
+  const handleDeleteAppointment = async (appointment: CalendarAppointment) => {
+    if (!confirm("⚠️ Esta acción eliminará la cita permanentemente.")) return;
     const { error } = await supabase
       .from("appointments")
       .delete()
       .eq("id", Number(appointment.id));
-
     if (error) {
       alert("Error al eliminar la cita");
-      console.error(error);
       return;
     }
-
     setSelectedAppointment(null);
     fetchAppointments();
   };
 
-    /* =========================
-     Abrir modal de edición
-  ========================= */
-
   const handleEditAppointment = (appointment: CalendarAppointment) => {
-  setSelectedAppointment(null);        // cerrar modal detalles
-  setEditingAppointment(appointment); // guardar cita a editar
-  openReservationDrawer();             // 👈 ABRIR DRAWER
-};
+    setSelectedAppointment(null);
+    setEditingAppointment(appointment);
+    openReservationDrawer();
+  };
 
-
+  const handleCreateFromSlot = ({ especialista, start }: { especialista: string; start: Date }) => {
+    setEditingAppointment({
+      id: "new",
+      title: "",
+      start,
+      end: new Date(start.getTime() + 60 * 60000),
+      raw: { especialista, appointment_at_local: start.toISOString() },
+    });
+    openReservationDrawer();
+  };
 
   /* =========================
-     MAP CALENDAR
+      MAP CALENDAR (Lógica original)
   ========================= */
   const calendarAppointments = useMemo(() => {
     return appointments
       .filter((a) => {
-        const statusMatch =
-          statusFilter.length === 0 || statusFilter.includes(a.estado);
-        const specialistMatch =
-          specialistFilter.length === 0 ||
-          specialistFilter.includes(a.especialista);
-        const serviceMatch =
-          serviceFilter.length === 0 || serviceFilter.includes(a.servicio);
+        const statusMatch = statusFilter.length === 0 || statusFilter.includes(a.estado);
+        const specialistMatch = specialistFilter.length === 0 || specialistFilter.includes(a.especialista);
+        const serviceMatch = serviceFilter.length === 0 || serviceFilter.includes(a.servicio);
         return statusMatch && specialistMatch && serviceMatch;
       })
       .map((a) => {
         const start = parseLocalDate(a.appointment_at);
-        const end =
-          new Date(start.getTime() + Number(a.duration || 60) * 60000);
+        const end = new Date(start.getTime() + Number(a.duration || 60) * 60000);
         return {
           id: String(a.id),
           title: a.servicio,
           start,
           end,
           bg_color: a.bg_color,
-          raw: {
-            ...a,
-            appointment_at_local: start.toISOString(),
-          },
+          raw: { ...a, appointment_at_local: start.toISOString() },
         };
       });
   }, [appointments, statusFilter, specialistFilter, serviceFilter]);
 
   return (
-    <>
+    <div className="flex flex-col h-full w-full overflow-hidden bg-white">
       <AgendaShell
-        header={(toggleSidebar) => (
+        collapsed={collapsed}
+        toggleSidebar={toggleSidebar}
+        header={(toggleFn) => (
           <AgendaHeader
-            onToggleAgendaSidebar={toggleSidebar}
+            onToggleAgendaSidebar={toggleFn}
             currentDate={currentDate}
             onToday={() => setCurrentDate(normalizeLocalDate(new Date()))}
             onPrev={() =>
               setCurrentDate((d) =>
-                normalizeLocalDate(
-                  new Date(
-                    d.getTime() -
-                      86400000 * (viewMode === "week" ? 7 : 1)
-                  )
-                )
+                normalizeLocalDate(new Date(d.getTime() - 86400000 * (viewMode === "week" ? 7 : 1)))
               )
             }
             onNext={() =>
               setCurrentDate((d) =>
-                normalizeLocalDate(
-                  new Date(
-                    d.getTime() +
-                      86400000 * (viewMode === "week" ? 7 : 1)
-                  )
-                )
+                normalizeLocalDate(new Date(d.getTime() + 86400000 * (viewMode === "week" ? 7 : 1)))
               )
             }
             view={viewMode}
@@ -274,29 +244,34 @@ export default function AgendaLayout() {
             setServiceFilter={setServiceFilter}
           />
         )}
-        sidebar={(collapsed) => <AgendaSidebar collapsed={collapsed} />}
+        sidebar={(isCollapsed) => <AgendaSidebar collapsed={isCollapsed} />}
         agenda={
           loading ? (
             <div className="flex h-full items-center justify-center text-sm text-zinc-500">
               Cargando agenda…
             </div>
-          ) : viewMode === "day" ? (
-            <DailyAgendaGrid
-              appointments={calendarAppointments}
-              currentDate={currentDate}
-              onViewDetails={setSelectedAppointment}
-            />
-          ) : viewMode === "month" ? (
-            <MonthlyAgendaGrid
-              appointments={calendarAppointments}
-              currentDate={currentDate}
-            />
           ) : (
-            <WeeklyAgendaGrid
-              appointments={calendarAppointments}
-              currentDate={currentDate}
-              onViewDetails={setSelectedAppointment}
-            />
+            <div className="w-full h-full">
+              {viewMode === "day" ? (
+                <DailyAgendaGrid
+                  appointments={calendarAppointments}
+                  currentDate={currentDate}
+                  onViewDetails={setSelectedAppointment}
+                />
+              ) : viewMode === "month" ? (
+                <MonthlyAgendaGrid
+                  appointments={calendarAppointments}
+                  currentDate={currentDate}
+                />
+              ) : (
+                <WeeklyAgendaGrid
+                  appointments={calendarAppointments}
+                  currentDate={currentDate}
+                  onViewDetails={setSelectedAppointment}
+                  onCreateFromSlot={handleCreateFromSlot}
+                />
+              )}
+            </div>
           )
         }
       />
@@ -318,10 +293,8 @@ export default function AgendaLayout() {
           setEditingAppointment(null);
         }}
         appointmentData={editingAppointment}
-        onSuccess={() => {
-          fetchAppointments(); // 👈 REFRESCA AGENDA
-        }}
+        onSuccess={fetchAppointments}
       />
-    </>
+    </div>
   );
 }

@@ -12,34 +12,38 @@ export default function AgendaSidebar({ collapsed }: Props) {
   const openReservationDrawer = useUIStore(
     (state) => state.openReservationDrawer
   );
+
+  // Si está colapsado, retornamos null para que no ocupe espacio ni renderice nada
+  if (collapsed) return null;
+
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full w-full flex-col bg-white">
       {/* BOTÓN CREAR RESERVA */}
-      <div className="shrink-0 p-3 border-b">
-        <button onClick={() => openReservationDrawer()}
-          className={`
+      <div className="shrink-0 p-3 border-b bg-white">
+        <button 
+          onClick={() => openReservationDrawer()}
+          className="
             flex items-center justify-center gap-1.5
-            w-1/2 mx-auto
+            w-fit
             rounded-lg
             bg-indigo-600 text-white
-            hover:bg-indigo-700 transition
-            h-9
+            hover:bg-indigo-700 transition-colors
+            h-10
             text-sm
-            ${collapsed ? "px-0" : "px-3"}
-          `}
+            px-4
+            shadow-sm
+            active:scale-95
+          "
         >
-          <Plus size={16} />
-          {!collapsed && (
-            <span className="font-medium">
-              Crear
-            </span>
-          )}
+          <Plus size={18} />
+          <span className="font-medium whitespace-nowrap">
+            Crear Reserva
+          </span>
         </button>
-
       </div>
 
       {/* CHAT DE RESERVAS */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden bg-zinc-50/30">
         <ReservasChat />
       </div>
     </div>
