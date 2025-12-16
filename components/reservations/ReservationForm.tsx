@@ -238,6 +238,7 @@ export default function ReservationForm({
     e.preventDefault();
     const err = validate();
     if (err) {
+      console.log("❌ Error de validación:", err); // <-- AGREGAR ESTO
       alert(err);
       return;
     }
@@ -284,12 +285,14 @@ export default function ReservationForm({
           appointment_at: localDateTimeToUTC(l.appointment_at),
         })),
       };
+      console.log("📤 Enviando payload a la API:", payload); // <-- AGREGAR ESTO
       const res = await fetch("/api/bookings/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const json = await res.json();
+      console.log("📥 Respuesta del servidor:", json); // <-- AGREGAR ESTO
       if (!res.ok || !json?.ok) {
         throw new Error(json?.error || "Error creando la reserva");
       }

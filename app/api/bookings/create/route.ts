@@ -28,6 +28,7 @@ export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
     const body = await req.json();
+    console.log("📩 API Recibió:", body); // <-- AGREGAR ESTO
 
     const {
       cliente,
