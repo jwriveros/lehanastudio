@@ -71,17 +71,13 @@ export default function WeeklyAgendaGrid({
   );
   const nowTop = (nowMinutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT;
 
-  // Ajuste de anchos para que quepa en móvil
-  const timeColumnWidth = "w-10 sm:w-16"; // 40px en móvil, 64px en desktop
-  const gridLayout = "grid-cols-[40px_repeat(7,1fr)] sm:grid-cols-[64px_repeat(7,1fr)]";
-
   return (
-    <div className="h-full w-full bg-white dark:bg-gray-900 overflow-x-hidden flex flex-col">
+    <div className="h-full bg-white dark:bg-gray-900">
       {/* =====================
           HEADER DÍAS
       ===================== */}
       <div
-        className={`sticky top-0 z-40 grid ${gridLayout} border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 w-full`}
+        className="sticky top-0 z-40 grid grid-cols-[64px_repeat(7,1fr)] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900"
         style={{ minHeight: HEADER_HEIGHT }}
       >
         <div className="border-r border-gray-200 dark:border-gray-800" />
@@ -90,13 +86,13 @@ export default function WeeklyAgendaGrid({
           return (
             <div
               key={day.toISOString()}
-              className="flex flex-col items-center justify-center border-r border-gray-200 py-1 dark:border-gray-800 min-w-0"
+              className="flex flex-col items-center justify-center border-r border-gray-200 py-2 dark:border-gray-800"
             >
-              <div className="text-[10px] sm:text-xs font-medium uppercase text-gray-500 dark:text-gray-400 truncate w-full text-center">
+              <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
                 {format(day, "EEE", { locale: es })}
               </div>
               <div
-                className={`mt-1 flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full text-[10px] sm:text-sm font-semibold ${
+                className={`mt-1 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
                   isToday
                     ? "bg-indigo-600 text-white"
                     : "text-gray-800 dark:text-gray-200"
@@ -113,10 +109,11 @@ export default function WeeklyAgendaGrid({
           BODY SCROLL
       ===================== */}
       <div
-        className={`grid ${gridLayout} flex-1 min-h-0 w-full overflow-x-hidden overflow-y-auto`}
+        className="grid grid-cols-[64px_repeat(7,1fr)]"
+        style={{ height: `calc(100% - ${HEADER_HEIGHT}px)` }}
       >
         {/* HORAS */}
-        <div className="border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <div className="overflow-y-auto border-r border-gray-200 dark:border-gray-800">
           <div
             className="relative"
             style={{
@@ -128,11 +125,11 @@ export default function WeeklyAgendaGrid({
               <div
                 key={i}
                 style={{ height: SLOT_HEIGHT }}
-                className="flex items-start justify-end pr-1 sm:pr-2 pt-1 text-[9px] sm:text-xs font-medium text-gray-400 dark:text-gray-500"
+                className="flex items-start justify-end pr-2 pt-1 text-xs font-medium text-gray-400 dark:text-gray-500"
               >
                 {format(
                   new Date(0, 0, 0, Math.floor(h), (h % 1) * 60),
-                  "h:mm"
+                  "h:mm a"
                 )}
               </div>
             ))}
@@ -153,7 +150,7 @@ export default function WeeklyAgendaGrid({
               key={day.toISOString()}
               className="relative border-r border-gray-200 dark:border-gray-800"
             >
-              {/* SLOTS VACÍOS */}
+              {/* SLOTS VACÍOS (CLICK PARA CREAR RESERVA) */}
               <div
                 className="absolute inset-0 z-0"
                 style={{
@@ -178,6 +175,7 @@ export default function WeeklyAgendaGrid({
                       {hours.map((h, idx) => {
                         const slotStart = new Date(day);
                         slotStart.setHours(Math.floor(h), (h % 1) * 60, 0, 0);
+
                         return (
                           <div
                             key={idx}
@@ -197,7 +195,7 @@ export default function WeeklyAgendaGrid({
                 </div>
               </div>
 
-              {/* HEADER ESPECIALISTAS (Compacto en móvil) */}
+              {/* HEADER ESPECIALISTAS */}
               <div
                 className="sticky top-0 z-20 grid bg-white/80 backdrop-blur-sm dark:bg-gray-900/80"
                 style={{
@@ -209,7 +207,7 @@ export default function WeeklyAgendaGrid({
                 {SPECIALIST_TITLES.map((title, i) => (
                   <div
                     key={i}
-                    className="flex items-center justify-center border-b border-r border-gray-200 text-[8px] sm:text-xs font-medium text-gray-600 dark:border-gray-700 dark:text-gray-400 truncate"
+                    className="flex items-center justify-center border-b border-r border-gray-200 text-xs font-medium text-gray-600 dark:border-gray-700 dark:text-gray-400"
                   >
                     {title}
                   </div>
@@ -226,6 +224,7 @@ export default function WeeklyAgendaGrid({
                   }}
                 >
                   <div className="h-0.5 w-full bg-red-500" />
+                  <div className="-ml-1 h-2 w-2 rounded-full bg-red-500" />
                 </div>
               )}
 
@@ -240,12 +239,26 @@ export default function WeeklyAgendaGrid({
                 {dayAppointments.map((appt) => {
                   const minutesFromStart = differenceInMinutes(
                     appt.start,
-                    new Date(appt.start.getFullYear(), appt.start.getMonth(), appt.start.getDate(), START_HOUR, 0)
+                    new Date(
+                      appt.start.getFullYear(),
+                      appt.start.getMonth(),
+                      appt.start.getDate(),
+                      START_HOUR,
+                      0
+                    )
                   );
-                  const top = (minutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT;
-                  const height = (differenceInMinutes(appt.end, appt.start) / SLOT_MINUTES) * SLOT_HEIGHT;
-                  
-                  const specialistIndex = Math.max(0, SPECIALISTS.indexOf(appt.raw.especialista));
+                  const top =
+                    (minutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT +
+                    VISUAL_GAP / 2;
+                  const height =
+                    (differenceInMinutes(appt.end, appt.start) /
+                      SLOT_MINUTES) *
+                      SLOT_HEIGHT -
+                    VISUAL_GAP;
+                  const specialistIndex = Math.max(
+                    0,
+                    SPECIALISTS.indexOf(appt.raw.especialista)
+                  );
                   const width = 100 / SPECIALISTS.length;
                   const left = specialistIndex * width;
 
@@ -256,9 +269,8 @@ export default function WeeklyAgendaGrid({
                       style={{
                         top,
                         height,
-                        width: `${width}%`,
-                        left: `${left}%`,
-                        padding: '1px', // Gap mínimo para móvil
+                        width: `calc(${width}% - 4px)`,
+                        left: `calc(${left}% + 2px)`,
                       }}
                     >
                       <AgendaEventCard
@@ -271,7 +283,6 @@ export default function WeeklyAgendaGrid({
                           width: '100%',
                           left: 0,
                           backgroundColor: appt.bg_color || "#6366f1",
-                          fontSize: '8px', // Texto muy pequeño para móvil
                         }}
                       />
                     </div>

@@ -71,6 +71,7 @@ export function ChatPanel({ mode = "default", initialThreads }: Props) {
       }
     });
   }, [initialThreads]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     requestAnimationFrame(() => {
@@ -78,13 +79,13 @@ export function ChatPanel({ mode = "default", initialThreads }: Props) {
     });
   }, []);
   const fetchThreads = useCallback(async () => {
-    setLoadingThreads(true);
+    // setLoadingThreads(true); // REMOVED
     const { data: sessions } = await supabase
       .from("chat_sessions")
       .select("*")
       .order("updated_at", { ascending: false });
     if (!sessions) {
-      setLoadingThreads(false);
+      // setLoadingThreads(false); // REMOVED
       return;
     }
     const phones = sessions
@@ -113,22 +114,32 @@ export function ChatPanel({ mode = "default", initialThreads }: Props) {
       };
     });
     setThreads(result);
-    setLoadingThreads(false);
+    // setLoadingThreads(false); // REMOVED
   }, []);
-  const fetchBookingContext = useCallback(async (phone: string) => {
-    const clean = normalizePhone(phone);
-    if (!clean) {
-      setBookingContext(null);
-      return;
-    }
-    const { data } = await supabase
-      .from("booking_request")
-      .select("servicio, fecha, hora, especialista, estado")
-      .eq("client_phone", clean)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    setBookingContext(data?.[0] ?? null);
-  }, []);
+
+  // ✅ Real-time subscription for chat_sessions
+  useEffect(() => {
+    const channel = supabase
+      .channel("chat_threads_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // Listen to INSERT, UPDATE, DELETE
+          schema: "public",
+          table: "chat_sessions",
+        },
+        (payload) => {
+          // When a change occurs, refetch all threads
+          fetchThreads();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchThreads]); // RE-INSERTED THIS LINE
+
   useEffect(() => {
     if (!activeId) {
       setMessages([]);
@@ -158,7 +169,78 @@ export function ChatPanel({ mode = "default", initialThreads }: Props) {
       scrollToBottom();
     };
     load();
+
+    // Real-time subscription for messages
+    const cleanPhone = normalizePhone(activeId);
+    if (!cleanPhone) return;
+
+    const channel = supabase
+      .channel(`chat_messages_${cleanPhone}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "mensajes",
+          // filter: `client_phone=eq.${cleanPhone}`, // REMOVED SERVER-SIDE FILTER
+        },
+        (payload) => {
+          const newMessage = payload.new as any;
+          // Client-side filter
+          if (
+            normalizePhone(newMessage.client_phone) !== cleanPhone &&
+            normalizePhone(newMessage.client_id) !== cleanPhone // if client_id is phone
+          ) {
+            return; // Not for this active chat
+          }
+          setMessages((prevMessages) => {
+            const updatedMessages = [
+              ...prevMessages,
+              {
+                id: newMessage.id,
+                from: getSenderRole(newMessage),
+                text: newMessage.content || newMessage.message || "",
+                created_at: newMessage.created_at,
+              },
+            ];
+            // Also update the lastMessage and lastActivity of the active thread
+            setThreads((prevThreads) =>
+              prevThreads.map((t) =>
+                t.id === activeId
+                  ? {
+                      ...t,
+                      lastMessage: newMessage.content || newMessage.message || "",
+                      lastActivity: newMessage.created_at,
+                      unread: t.unread + (newMessage.from === 'client' ? 1 : 0), // Increment unread if client message
+                    }
+                  : t
+              )
+            );
+            return updatedMessages;
+          });
+          scrollToBottom("smooth");
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [activeId, scrollToBottom]);
+  const fetchBookingContext = useCallback(async (phone: string) => {
+    const clean = normalizePhone(phone);
+    if (!clean) {
+      setBookingContext(null);
+      return;
+    }
+    const { data } = await supabase
+      .from("booking_request")
+      .select("servicio, fecha, hora, especialista, estado")
+      .eq("client_phone", clean)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    setBookingContext(data?.[0] ?? null);
+  }, []);
   const handleThreadClick = async (id: string) => {
     setActiveId(id);
     fetchBookingContext(id);
@@ -331,10 +413,10 @@ export function ChatPanel({ mode = "default", initialThreads }: Props) {
                 </button>
                 <div className="flex min-w-0 flex-col">
                   <div className="truncate font-bold text-sm text-gray-800 dark:text-gray-200">
-                    {currentChat.cliente}
+                    {currentChat!.cliente}
                   </div>
                   <div className="truncate text-xs text-gray-400 dark:text-gray-500">
-                    {currentChat.phone}
+                    {currentChat!.phone}
                   </div>
                 </div>
               </div>
@@ -347,7 +429,7 @@ export function ChatPanel({ mode = "default", initialThreads }: Props) {
                   <CheckCircle size={20} />
                 </button>
                 <a
-                  href={`https://wa.me/${currentChat.phone}`}
+                  href={`https://wa.me/${currentChat!.phone}`}
                   target="_blank"
                   className="rounded-full p-2 text-emerald-600 transition-colors hover:bg-emerald-50 dark:text-emerald-500 dark:hover:bg-emerald-500/10"
                 >
@@ -359,11 +441,11 @@ export function ChatPanel({ mode = "default", initialThreads }: Props) {
             {bookingContext && (
               <div className="flex items-center justify-between bg-indigo-600 px-5 py-2 text-xs font-medium text-white">
                 <span className="truncate pr-4">
-                  ⚡️ {bookingContext.servicio} | {bookingContext.fecha} |{" "}
-                  {bookingContext.hora}
+                  ⚡️ {bookingContext!.servicio} | {bookingContext!.fecha} |{" "}
+                  {bookingContext!.hora}
                 </span>
                 <span className="flex-shrink-0 rounded bg-white/20 px-1.5 py-0.5 text-[9px] uppercase">
-                  {bookingContext.estado}
+                  {bookingContext!.estado}
                 </span>
               </div>
             )}
