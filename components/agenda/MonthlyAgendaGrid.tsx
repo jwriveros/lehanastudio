@@ -12,6 +12,8 @@ import {
 } from "date-fns";
 import { es } from "date-fns/locale";
 
+
+
 type CalendarAppointment = {
   id: string;
   title: string;

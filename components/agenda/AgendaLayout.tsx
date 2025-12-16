@@ -15,7 +15,6 @@ import AppointmentDetailsModal from "./AppointmentDetailsModal";
 import ReservationDrawer from "@/components/reservations/ReservationDrawer";
 import { useUIStore } from "@/lib/uiStore";
 
-
 import type { CalendarAppointment, AgendaAppointmentDB } from "./types";
 
 /* =========================
@@ -65,7 +64,7 @@ function toLocalDateTimeString(d: Date) {
 ========================= */
 export default function AgendaLayout() {
   const [collapsed, setCollapsed] = useState(false);
-  const { register } = useAgendaCollapse(); // 👈 CONTEXTO
+  const { register } = useAgendaCollapse();
 
   const [appointments, setAppointments] = useState<AgendaAppointmentDB[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,122 +87,156 @@ export default function AgendaLayout() {
   const closeReservationDrawer = useUIStore(
     (state) => state.closeReservationDrawer
   );
+  const openReservationDrawer = useUIStore(
+    (state) => state.openReservationDrawer
+  );
+
+  const [editingAppointment, setEditingAppointment] =
+  useState<CalendarAppointment | null>(null);
 
 
-  /* ==================================================
-     🔗 REGISTRAR EL TOGGLE PARA AppSidebar
-  ================================================== */
+  /* =========================
+     REGISTER COLLAPSE
+  ========================= */
   useEffect(() => {
     register(() => setCollapsed((v) => !v));
-    return () => register(null); // 🔴 LIMPIEZA OBLIGATORIA
+    return () => register(null);
   }, [register]);
 
   /* =========================
      FETCH
   ========================= */
   const fetchAppointments = async () => {
-  setLoading(true);
+    setLoading(true);
 
-  let from: Date;
-  let to: Date;
+    let from: Date;
+    let to: Date;
 
-  if (viewMode === "day") {
-    from = startOfDay(currentDate);
-    to = new Date(from.getTime() + 86400000);
-  } else if (viewMode === "week") {
-    from = startOfWeek(currentDate);
-    to = new Date(from.getTime() + 86400000 * 7);
-  } else {
-    from = startOfMonth(currentDate);
-    to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
-  }
+    if (viewMode === "day") {
+      from = startOfDay(currentDate);
+      to = new Date(from.getTime() + 86400000);
+    } else if (viewMode === "week") {
+      from = startOfWeek(currentDate);
+      to = new Date(from.getTime() + 86400000 * 7);
+    } else {
+      from = startOfMonth(currentDate);
+      to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
+    }
 
-  const { data, error } = await supabase
-    .from("appointments")
-    .select(
-      `id, cliente, servicio, especialista, appointment_at, estado, bg_color, duration`
+    const { data, error } = await supabase
+      .from("appointments")
+      .select(
+        "id, cliente, celular, servicio, especialista, appointment_at, estado, bg_color, duration"
+      )
+      .gte("appointment_at", toLocalDateTimeString(from))
+      .lt("appointment_at", toLocalDateTimeString(to))
+      .order("appointment_at", { ascending: true });
+
+    setAppointments(error ? [] : data ?? []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAppointments();
+  }, [currentDate, viewMode]);
+
+  /* =========================
+     🔥 CANCELAR CITA
+  ========================= */
+  const handleCancelAppointment = async (
+    appointment: CalendarAppointment
+  ) => {
+    if (!confirm("¿Seguro que deseas cancelar esta cita?")) return;
+
+    const { error } = await supabase
+      .from("appointments")
+      .update({ estado: "Cita cancelada" })
+      .eq("id", Number(appointment.id));
+
+    if (error) {
+      alert("Error al cancelar la cita");
+      console.error(error);
+      return;
+    }
+
+    setSelectedAppointment(null);
+    fetchAppointments();
+  };
+
+  /* =========================
+     🗑️ ELIMINAR CITA
+  ========================= */
+  const handleDeleteAppointment = async (
+    appointment: CalendarAppointment
+  ) => {
+    if (
+      !confirm(
+        "⚠️ Esta acción eliminará la cita permanentemente. ¿Deseas continuar?"
+      )
     )
-    .gte("appointment_at", toLocalDateTimeString(from))
-    .lt("appointment_at", toLocalDateTimeString(to))
-    .order("appointment_at", { ascending: true });
+      return;
 
-  setAppointments(error ? [] : data ?? []);
-  setLoading(false);
+    const { error } = await supabase
+      .from("appointments")
+      .delete()
+      .eq("id", Number(appointment.id));
+
+    if (error) {
+      alert("Error al eliminar la cita");
+      console.error(error);
+      return;
+    }
+
+    setSelectedAppointment(null);
+    fetchAppointments();
+  };
+
+    /* =========================
+     Abrir modal de edición
+  ========================= */
+
+  const handleEditAppointment = (appointment: CalendarAppointment) => {
+  setSelectedAppointment(null);        // cerrar modal detalles
+  setEditingAppointment(appointment); // guardar cita a editar
+  openReservationDrawer();             // 👈 ABRIR DRAWER
 };
 
-useEffect(() => {
-  fetchAppointments();
-}, [currentDate, viewMode]);
-
-useEffect(() => {
-  const channel = supabase
-    .channel("appointments-realtime")
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "appointments",
-      },
-      (payload) => {
-        const inserted = payload.new;
-        if (!inserted?.appointment_at) return;
-
-        // Fecha de la cita insertada
-        const insertedDate = parseLocalDate(inserted.appointment_at);
-
-        // Rango actual visible
-        let from: Date;
-        let to: Date;
-
-        if (viewMode === "day") {
-          from = startOfDay(currentDate);
-          to = new Date(from.getTime() + 86400000);
-        } else if (viewMode === "week") {
-          from = startOfWeek(currentDate);
-          to = new Date(from.getTime() + 86400000 * 7);
-        } else {
-          from = startOfMonth(currentDate);
-          to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
-        }
-
-        // 🔥 SOLO refresca si cae dentro del rango visible
-        if (insertedDate >= from && insertedDate < to) {
-          console.log("📅 Nueva cita dentro del rango visible");
-          fetchAppointments();
-        } else {
-          console.log("⏭️ Cita fuera del rango, no refresco");
-        }
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [currentDate, viewMode]);
 
 
-
+  /* =========================
+     MAP CALENDAR
+  ========================= */
   const calendarAppointments = useMemo(() => {
-    return appointments.map((a) => {
-      const start = parseLocalDate(a.appointment_at);
-      const end = new Date(start.getTime() + Number(a.duration || 60) * 60000);
-      return {
-        id: String(a.id),
-        title: a.servicio,
-        start,
-        end,
-        bg_color: a.bg_color,
-        raw: a,
-      };
-    });
-  }, [appointments]);
+    return appointments
+      .filter((a) => {
+        const statusMatch =
+          statusFilter.length === 0 || statusFilter.includes(a.estado);
+        const specialistMatch =
+          specialistFilter.length === 0 ||
+          specialistFilter.includes(a.especialista);
+        const serviceMatch =
+          serviceFilter.length === 0 || serviceFilter.includes(a.servicio);
+        return statusMatch && specialistMatch && serviceMatch;
+      })
+      .map((a) => {
+        const start = parseLocalDate(a.appointment_at);
+        const end =
+          new Date(start.getTime() + Number(a.duration || 60) * 60000);
+        return {
+          id: String(a.id),
+          title: a.servicio,
+          start,
+          end,
+          bg_color: a.bg_color,
+          raw: a,
+        };
+      });
+  }, [appointments, statusFilter, specialistFilter, serviceFilter]);
 
   return (
     <>
       <AgendaShell
-        header={(toggleSidebar, collapsed) => (
+        header={(toggleSidebar) => (
           <AgendaHeader
             onToggleAgendaSidebar={toggleSidebar}
             currentDate={currentDate}
@@ -248,6 +281,7 @@ useEffect(() => {
             <DailyAgendaGrid
               appointments={calendarAppointments}
               currentDate={currentDate}
+              onViewDetails={setSelectedAppointment}
             />
           ) : viewMode === "month" ? (
             <MonthlyAgendaGrid
@@ -258,6 +292,7 @@ useEffect(() => {
             <WeeklyAgendaGrid
               appointments={calendarAppointments}
               currentDate={currentDate}
+              onViewDetails={setSelectedAppointment}
             />
           )
         }
@@ -267,14 +302,23 @@ useEffect(() => {
         <AppointmentDetailsModal
           appointment={selectedAppointment}
           onClose={() => setSelectedAppointment(null)}
+          onCancel={handleCancelAppointment}
+          onDelete={handleDeleteAppointment}
+          onEdit={handleEditAppointment}
         />
       )}
+
       <ReservationDrawer
         isOpen={isReservationDrawerOpen}
-        onClose={closeReservationDrawer}
-        appointmentData={null}
+        onClose={() => {
+          closeReservationDrawer();
+          setEditingAppointment(null);
+        }}
+        appointmentData={editingAppointment}
+        onSuccess={() => {
+          fetchAppointments(); // 👈 REFRESCA AGENDA
+        }}
       />
-
     </>
   );
 }
