@@ -40,7 +40,7 @@ export default function AppSidebar() {
   return (
     <>
       {/* HEADER MÓVIL (Fijo arriba con Hamburguesa) */}
-      <header className="md:hidden flex items-center justify-between px-4 h-14 bg-white dark:bg-zinc-900 border-b border-gray-100 dark:border-zinc-800 w-full shrink-0 z-50">
+      <header className="lg:hidden flex items-center justify-between px-4 h-14 bg-white dark:bg-zinc-900 border-b border-gray-100 dark:border-zinc-800 w-full shrink-0 z-50">
         <button onClick={toggleMobileMenu} className="p-2 text-zinc-600 dark:text-zinc-300">
           {isOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -53,16 +53,16 @@ export default function AppSidebar() {
       {/* OVERLAY PARA MÓVIL (Cierra el menú al tocar fuera) */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/30 z-40 md:hidden" 
+          className="fixed inset-0 bg-black/30 z-40 lg:hidden" 
           onClick={toggleMobileMenu}
         />
       )}
 
       {/* ASIDE (Desktop Fijo / Móvil Desplegable) */}
       <aside className={`
-        fixed md:relative z-50 h-full bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex flex-col items-center py-4 transition-transform duration-300
-        ${isOpen ? "translate-x-0 w-20" : "-translate-x-full md:translate-x-0 w-14"}
-        md:flex shrink-0
+        fixed z-50 h-full bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex flex-col items-center py-4 transition-transform duration-300
+        ${isOpen ? "translate-x-0 w-20" : "-translate-x-full"}
+        lg:relative lg:translate-x-0 lg:w-14 lg:flex lg:shrink-0
       `}>
         {/* BOTÓN COLAPSAR AGENDA (Solo visible en Desktop) */}
         <button
