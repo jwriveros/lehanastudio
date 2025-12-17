@@ -174,7 +174,7 @@ export default function AppointmentDetailsModal({
               className="inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-100/60 dark:text-zinc-200 dark:hover:bg-zinc-800/30"
             >
               <Ban size={15} />
-              Anular
+              Cancelar
             </button>
             <button
               onClick={handleMarkAsPaid}
@@ -182,14 +182,13 @@ export default function AppointmentDetailsModal({
               className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <DollarSign size={15} />
-              {isSubmitting ? "Pagando..." : "Pagar"}
+              {isSubmitting ? "Pagando..." : ""}
             </button>
             <button
               onClick={() => onEdit?.(appointment)}
               className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 dark:border-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-600"
             >
               <Pencil size={14} />
-              Editar
             </button>
           </div>
         </div>
