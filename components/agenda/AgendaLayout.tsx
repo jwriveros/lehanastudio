@@ -175,6 +175,12 @@ export default function AgendaLayout() {
     });
     openReservationDrawer();
   };
+
+  const handleMarkAsPaid = () => {
+    setSelectedAppointment(null);
+    fetchAppointments();
+  };
+
   /* =========================
       MAP CALENDAR (Lógica original)
   ========================= */
@@ -282,6 +288,7 @@ export default function AgendaLayout() {
           onCancel={handleCancelAppointment}
           onDelete={handleDeleteAppointment}
           onEdit={handleEditAppointment}
+          onMarkAsPaid={handleMarkAsPaid}
         />
       )}
       <ReservationDrawer

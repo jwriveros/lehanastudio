@@ -9,24 +9,32 @@ import {
   Tag,
   Calendar,
   Clock,
+  DollarSign,
 } from "lucide-react";
 import type { CalendarAppointment } from "./types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { useState } from "react";
+
 /**
  * Devuelve las clases de Tailwind CSS para un estado de cita específico.
  * @param status - El estado de la cita.
  * @returns Una cadena de clases de Tailwind CSS.
  */
 const getStatusStyles = (status: string | undefined): string => {
-  const defaultStyles = "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  const defaultStyles =
+    "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
   if (!status) return defaultStyles;
 
   const statusMap: { [key: string]: string } = {
-    "cita confirmada": "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-400",
-    "cita pagada": "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400",
-    "cita cancelada": "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400",
-    "nueva reserva creada": "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400",
+    "cita confirmada":
+      "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-400",
+    "cita pagada":
+      "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400",
+    "cita cancelada":
+      "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400",
+    "nueva reserva creada":
+      "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400",
   };
 
   return statusMap[status.toLowerCase()] || defaultStyles;
@@ -39,6 +47,7 @@ const getStatusStyles = (status: string | undefined): string => {
  * @param onEdit - Callback opcional para editar la cita.
  * @param onCancel - Callback opcional para cancelar la cita.
  * @param onDelete - Callback opcional para eliminar la cita.
+ * @param onMarkAsPaid - Callback opcional para marcar la cita como pagada.
  */
 export default function AppointmentDetailsModal({
   appointment,
@@ -46,13 +55,42 @@ export default function AppointmentDetailsModal({
   onEdit,
   onCancel,
   onDelete,
+  onMarkAsPaid,
 }: {
   appointment: CalendarAppointment;
   onClose: () => void;
   onEdit?: (appointment: CalendarAppointment) => void;
   onCancel?: (appointment: CalendarAppointment) => void;
   onDelete?: (appointment: CalendarAppointment) => void;
+  onMarkAsPaid?: (appointmentId: string) => void;
 }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleMarkAsPaid = async () => {
+    if (!appointment?.id) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/bookings/mark-as-paid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointmentId: appointment.id }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Error al marcar como pagada");
+      }
+
+      onMarkAsPaid?.(appointment.id);
+      onClose();
+    } catch (error) {
+      console.error(error);
+      // Opcional: Mostrar una notificación de error al usuario
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const DetailItem = ({
     icon,
     label,
@@ -74,6 +112,8 @@ export default function AppointmentDetailsModal({
       </div>
     </div>
   );
+
+  const isPaid = appointment.raw.estado?.toLowerCase() === "cita pagada";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -135,6 +175,14 @@ export default function AppointmentDetailsModal({
             >
               <Ban size={15} />
               Anular
+            </button>
+            <button
+              onClick={handleMarkAsPaid}
+              disabled={isPaid || isSubmitting}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <DollarSign size={15} />
+              {isSubmitting ? "Pagando..." : "Pagar"}
             </button>
             <button
               onClick={() => onEdit?.(appointment)}
