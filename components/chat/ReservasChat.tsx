@@ -33,7 +33,6 @@ export default function ReservasChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   
-  // REPLICADO DE CHAT PANEL: Referencia para nombres conocidos
   const knownNamesRef = useRef<Map<string, string>>(new Map());
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -44,10 +43,8 @@ export default function ReservasChat() {
     });
   }, []);
 
-  // LÓGICA REPLICADA DE CHAT PANEL PARA OBTENER HILOS Y NOMBRES
   const fetchThreads = useCallback(async () => {
     setLoading(true);
-    // 1. Traer sesiones con estado pendiente
     const { data: sessions } = await supabase
       .from("chat_sessions")
       .select("*")
@@ -59,12 +56,10 @@ export default function ReservasChat() {
       return;
     }
 
-    // 2. Extraer y normalizar teléfonos (igual que en ChatPanel)
     const phones = sessions
       .map((s) => normalizePhone(s.client_phone))
       .filter(Boolean) as string[];
 
-    // 3. Buscar nombres reales en la tabla 'clients' (igual que en ChatPanel)
     const { data: clients } = await supabase
       .from("clients")
       .select("nombre, numberc")
@@ -75,11 +70,8 @@ export default function ReservasChat() {
       if (c.numberc) clientsMap.set(String(c.numberc), c.nombre);
     });
 
-    // 4. Mapear resultados guardando en knownNamesRef
     const mapped: Thread[] = sessions.map((s) => {
       const phone = normalizePhone(s.client_phone) || String(s.client_phone);
-      
-      // Buscamos: 1. Mapa de clientes, 2. Nombres conocidos antes, 3. Nombre en sesión
       let name = clientsMap.get(phone) || knownNamesRef.current.get(phone) || s.client_name;
       
       if (clientsMap.get(phone)) {
@@ -103,7 +95,6 @@ export default function ReservasChat() {
     fetchThreads();
   }, [fetchThreads]);
 
-  // LÓGICA DE MENSAJES (Misma que ChatPanel)
   const fetchMessages = useCallback(async (phoneId: string) => {
     const clean = normalizePhone(phoneId);
     const { data } = await supabase
@@ -128,19 +119,31 @@ export default function ReservasChat() {
     fetchMessages(activeChat.phone);
   }, [activeChat, fetchMessages]);
 
-  // REALTIME ACTUALIZADO PARA BUSCAR NOMBRES
+  // REALTIME CON BROADCASTING
   useEffect(() => {
     const channel = supabase
-      .channel("rt-agenda-reservas")
-      .on("postgres_changes", { event: "*", schema: "public", table: "chat_sessions" }, 
-      async (payload) => {
-        // Al recibir un cambio, refrescamos la lista para asegurar que el cruce de nombres sea correcto
-        // Esto es más seguro que intentar adivinar el nombre en el payload
+      .channel("chat-updates")
+      .on("broadcast", { event: "new-message" }, (payload) => {
+        const { phone, status } = payload.payload;
+
+        // 1. Siempre refrescar la lista de hilos para ver nuevos mensajes o cambios de estado
+        fetchThreads();
+
+        // 2. Si el mensaje es para el chat que tenemos abierto, refrescar mensajes
+        if (activeChat && normalizePhone(activeChat.phone) === normalizePhone(phone)) {
+          fetchMessages(phone);
+        }
+      })
+      // Mantenemos postgres_changes como respaldo por si falla el broadcast
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_sessions" }, () => {
         fetchThreads();
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchThreads]);
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchThreads, fetchMessages, activeChat]);
 
   const sendMessage = async () => {
     if (!input.trim() || !activeChat) return;
@@ -152,6 +155,8 @@ export default function ReservasChat() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_phone: phone, content }),
     });
+    // Opcional: Refrescar mensajes localmente después de enviar
+    fetchMessages(phone);
     scrollBottom("smooth");
   };
 

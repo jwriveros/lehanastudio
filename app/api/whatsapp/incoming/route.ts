@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseClient";
 
-// Helper to normalize phone numbers to a consistent format (e.g., just digits)
+// Helper para normalizar números de teléfono
 function normalizePhoneNumber(phone: string): string {
-  // Remove "whatsapp:" prefix and any non-digit characters
   return phone.replace(/^whatsapp:/, "").replace(/\D/g, "");
 }
 
 interface WhatsappWebhookPayload {
-  from: string; // e.g., "whatsapp:+1234567890"
+  from: string;
   text: string;
-  timestamp: string; // ISO string or Unix timestamp, assuming ISO string for now
-  // Add other fields as they become relevant, e.g., media, message_id, profile_name
+  timestamp: string;
   profileName?: string;
   messageId?: string;
 }
@@ -20,95 +18,86 @@ export async function POST(request: Request) {
   const payload: WhatsappWebhookPayload = await request.json();
 
   if (!supabaseAdmin) {
-    console.error("Supabase Admin client not initialized.");
-    return NextResponse.json({ error: "Supabase Admin client not configured." }, { status: 500 });
+    console.error("Supabase Admin client no inicializado.");
+    return NextResponse.json({ error: "Configuración de Supabase incompleta." }, { status: 500 });
   }
 
   try {
     const clientPhone = normalizePhoneNumber(payload.from);
     const messageContent = payload.text;
-    const receivedAt = new Date(payload.timestamp).toISOString(); // Ensure ISO format
+    const receivedAt = new Date(payload.timestamp).toISOString();
 
     if (!clientPhone || !messageContent) {
-      return NextResponse.json({ error: "Missing 'from' or 'text' in payload." }, { status: 400 });
+      return NextResponse.json({ error: "Faltan datos obligatorios (from/text)." }, { status: 400 });
     }
 
-    // 1. Find or Create Client
+    // 1. Buscar o Crear Cliente
     let clientData;
-    const { data: existingClients, error: clientFetchError } = await supabaseAdmin
+    const { data: existingClient, error: clientFetchError } = await supabaseAdmin
       .from("clients")
       .select("id, nombre, celular")
       .eq("celular", clientPhone)
-      .single();
+      .maybeSingle();
 
-    if (clientFetchError && clientFetchError.code !== 'PGRST116') { // PGRST116 is "No rows found"
-      console.error("Error fetching client:", clientFetchError);
-      throw new Error(clientFetchError.message);
-    }
+    if (clientFetchError) throw new Error(clientFetchError.message);
 
-    if (existingClients) {
-      clientData = existingClients;
+    if (existingClient) {
+      clientData = existingClient;
     } else {
-      const newClientName = payload.profileName || `Cliente ${clientPhone}`;
       const { data: newClient, error: newClientError } = await supabaseAdmin
         .from("clients")
         .insert({
           celular: clientPhone,
-          nombre: newClientName,
+          nombre: payload.profileName || `Cliente ${clientPhone}`,
           tipo: "WhatsApp",
           estado: "activo",
-          indicador: clientPhone.startsWith('+') ? clientPhone.substring(0, clientPhone.length - 10) : '+57', // Attempt to infer indicator
-          numberc: clientPhone.slice(-10), // Last 10 digits
+          indicador: clientPhone.length > 10 ? clientPhone.slice(0, -10) : "57",
+          numberc: clientPhone.slice(-10),
           created_at: receivedAt,
         })
         .select("id, nombre, celular")
         .single();
 
-      if (newClientError) {
-        console.error("Error creating new client:", newClientError);
-        throw new Error(newClientError.message);
-      }
+      if (newClientError) throw new Error(newClientError.message);
       clientData = newClient;
     }
 
-    // 2. Find or Create Chat Session
+    // 2. Buscar o Crear Sesión de Chat
     let chatSession;
     const { data: existingSession, error: sessionFetchError } = await supabaseAdmin
       .from("chat_sessions")
       .select("*")
       .eq("client_phone", clientPhone)
-      .single();
+      .maybeSingle();
 
-    if (sessionFetchError && sessionFetchError.code !== 'PGRST116') { // PGRST116 is "No rows found"
-      console.error("Error fetching chat session:", sessionFetchError);
-      throw new Error(sessionFetchError.message);
-    }
+    if (sessionFetchError) throw new Error(sessionFetchError.message);
 
-    let newStatus: string = "active"; // Default status for incoming messages
+    let newStatus: string = "active";
+    
     if (existingSession) {
       chatSession = existingSession;
-      // Determine new status based on existing session status and message content
-      // TODO: Implement more sophisticated status transition logic here.
-      // For now, if it was 'bot_active' or 'new', it becomes 'active'.
-      // If it was 'pending_agent' or 'agent_active', it remains so.
-      // If client sends messages while bot is active, it should perhaps alert an agent
-      // User's description: "it stays in pending_active and it should go to Reservations"
-      // This implies if it's pending_active, it *should* go to 'pending_agent' on a new message,
-      // which would put it in the 'Reservations' tab.
-      if (chatSession.status === "bot_active" || chatSession.status === "new") {
-          newStatus = "active";
-      } else if (chatSession.status === "pending_active") {
-          // If a client sends a message when the session is "pending_active",
-          // it might mean they are trying to book or respond to a bot query.
-          // This should likely trigger a human agent review.
-          newStatus = "pending_agent"; // This maps to "Reservations" tab
+      // Lógica de estados corregida:
+      // Si está en 'pending_active' (bot trabajando), un nuevo mensaje lo mueve a 'pending_agent' (Reservas)
+      if (chatSession.status === "bot_active" || chatSession.status === "new" || chatSession.status === "pending_active") {
+        newStatus = "pending_agent"; 
       } else {
-          newStatus = chatSession.status; // Maintain current status if already active/pending agent
+        newStatus = chatSession.status;
       }
 
+      const { error: sessionUpdateError } = await supabaseAdmin
+        .from("chat_sessions")
+        .update({
+          last_message: messageContent,
+          last_activity: receivedAt,
+          status: newStatus,
+          unread_count: (chatSession.unread_count || 0) + 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("client_phone", clientPhone);
+
+      if (sessionUpdateError) throw new Error(sessionUpdateError.message);
     } else {
-      // New session
-      newStatus = "new"; // Or "active" if it's the first message ever
+      newStatus = "pending_agent"; // Nueva sesión directo a Reservas
       const { data: newSession, error: newSessionError } = await supabaseAdmin
         .from("chat_sessions")
         .insert({
@@ -122,60 +111,38 @@ export async function POST(request: Request) {
         .select("*")
         .single();
 
-      if (newSessionError) {
-        console.error("Error creating new chat session:", newSessionError);
-        throw new Error(newSessionError.message);
-      }
+      if (newSessionError) throw new Error(newSessionError.message);
       chatSession = newSession;
     }
 
-    // 3. Insert Incoming Message
+    // 3. Insertar el Mensaje
     const { error: messageInsertError } = await supabaseAdmin.from("mensajes").insert({
       client_id: clientData.id,
       client_phone: clientPhone,
       content: messageContent,
-      from_client: true, // Mark as sent by client
+      from_client: true,
       created_at: receivedAt,
-      message_id: payload.messageId || null, // If available from webhook
+      message_id: payload.messageId || null,
     });
 
-    if (messageInsertError) {
-      console.error("Error inserting message:", messageInsertError);
-      throw new Error(messageInsertError.message);
-    }
+    if (messageInsertError) throw new Error(messageInsertError.message);
 
-    // 4. Update Chat Session (if existing)
-    if (existingSession) {
-      const { error: sessionUpdateError } = await supabaseAdmin
-        .from("chat_sessions")
-        .update({
-          last_message: messageContent,
-          last_activity: receivedAt,
-          status: newStatus,
-          unread_count: (chatSession.unread_count || 0) + 1, // Increment unread count
-          updated_at: new Date().toISOString(),
-        })
-        .eq("client_phone", clientPhone);
+    // 4. REALTIME BROADCAST: Notificar al panel de chat inmediatamente
+    await supabaseAdmin.channel("chat-updates").send({
+      type: "broadcast",
+      event: "new-message",
+      payload: {
+        phone: clientPhone,
+        status: newStatus,
+        text: messageContent,
+        clientName: clientData.nombre
+      },
+    });
 
-      if (sessionUpdateError) {
-        console.error("Error updating chat session:", sessionUpdateError);
-        throw new Error(sessionUpdateError.message);
-      }
-    }
-
-    return NextResponse.json({
-      received: true,
-      processed: true,
-      clientPhone,
-      newStatus,
-      message: "Incoming WhatsApp message processed.",
-    }, { status: 200 });
+    return NextResponse.json({ received: true, newStatus }, { status: 200 });
 
   } catch (err: any) {
-    console.error("Fatal error in whatsapp/incoming webhook:", err);
-    return NextResponse.json(
-      { error: "Internal Server Error", details: err.message },
-      { status: 500 }
-    );
+    console.error("Error fatal en webhook:", err.message);
+    return NextResponse.json({ error: "Internal Server Error", details: err.message }, { status: 500 });
   }
 }

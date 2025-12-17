@@ -30,7 +30,7 @@ const HEADER_HEIGHT = 64;
 const VISUAL_GAP = 0;
 const SPECIALIST_HEADER_HEIGHT = 32;
 const SPECIALISTS = ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote"];
-const SPECIALIST_TITLES = ["Leslie", "Nary", "Yuce"];
+const SPECIALIST_TITLES = ["L", "N", "Y"];
 
 /* =========================
    COMPONENT
@@ -77,7 +77,7 @@ export default function WeeklyAgendaGrid({
           HEADER DÍAS
       ===================== */}
       <div
-        className="sticky top-0 z-40 grid grid-cols-[64px_repeat(7,1fr)] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900"
+        className="sticky top-0 z-40 grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900"
         style={{ minHeight: HEADER_HEIGHT }}
       >
         <div className="border-r border-gray-200 dark:border-gray-800" />
@@ -109,7 +109,7 @@ export default function WeeklyAgendaGrid({
           BODY SCROLL
       ===================== */}
       <div
-        className="grid grid-cols-[64px_repeat(7,1fr)]"
+        className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))]"
         style={{ height: `calc(100% - ${HEADER_HEIGHT}px)` }}
       >
         {/* HORAS */}
