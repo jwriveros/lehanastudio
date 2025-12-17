@@ -44,13 +44,7 @@ export function AgendaHeader({
       {/* Left Section */}
       <div className="flex w-full items-center justify-between md:w-auto md:justify-start md:gap-4">
         <div className="flex items-center gap-2">
-          <button
-            onClick={onToggleAgendaSidebar}
-            className="rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden"
-            aria-label="Toggle Sidebar"
-          >
-            <Menu size={20} />
-          </button>
+          
           <button
             onClick={onToday}
             className="hidden items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 sm:flex"
