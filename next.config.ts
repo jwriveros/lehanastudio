@@ -11,6 +11,12 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "i.pravatar.cc",
       },
+      {
+        protocol: "https",
+        hostname: "ijbmsdypiudovdnpwwzg.supabase.co",
+        port: '',
+        pathname: '/storage/v1/object/public/**',
+      },
     ],
   },
 };

@@ -25,7 +25,7 @@ type TooltipInfo = {
 const START_HOUR = 7;
 const END_HOUR = 22;
 const SLOT_MINUTES = 30;
-const SLOT_HEIGHT = 48; 
+const SLOT_HEIGHT = 52; 
 const HEADER_HEIGHT = 64; 
 const VISUAL_GAP = 0;
 const SPECIALIST_HEADER_HEIGHT = 32;
@@ -72,7 +72,7 @@ export default function WeeklyAgendaGrid({
   const nowTop = (nowMinutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT;
 
   return (
-    <div className="h-full overflow-y-auto bg-white dark:bg-gray-900"> {/* <--- Agregado overflow-y-auto */}
+    <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
       {/* =====================
           HEADER DÍAS
       ===================== */}
@@ -228,7 +228,7 @@ export default function WeeklyAgendaGrid({
                 </div>
               )}
 
-              {/* CITAS */}
+              {/* CITAS CON LÓGICA DE CASCADA */}
               <div
                 className="relative z-10 pointer-events-none"
                 style={{
@@ -255,27 +255,42 @@ export default function WeeklyAgendaGrid({
                       SLOT_MINUTES) *
                       SLOT_HEIGHT -
                     VISUAL_GAP;
+                  
+                  // Lógica de detección de colisiones por especialista
+                  const collidingAppts = dayAppointments
+                    .filter(a => a.raw.especialista === appt.raw.especialista)
+                    .filter(a => (appt.start < a.end && a.start < appt.end))
+                    .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+                  const collisionIndex = collidingAppts.findIndex(a => a.id === appt.id);
+                  const totalCollisions = collidingAppts.length;
+
                   const specialistIndex = Math.max(
                     0,
                     SPECIALISTS.indexOf(appt.raw.especialista)
                   );
-                  const width = 100 / SPECIALISTS.length;
-                  const left = specialistIndex * width;
+                  const baseWidth = 100 / SPECIALISTS.length;
+                  const leftBase = specialistIndex * baseWidth;
+
+                  // Efecto cascada: desplazamiento de 4px por cada cita colisionada
+                  const offsetStep = 4;
 
                   return (
                     <div 
                       key={appt.id} 
-                      className="absolute pointer-events-auto"
+                      className="absolute pointer-events-auto transition-all duration-200"
                       style={{
                         top,
                         height,
-                        width: `calc(${width}% - 4px)`,
-                        left: `calc(${left}% + 2px)`,
+                        // Reducimos un poco el ancho si hay colisión para que se vea el fondo
+                        width: `calc(${baseWidth}% - ${totalCollisions > 1 ? 8 : 4}px)`,
+                        // Aplicamos el desplazamiento horizontal (cascada)
+                        left: `calc(${leftBase}% + ${2 + (collisionIndex * offsetStep)}px)`,
+                        zIndex: 10 + collisionIndex,
                       }}
                     >
                       <AgendaEventCard
                         appointment={appt}
-                        tooltip={tooltip}
                         onViewDetails={onViewDetails}
                         style={{
                           top: 0,
@@ -283,6 +298,8 @@ export default function WeeklyAgendaGrid({
                           width: '100%',
                           left: 0,
                           backgroundColor: appt.bg_color || "#6366f1",
+                          // Sombra para dar profundidad a las capas de la cascada
+                          boxShadow: totalCollisions > 1 ? ' -2px 0 8px rgba(0,0,0,0.15)' : 'none'
                         }}
                       />
                     </div>

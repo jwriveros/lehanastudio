@@ -6,10 +6,13 @@ import React, {
   useCallback,
 } from "react";
 import { Loader2 } from "lucide-react";
+
 interface AutocompleteInputProps<T> {
   label?: string;
   placeholder: string;
   apiEndpoint: string;
+  /** 👉 Valor inicial para el modo edición */
+  initialValue?: string;
   /** 👉 Texto que queda en el input al seleccionar */
   getValue: (item: T) => string;
   /** 👉 Render de cada opción (ej: nombre + celular) */
@@ -18,17 +21,19 @@ interface AutocompleteInputProps<T> {
   onSelect: (item: T) => void;
   inputClassName?: string;
 }
+
 function AutocompleteInput<T>({
   label,
   placeholder,
   apiEndpoint,
+  initialValue = "",
   getValue,
   renderItem,
   getKey,
   onSelect,
   inputClassName,
 }: AutocompleteInputProps<T>) {
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValue] = useState(initialValue);
   const [suggestions, setSuggestions] = useState<T[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -37,9 +42,18 @@ function AutocompleteInput<T>({
   const containerRef = useRef<HTMLDivElement>(null);
   const ignoreSearchRef = useRef(false);
 
+  // Sincronizar el valor interno cuando cambia el valor inicial (útil al cargar datos de edición)
+  useEffect(() => {
+    if (initialValue !== undefined) {
+      ignoreSearchRef.current = true;
+      setInputValue(initialValue);
+    }
+  }, [initialValue]);
+
   const defaultInputClasses = "w-full rounded-md border border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
+
   /* =========================
-     Cerrar al hacer click fuera
+      Cerrar al hacer click fuera
   ========================= */
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -55,8 +69,9 @@ function AutocompleteInput<T>({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
   /* =========================
-     Fetch con debounce (SIN null)
+      Fetch con debounce
   ========================= */
   useEffect(() => {
     if (ignoreSearchRef.current) {
@@ -102,19 +117,19 @@ function AutocompleteInput<T>({
         setIsLoading(false);
       }
     }, 300);
-    // ✅ cleanup VÁLIDO (nunca null)
+    
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
     };
   }, [inputValue, apiEndpoint]);
+
   /* =========================
-     Selección
+      Selección
   ========================= */
   const handleSelect = useCallback(
     (item: T) => {
-      // 👉 SOLO el valor definido (ej: nombre)
       const newValue = getValue(item);
       if (newValue !== inputValue) {
         ignoreSearchRef.current = true;
@@ -126,6 +141,7 @@ function AutocompleteInput<T>({
     },
     [getValue, onSelect, inputValue]
   );
+
   return (
     <div ref={containerRef} className="relative w-full">
       {label && (

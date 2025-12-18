@@ -9,8 +9,10 @@ import {
   Tag,
   Calendar,
   Clock,
+  ClipboardList,
   DollarSign,
 } from "lucide-react";
+import FichaTecnicaModal from "../FichaTecnicaModal";
 import type { CalendarAppointment } from "./types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -39,15 +41,9 @@ const getStatusStyles = (status: string | undefined): string => {
 
   return statusMap[status.toLowerCase()] || defaultStyles;
 };
+
 /**
  * Un componente de modal para mostrar los detalles de una cita.
- *
- * @param appointment - El objeto de la cita a mostrar.
- * @param onClose - Función de callback para cerrar el modal.
- * @param onEdit - Callback opcional para editar la cita.
- * @param onCancel - Callback opcional para cancelar la cita.
- * @param onDelete - Callback opcional para eliminar la cita.
- * @param onMarkAsPaid - Callback opcional para marcar la cita como pagada.
  */
 export default function AppointmentDetailsModal({
   appointment,
@@ -65,6 +61,7 @@ export default function AppointmentDetailsModal({
   onMarkAsPaid?: (appointmentId: string) => void;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showFicha, setShowFicha] = useState(false);
 
   const handleMarkAsPaid = async () => {
     if (!appointment?.id) return;
@@ -85,7 +82,6 @@ export default function AppointmentDetailsModal({
       onClose();
     } catch (error) {
       console.error(error);
-      // Opcional: Mostrar una notificación de error al usuario
     } finally {
       setIsSubmitting(false);
     }
@@ -131,10 +127,20 @@ export default function AppointmentDetailsModal({
             <X size={20} />
           </button>
         </div>
+
         {/* CONTENIDO */}
         <dl className="mb-8 space-y-4">
           <DetailItem icon={<User size={18} />} label="Cliente">
-            {appointment.raw.cliente}
+            <div className="flex items-center gap-2">
+              <span>{appointment.raw.cliente}</span>
+              <button 
+                onClick={() => setShowFicha(true)}
+                className="flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 rounded-md text-[10px] font-bold hover:bg-indigo-200 transition-colors"
+              >
+                <ClipboardList size={12} />
+                INFO
+              </button>
+            </div>
           </DetailItem>
           <DetailItem icon={<Scissors size={18} />} label="Servicio">
             {appointment.title}
@@ -159,6 +165,7 @@ export default function AppointmentDetailsModal({
             {format(appointment.end, "p", { locale: es })}
           </DetailItem>
         </dl>
+
         {/* ACCIONES */}
         <div className="flex items-center justify-between gap-3">
           <button
@@ -182,7 +189,7 @@ export default function AppointmentDetailsModal({
               className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <DollarSign size={15} />
-              {isSubmitting ? "Pagando..." : ""}
+              {isSubmitting ? "Pagando..." : isPaid ? "Pagado" : "Marcar Pago"}
             </button>
             <button
               onClick={() => onEdit?.(appointment)}
@@ -193,6 +200,18 @@ export default function AppointmentDetailsModal({
           </div>
         </div>
       </div>
+
+      {/* MODAL DE FICHA TÉCNICA */}
+      <FichaTecnicaModal 
+        isOpen={showFicha}
+        onClose={() => setShowFicha(false)}
+        cliente={{
+          nombre: appointment.raw.cliente || "",
+          // Se usa (appointment.raw as any) para evitar el error de TS 
+          // asegurando que acceda a la propiedad celular del objeto raw
+          celular: String((appointment.raw as any).celular || "")
+        }}
+      />
     </div>
   );
 }
