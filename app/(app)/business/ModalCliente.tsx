@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { X, User, MapPin, Save, Mail, Fingerprint } from "lucide-react";
 import { ClientePayload } from "./page";
 
 type ModalClienteProps = {
@@ -12,14 +13,31 @@ type ModalClienteProps = {
   onUpdate: (data: ClientePayload) => void | Promise<void>;
 };
 
-const INDICATIVOS = [
-  { code: "+57", country: "Colombia" },
-  { code: "+58", country: "Venezuela" },
-  { code: "+1", country: "USA / Canadá" },
-  { code: "+52", country: "México" },
-  { code: "+34", country: "España" },
-  { code: "+51", country: "Perú" },
-];
+// Lista de países con banderas emoji e indicativos
+const COUNTRIES = [
+  { code: "+57", flag: "🇨🇴", name: "Colombia" },
+  { code: "+54", flag: "🇦🇷", name: "Argentina" },
+  { code: "+591", flag: "🇧🇴", name: "Bolivia" },
+  { code: "+55", flag: "🇧🇷", name: "Brasil" },
+  { code: "+56", flag: "🇨🇱", name: "Chile" },
+  { code: "+506", flag: "🇨🇷", name: "Costa Rica" },
+  { code: "+53", flag: "🇨🇺", name: "Cuba" },
+  { code: "+593", flag: "🇪🇨", name: "Ecuador" },
+  { code: "+503", flag: "🇸🇻", name: "El Salvador" },
+  { code: "+34", flag: "🇪🇸", name: "España" },
+  { code: "+1", flag: "🇺🇸", name: "Estados Unidos" },
+  { code: "+502", flag: "🇬🇹", name: "Guatemala" },
+  { code: "+504", flag: "🇭🇳", name: "Honduras" },
+  { code: "+52", flag: "🇲🇽", name: "México" },
+  { code: "+505", flag: "🇳🇮", name: "Nicaragua" },
+  { code: "+507", flag: "🇵🇦", name: "Panamá" },
+  { code: "+595", flag: "🇵🇾", name: "Paraguay" },
+  { code: "+51", flag: "🇵🇪", name: "Perú" },
+  { code: "+1", flag: "🇵🇷", name: "Puerto Rico" },
+  { code: "+1", flag: "🇩🇴", name: "Rep. Dominicana" },
+  { code: "+598", flag: "🇺🇾", name: "Uruguay" },
+  { code: "+58", flag: "🇻🇪", name: "Venezuela" },
+].sort((a, b) => a.name.localeCompare(b.name));
 
 export default function ModalCliente({
   isOpen,
@@ -29,11 +47,29 @@ export default function ModalCliente({
   onCreate,
   onUpdate,
 }: ModalClienteProps) {
+  const [activeTab, setActiveTab] = useState<"personal" | "ubicacion">("personal");
   const [form, setForm] = useState<ClientePayload>(formData);
 
   useEffect(() => {
-    setForm(formData);
-  }, [formData, mode]);
+    if (isOpen) {
+      setForm({
+        ...formData,
+        nombre: formData.nombre || "",
+        celular: formData.celular || "",
+        tipo: formData.tipo || "Cliente",
+        estado: formData.estado || "Activo",
+        indicador: formData.indicador || "+57", // Colombia por defecto
+        correo_electronico: formData.correo_electronico || "",
+        identificacion: formData.identificacion || "",
+        genero: formData.genero || "",
+        direccion: formData.direccion || "",
+        cumpleanos: formData.cumpleanos || "",
+        departamento: formData.departamento || "",
+        municipio: formData.municipio || "",
+      });
+      setActiveTab("personal");
+    }
+  }, [formData, isOpen]);
 
   if (!isOpen) return null;
 
@@ -47,178 +83,120 @@ export default function ModalCliente({
 
     if (mode === "create") onCreate(form);
     else onUpdate(form);
-
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-2xl shadow-xl p-6">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 text-zinc-900 dark:text-zinc-100">
+      <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-2xl shadow-xl overflow-hidden border dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
         
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">
-            {mode === "create" ? "Registrar Cliente" : "Editar Cliente"}
+        <div className="px-5 py-4 border-b dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-800/50">
+          <h2 className="text-sm font-bold uppercase italic tracking-tight">
+            {mode === "create" ? "Nuevo Cliente" : "Editar Cliente"}
           </h2>
-          <button onClick={onClose}>✕</button>
-        </div>
-
-        {/* CAMPOS */}
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-
-          <div>
-            <label>Tipo</label>
-            <select 
-              className="input"
-              value={form.tipo}
-              onChange={(e) => handleChange("tipo", e.target.value)}
-            >
-              <option value="Contacto">Contacto</option>
-              <option value="Cliente">Cliente</option>
-              <option value="Proveedor">Proveedor</option>
-            </select>
-          </div>
-
-          <div>
-            <label>Nombre *</label>
-            <input 
-              className="input"
-              value={form.nombre}
-              onChange={(e) => handleChange("nombre", e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label>Identificación</label>
-            <input 
-              className="input"
-              value={form.identificacion || ""}
-              onChange={(e) => handleChange("identificacion", e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label>Correo electrónico</label>
-            <input 
-              type="email"
-              className="input"
-              value={form.correo_electronico || ""}
-              onChange={(e) => handleChange("correo_electronico", e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label>Estado</label>
-            <select 
-              className="input"
-              value={form.estado}
-              onChange={(e) => handleChange("estado", e.target.value)}
-            >
-              <option value="Activo">Activo</option>
-              <option value="Inactivo">Inactivo</option>
-            </select>
-          </div>
-
-          <div>
-            <label>Género</label>
-            <select 
-              className="input"
-              value={form.genero || ""}
-              onChange={(e) => handleChange("genero", e.target.value)}
-            >
-              <option value="">Seleccione</option>
-              <option value="Femenino">Femenino</option>
-              <option value="Masculino">Masculino</option>
-              <option value="Otro">Otro</option>
-            </select>
-          </div>
-
-          {/* Indicador + Celular */}
-          <div>
-            <label>Celular *</label>
-            <div className="flex gap-2">
-              <select 
-                className="input w-28"
-                value={form.indicador}
-                onChange={(e) => handleChange("indicador", e.target.value)}
-              >
-                {INDICATIVOS.map(i => (
-                  <option key={i.code} value={i.code}>
-                    {i.code} — {i.country}
-                  </option>
-                ))}
-              </select>
-
-              <input 
-                className="input flex-1"
-                value={form.celular}
-                onChange={(e) => handleChange("celular", e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label>Dirección</label>
-            <input 
-              className="input"
-              value={form.direccion || ""}
-              onChange={(e) => handleChange("direccion", e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label>Fecha de nacimiento</label>
-            <input 
-              type="date"
-              className="input"
-              value={form.cumpleanos || ""}
-              onChange={(e) => handleChange("cumpleanos", e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label>Departamento</label>
-              <input 
-                className="input"
-                value={form.departamento || ""}
-                onChange={(e) => handleChange("departamento", e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label>Municipio</label>
-              <input 
-                className="input"
-                value={form.municipio || ""}
-                onChange={(e) => handleChange("municipio", e.target.value)}
-              />
-            </div>
-          </div>
-
-        </div>
-
-        {/* ACCIONES */}
-        <div className="flex justify-end mt-5 gap-2">
-          <button 
-            className="border px-4 py-2 rounded-lg"
-            onClick={onClose}
-          >
-            Cancelar
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
+            <X size={16} />
           </button>
+        </div>
 
-          <button 
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg"
-            onClick={handleSubmit}
-          >
-            {mode === "create" ? "Crear Cliente" : "Actualizar Cliente"}
+        {/* TABS */}
+        <div className="flex border-b dark:border-zinc-800">
+          <button onClick={() => setActiveTab("personal")} className={`flex-1 py-3 text-[10px] font-bold uppercase transition-all ${activeTab === "personal" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}>
+            Información
+          </button>
+          <button onClick={() => setActiveTab("ubicacion")} className={`flex-1 py-3 text-[10px] font-bold uppercase transition-all ${activeTab === "ubicacion" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}>
+            Ubicación
+          </button>
+        </div>
+
+        {/* CONTENIDO */}
+        <div className="p-5 space-y-4 max-h-[55vh] overflow-y-auto">
+          {activeTab === "personal" ? (
+            <div className="space-y-3 animate-in fade-in duration-200">
+              <div>
+                <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Nombre Completo *</label>
+                <input 
+                  className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-sm border border-transparent focus:border-indigo-500 font-bold" 
+                  value={form.nombre} 
+                  onChange={e => handleChange("nombre", e.target.value)} 
+                />
+              </div>
+
+              <div>
+                <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Celular *</label>
+                <div className="flex gap-2">
+                  {/* SELECTOR DE PAÍS CON BANDERA */}
+                  <div className="relative w-28">
+                    <select 
+                      className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl text-sm font-bold border border-transparent focus:border-indigo-500 outline-none appearance-none"
+                      value={form.indicador}
+                      onChange={(e) => handleChange("indicador", e.target.value)}
+                    >
+                      {COUNTRIES.map(c => (
+                        <option key={`${c.flag}-${c.code}`} value={c.code}>
+                          {c.flag} {c.code}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute right-2 top-3 pointer-events-none text-[10px] opacity-30">▼</div>
+                  </div>
+                  <input 
+                    type="tel"
+                    placeholder="Número"
+                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-sm border border-transparent focus:border-indigo-500 font-bold"
+                    value={form.celular}
+                    onChange={e => handleChange("celular", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Tipo</label>
+                  <select className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl text-xs font-bold outline-none" value={form.tipo} onChange={e => handleChange("tipo", e.target.value)}>
+                    <option value="Cliente">Cliente</option>
+                    <option value="Contacto">Contacto</option>
+                    <option value="Proveedor">Proveedor</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Estado</label>
+                  <select className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl text-xs font-bold outline-none" value={form.estado} onChange={e => handleChange("estado", e.target.value)}>
+                    <option value="Activo">Activo</option>
+                    <option value="Inactivo">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 animate-in slide-in-from-right duration-200">
+              <div>
+                <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Dirección</label>
+                <input className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-sm" value={form.direccion || ""} onChange={e => handleChange("direccion", e.target.value)} placeholder="Calle..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Municipio</label>
+                  <input className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-xs" value={form.municipio || ""} onChange={e => handleChange("municipio", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Identificación</label>
+                  <input className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-xs" value={form.identificacion || ""} onChange={e => handleChange("identificacion", e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* FOOTER */}
+        <div className="p-4 border-t dark:border-zinc-800 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all">Cancelar</button>
+          <button onClick={handleSubmit} className="flex-[1.5] py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2">
+            <Save size={14} /> {mode === "create" ? "Registrar" : "Actualizar"}
           </button>
         </div>
       </div>
     </div>
   );
 }
-
-/* CLASE INPUT */
-export const input =
-  "w-full rounded-xl border border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 px-3 py-2 text-sm";
