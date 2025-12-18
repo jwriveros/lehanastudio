@@ -1,4 +1,5 @@
 "use client";
+import React, { useMemo } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { FilterDropdown } from "./FilterDropdown";
@@ -9,6 +10,7 @@ import {
   CalendarDays,
   Menu,
 } from "lucide-react";
+
 interface Props {
   currentDate: Date;
   onPrev: () => void;
@@ -25,6 +27,7 @@ interface Props {
   onToggleAgendaSidebar: () => void;
 }
 export function AgendaHeader({
+  
   currentDate,
   onPrev,
   onNext,
@@ -39,7 +42,15 @@ export function AgendaHeader({
   setServiceFilter,
   onToggleAgendaSidebar,
 }: Props) {
+  const label = useMemo(() => {
+    if (view === "day") {
+      const formattedDay = format(currentDate, "eeee d 'de' MMMM 'de' yyyy", { locale: es });
+      return formattedDay.charAt(0).toUpperCase() + formattedDay.slice(1);
+    }
+    return format(currentDate, "MMMM yyyy", { locale: es });
+  }, [currentDate, view]);
   return (
+    
     <header className="flex flex-col gap-3 border-b border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 md:flex-row md:items-center md:justify-between">
       {/* Left Section */}
       <div className="flex w-full items-center justify-between md:w-auto md:justify-start md:gap-4">
@@ -69,8 +80,8 @@ export function AgendaHeader({
             <ChevronRight size={20} />
           </button>
         </div>
-        <h2 className="w-40 truncate text-base font-semibold capitalize text-gray-800 dark:text-white md:w-auto md:text-lg">
-          {format(currentDate, "MMMM yyyy", { locale: es })}
+        <h2 className="w-auto text-base font-semibold text-gray-800 dark:text-white md:text-lg">
+          {label}
         </h2>
         {/* Mobile Chat Toggle */}
         <button

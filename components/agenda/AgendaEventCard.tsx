@@ -100,7 +100,7 @@ export default function AgendaEventCard({
             {appointment.raw?.especialista}
           </span>
           <div
-            className={`flex items-center gap-1 rounded-full pl-1.5 pr-2 py-0.5 text-xs ${estadoLine}`}
+            className={`flex items-center gap-1 rounded-full pl-1.5 pr-2 py-0.5 text-[8px] ${estadoLine}`}
           >
             <div className={`h-1.5 w-1.5 rounded-full ${estadoDot}`} />
             <span className="font-semibold">{appointment.raw?.estado}</span>
@@ -110,7 +110,7 @@ export default function AgendaEventCard({
       {/* Tooltip de Hover */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
         <div className="flex items-center gap-2 text-white font-semibold">
-          <Info size={16} />
+          <Info size={12} />
           <span>Ver Detalles</span>
         </div>
       </div>

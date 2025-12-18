@@ -141,27 +141,30 @@ export async function POST(req: Request) {
     /* =========================
        5️⃣ NOTIFICAR A N8N
     ========================= */
-    if (process.env.N8N_WEBHOOK_URL) {
-      await fetch(process.env.N8N_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "CREATE",
-          customerName: cliente,
-          customerPhone: normalizedCelular.startsWith("57") 
-            ? `+${normalizedCelular}` 
-            : `+57${normalizedCelular}`,
-          sede,
-          services: inserted.map((r: any) => ({
-            servicio: r.servicio,
-            especialista: r.especialista,
-            price: r.price,
-            appointment_at: r.appointment_at,
-          })),
-          total,
-          appointmentGroupId,
-        }),
-      });
+    /* =========================
+       5️⃣ NOTIFICAR A N8N (Individualmente por servicio)
+    ========================= */
+    if (process.env.N8N_WEBHOOK_URL && inserted && inserted.length > 0) {
+      // Usamos un bucle para enviar una petición a n8n por cada fila insertada
+      for (const row of inserted) {
+        await fetch(process.env.N8N_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "CREATE",
+            customerName: row.cliente,
+            customerPhone: normalizedCelular.startsWith("57") 
+              ? `+${normalizedCelular}` 
+              : `+57${normalizedCelular}`,
+            sede: row.sede,
+            servicio: row.servicio,
+            especialista: row.especialista,
+            price: row.price,
+            appointment_at: row.appointment_at, // Ya viene en formato ISO
+            appointmentGroupId: row.appointment_group_id
+          }),
+        });
+      }
     }
 
     return NextResponse.json({

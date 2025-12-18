@@ -72,7 +72,7 @@ export default function WeeklyAgendaGrid({
   const nowTop = (nowMinutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT;
 
   return (
-    <div className="h-full bg-white dark:bg-gray-900">
+    <div className="h-full overflow-y-auto bg-white dark:bg-gray-900"> {/* <--- Agregado overflow-y-auto */}
       {/* =====================
           HEADER DÍAS
       ===================== */}

@@ -190,11 +190,38 @@ export default function ReservationForm({
     },
     []
   );
-  const addLine = () =>
-    setForm((prev) => ({
-      ...prev,
-      lines: [...prev.lines, { ...EMPTY_LINE }],
-    }));
+  const addLine = () => {
+    setForm((prev) => {
+      const lastLine = prev.lines[prev.lines.length - 1];
+      let nextTime = "";
+
+      // Si existe una línea previa con fecha y duración, calculamos la siguiente
+      if (lastLine && lastLine.appointment_at && lastLine.duracion) {
+        const currentDate = new Date(lastLine.appointment_at);
+        const durationMinutes = parseInt(lastLine.duracion, 10) || 0;
+        
+        // Sumamos los minutos de duración
+        const nextDate = new Date(currentDate.getTime() + durationMinutes * 60000);
+        
+        // Formateamos a yyyy-MM-ddThh:mm para el input datetime-local
+        const pad = (n: number) => String(n).padStart(2, "0");
+        nextTime = `${nextDate.getFullYear()}-${pad(nextDate.getMonth() + 1)}-${pad(
+          nextDate.getDate()
+        )}T${pad(nextDate.getHours())}:${pad(nextDate.getMinutes())}`;
+      }
+
+      return {
+        ...prev,
+        lines: [
+          ...prev.lines,
+          { 
+            ...EMPTY_LINE, 
+            appointment_at: nextTime // Se asigna la hora calculada
+          },
+        ],
+      };
+    });
+  };
   const removeLine = (index: number) =>
     setForm((prev) =>
       prev.lines.length <= 1
@@ -305,6 +332,13 @@ export default function ReservationForm({
       setSaving(false);
     }
   };
+  // Validación de datos
+const isLastLineComplete = useMemo(() => {
+  const lastLine = form.lines[form.lines.length - 1];
+  if (!lastLine) return false;
+  // Verifica que servicio y especialista no estén vacíos
+  return lastLine.servicio.trim() !== "" && lastLine.especialista.trim() !== "";
+}, [form.lines]);
   /* =========================
      RENDER
     ========================= */
@@ -392,7 +426,8 @@ export default function ReservationForm({
               <button
                 type="button"
                 onClick={addLine}
-                className="inline-flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-900"
+                disabled={!isLastLineComplete}
+                className="inline-flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300"
               >
                 <Plus size={16} />
                 <span>Añadir</span>
