@@ -1,17 +1,21 @@
-// jwriveros/lehanastudio/lehanastudio-a2625e82f4ecf3eda68513f691355d3accd1f4cd/lib/sessionStore.ts
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { createBrowserClient } from '@supabase/ssr'
 
-import { create } from "./zustand";
-import { supabase } from "./supabaseClient";
+export type Role = "ADMIN" | "ESPECIALISTA";
 
-// CORRECCIÓN: Aseguramos que el tipo Role incluye todos los valores de la DB
-export type Role = "ADMIN" | "ESPECIALISTA"; // Agregamos ESPECIALISTA
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 type Session = {
-  id: string;     // ID de autenticación (UUID)
+  id: string;
   email: string;
   name: string;
   role: Role;
-  color?: string; // Color para la agenda
+  comision_base: number;
+  color?: string;
 };
 
 type SessionState = {
@@ -20,62 +24,75 @@ type SessionState = {
   error: string | null;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  setUser: (session: Session) => void; // Para restaurar sesión automáticamente
+  setUser: (session: Session) => void;
 };
 
-export const useSessionStore = create<SessionState>((set) => ({
-  session: null,
-  isLoading: false,
-  error: null,
+// CAMBIO AQUÍ: Quitamos los paréntesis extras para ajustarnos a tu lib/zustand.ts
+export const useSessionStore = create<SessionState>(
+  persist(
+    (set) => ({
+      session: null,
+      isLoading: false,
+      error: null,
 
-  login: async (email, password) => {
-    set({ isLoading: true, error: null });
+      login: async (email: string, password: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const cleanEmail = email.toLowerCase().trim();
 
-    try {
-      // 1. Intentar loguearse en Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
 
-      if (authError) throw new Error("Credenciales incorrectas");
-      if (!authData.user) throw new Error("No se pudo obtener el usuario");
+          if (authError) throw new Error("Credenciales incorrectas");
 
-      // 2. Buscar los datos del perfil en tu tabla 'app_users' usando el email
-      const { data: userData, error: userError } = await supabase
-        .from('app_users')
-        .select('*')
-        .eq('email', email)
-        .single();
+          const { data: { user }, error: userAuthError } = await supabase.auth.getUser();
+          if (userAuthError || !user) throw new Error("Error de validación segura");
 
-      if (userError || !userData) {
-        console.error("Usuario logueado pero no encontrado en app_users:", userError);
-        throw new Error("Usuario no registrado en la base de datos de personal.");
-      }
+          const { data: userData, error: userError } = await supabase
+            .from('app_users')
+            .select('*')
+            .eq('email', cleanEmail)
+            .single();
 
-      // 3. Guardar la sesión en el estado global
-      const newSession: Session = {
-        id: authData.user.id,
-        email: userData.email,
-        name: userData.name || "Usuario",
-        role: (userData.role as Role) || "ESPECIALISTA",
-        color: userData.color
-      };
+          if (userError || !userData) {
+            throw new Error("Usuario no registrado en la base de datos.");
+          }
 
-      set({ session: newSession, isLoading: false });
-      return true;
+          const newSession: Session = {
+            id: user.id,
+            email: userData.email,
+            name: userData.name,
+            role: userData.role as Role,
+            comision_base: userData.comision_base || 0, // Mapeo del dato
+            color: userData.color
+          };
 
-    } catch (err: any) {
-      console.error(err);
-      set({ error: err.message, isLoading: false });
-      return false;
+          set({ session: newSession, isLoading: false });
+          return true;
+
+        } catch (err: any) {
+          set({ error: err.message, isLoading: false });
+          return false;
+        }
+      },
+
+      logout: async () => {
+        try {
+          await supabase.auth.signOut();
+          set({ session: null, error: null });
+          localStorage.removeItem('session-storage');
+          window.location.href = "/";
+        } catch (error) {
+          window.location.href = "/";
+        }
+      },
+
+      setUser: (session: Session) => set({ session }),
+    }),
+    {
+      name: 'session-storage', 
     }
-  },
-
-  logout: async () => {
-    await supabase.auth.signOut();
-    set({ session: null, error: null });
-  },
-
-  setUser: (session: Session) => set({ session }),
-}));
+  ) as any // Usamos 'as any' temporalmente si el middleware choca con tu create local
+);

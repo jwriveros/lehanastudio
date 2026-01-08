@@ -1,31 +1,23 @@
-// jwriveros/lehanastudio/lehanastudio-a8a570c007a1557a6ccd13baa5a39a3fe79a534a/lib/supabaseClient.ts
+import { createClient } from "@supabase/supabase-js";
 
-import { createClient, SupabaseClient } from "@supabase/supabase-js"; // Importamos SupabaseClient type
+// Variables cargadas desde .env.local
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// 1. Cliente Público (Para el navegador)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.");
-}
-
+// 1. Cliente Público (Navegador y Servidor)
+// Se usa para autenticación y RLS estándar
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
- * Cliente de Supabase para las rutas de la API de Next.js (Server-Side).
- * Usa la Service Role Key para operaciones con RLS deshabilitado o de alto privilegio.
+ * 2. Cliente de Administrador (SOLO SERVIDOR)
+ * Usamos una función o una validación para que el navegador no falle.
  */
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export const supabaseAdmin = serviceRoleKey 
+  ? createClient(supabaseUrl, serviceRoleKey) 
+  : null;
 
-// 2. Cliente de Administrador (Para las rutas de API)
-let adminClient: SupabaseClient | null = null; // Inicializamos como null
-
-if (serviceRoleKey && supabaseUrl) {
-    adminClient = createClient(supabaseUrl, serviceRoleKey);
-} else {
-    // Esto lo vemos solo en el server (rutas /api), no en el navegador
-    console.warn("SUPABASE_SERVICE_ROLE_KEY is missing. API routes requiring elevated privileges will fail.");
+// Log de depuración solo en el servidor para confirmar que la clave cargó
+if (typeof window === 'undefined' && !serviceRoleKey) {
+  console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY no detectada en el servidor.");
 }
-
-export const supabaseAdmin = adminClient;
