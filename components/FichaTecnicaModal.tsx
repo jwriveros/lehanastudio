@@ -38,7 +38,7 @@ export default function FichaTecnicaModal({
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">
-                Ficha Técnica
+                Información del cliente
               </h2>
               <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-zinc-400 mt-0.5">
                 <User size={14} />

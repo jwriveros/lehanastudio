@@ -10,7 +10,8 @@ import {
   Plus, 
   ChevronLeft, 
   ClipboardList, 
-  History 
+  History,
+  Clock 
 } from "lucide-react";
 
 /* =========================
@@ -44,35 +45,56 @@ interface FichaTecnicaEditorProps {
 }
 
 export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps) {
-  // Estados de navegación
   const [view, setView] = useState<'list' | 'edit'>('list');
   const [tab, setTab] = useState<'fichas' | 'citas'>('fichas');
-  
-  // Estados de datos
   const [historialFichas, setHistorialFichas] = useState<FichaDb[]>([]);
   const [historialCitas, setHistorialCitas] = useState<AppointmentDb[]>([]);
-  
-  // Estados del formulario
   const [job, setJob] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [fotos, setFotos] = useState<FotoFicha[]>([]);
-  
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
-  // Cargar datos (Fichas y Citas)
+  // --- FUNCIÓN PARA FORMATEAR HORA 12H SIN CONVERSIÓN DE TIMEZONE ---
+  const formatTime12h = (dateStr: string) => {
+    if (!dateStr) return "--:--";
+    try {
+      // Extraemos la parte del tiempo del string "YYYY-MM-DD HH:MM:SS..."
+      // Dividimos por espacio o por la 'T' si existe
+      const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1] : dateStr.split('T')[1];
+      if (!timePart) return "--:--";
+
+      const [hours, minutes] = timePart.split(':');
+      let h = parseInt(hours);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      
+      h = h % 12;
+      h = h ? h : 12; // Si es 0, poner 12
+      
+      return `${h}:${minutes} ${ampm}`;
+    } catch (e) {
+      return "--:--";
+    }
+  };
+
+  const formatDateShort = (dateStr: string) => {
+    if (!dateStr) return "";
+    const datePart = dateStr.split(/[ T]/)[0]; // Extrae YYYY-MM-DD
+    const [year, month, day] = datePart.split('-');
+    const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    return `${day} ${months[parseInt(month) - 1]}`;
+  };
+
   const loadData = async () => {
     if (!celular) return;
     setFetching(true);
     try {
-      // 1. Cargar Fichas Técnicas
       const { data: fichas } = await supabase
         .from('fichas_tecnicas')
         .select('*')
         .eq('celular', Number(celular))
         .order('created_at', { ascending: false });
       
-      // 2. Cargar Citas de la tabla appointments
       const { data: citas } = await supabase
         .from('appointments')
         .select('id, servicio, appointment_at, especialista, estado')
@@ -92,13 +114,12 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
     loadData();
   }, [celular]);
 
-  // Manejo de fotos
   const handleCapturePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const previewUrl = URL.createObjectURL(file);
     setFotos(prev => [...prev, { url: previewUrl, descripcion: "", rotation: 0, file }]);
-    e.target.value = ""; // Reset para permitir la misma foto
+    e.target.value = "";
   };
 
   const handleRotate = (index: number) => {
@@ -166,7 +187,6 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
   if (view === 'list') {
     return (
       <div className="space-y-4">
-        {/* Selector de Pestañas */}
         <div className="flex p-1 bg-gray-100 dark:bg-zinc-800 rounded-xl">
           <button 
             onClick={() => setTab('fichas')}
@@ -182,7 +202,6 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
           </button>
         </div>
 
-        {/* CONTENIDO PESTAÑA FICHA TÉCNICA */}
         {tab === 'fichas' && (
           <div className="space-y-3">
             <button 
@@ -206,29 +225,17 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
                   <div className="flex justify-between items-start mb-2">
                     <h4 className="font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">{f.job}</h4>
                     <span className="text-[10px] bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded text-gray-500">
-                      {new Date(f.created_at).toLocaleDateString()}
+                      {formatDateShort(f.created_at)}
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">"{f.observaciones}"</p>
-                  {f.fotos?.length > 0 && (
-                    <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
-                      {f.fotos.map((img, i) => (
-                        <img 
-                          key={i} 
-                          src={img.url} 
-                          style={{ transform: `rotate(${img.rotation || 0}deg)` }} 
-                          className="w-12 h-12 object-cover rounded-lg border border-gray-100 dark:border-zinc-800 shrink-0" 
-                        />
-                      ))}
-                    </div>
-                  )}
                 </div>
               ))
             )}
           </div>
         )}
 
-        {/* CONTENIDO PESTAÑA HISTORIAL CITAS */}
+        {/* CONTENIDO PESTAÑA HISTORIAL CITAS CORREGIDO */}
         {tab === 'citas' && (
           <div className="space-y-2">
             {historialCitas.length === 0 ? (
@@ -237,15 +244,21 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
               </div>
             ) : (
               historialCitas.map(c => (
-                <div key={c.id} className="p-3 border border-gray-100 dark:border-zinc-800 rounded-xl bg-gray-50 dark:bg-zinc-900/50 flex justify-between items-center shadow-sm">
-                  <div>
-                    <p className="text-xs font-bold dark:text-white uppercase">{c.servicio}</p>
-                    <p className="text-[10px] text-gray-500">
-                      {new Date(c.appointment_at).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}
-                    </p>
-                    <p className="text-[10px] text-indigo-500 font-medium">Especialista: {c.especialista}</p>
+                <div key={c.id} className="p-3 border border-gray-100 dark:border-zinc-800 rounded-xl bg-gray-50 dark:bg-zinc-900/50 flex justify-between items-center shadow-sm hover:border-indigo-200 transition-all">
+                  <div className="flex-1">
+                    <p className="text-xs font-bold dark:text-white uppercase truncate pr-4">{c.servicio}</p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <p className="text-[10px] text-zinc-500 font-medium bg-white dark:bg-zinc-800 px-2 py-0.5 rounded border border-gray-100 dark:border-zinc-700">
+                        {formatDateShort(c.appointment_at)}
+                      </p>
+                      <div className="flex items-center gap-1 text-[10px] text-indigo-500 font-bold">
+                        <Clock size={12} />
+                        {formatTime12h(c.appointment_at)}
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-gray-400 mt-1">Especialista: <span className="text-zinc-600 dark:text-zinc-300 font-medium">{c.especialista}</span></p>
                   </div>
-                  <span className={`text-[9px] font-black px-2 py-1 rounded-full uppercase border ${c.estado === 'FINALIZADO' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                  <span className={`text-[8px] font-black px-2 py-1 rounded-full uppercase border whitespace-nowrap ${c.estado === 'FINALIZADO' || c.estado === 'Cita pagada' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
                     {c.estado || 'Agendada'}
                   </span>
                 </div>
@@ -293,13 +306,7 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
             <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Fotos</label>
             <label className="cursor-pointer flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold hover:bg-indigo-100">
               <Camera size={14} /> Añadir Foto
-              <input 
-                type="file" 
-                accept="image/*" 
-                capture="environment" 
-                className="hidden" 
-                onChange={handleCapturePhoto} 
-              />
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCapturePhoto} />
             </label>
           </div>
 
@@ -307,26 +314,13 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
             {fotos.map((f, i) => (
               <div key={i} className="flex gap-3 bg-gray-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-gray-100 dark:border-zinc-800 shadow-sm">
                 <div className="w-20 h-20 overflow-hidden rounded-lg bg-white border shrink-0">
-                  <img 
-                    src={f.url} 
-                    style={{ transform: `rotate(${f.rotation || 0}deg)` }} 
-                    className="w-full h-full object-cover transition-transform duration-300" 
-                  />
+                  <img src={f.url} style={{ transform: `rotate(${f.rotation || 0}deg)` }} className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1 flex flex-col justify-between">
-                  <input 
-                    className="w-full bg-transparent border-b border-gray-200 dark:border-zinc-700 py-1 text-xs focus:outline-none" 
-                    placeholder="Descripción opcional..." 
-                    value={f.descripcion} 
-                    onChange={e => { const nf = [...fotos]; nf[i].descripcion = e.target.value; setFotos(nf); }} 
-                  />
+                  <input className="w-full bg-transparent border-b border-gray-200 dark:border-zinc-700 py-1 text-xs focus:outline-none" placeholder="Descripción opcional..." value={f.descripcion} onChange={e => { const nf = [...fotos]; nf[i].descripcion = e.target.value; setFotos(nf); }} />
                   <div className="flex gap-4 mt-1">
-                    <button onClick={() => handleRotate(i)} className="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1">
-                      <RotateCw size={12} /> Rotar
-                    </button>
-                    <button onClick={() => setFotos(fotos.filter((_, idx) => idx !== i))} className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1">
-                      <Trash2 size={12} /> Eliminar
-                    </button>
+                    <button onClick={() => handleRotate(i)} className="text-[10px] font-bold text-indigo-500 uppercase flex items-center gap-1"><RotateCw size={12} /> Rotar</button>
+                    <button onClick={() => setFotos(fotos.filter((_, idx) => idx !== i))} className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1"><Trash2 size={12} /> Eliminar</button>
                   </div>
                 </div>
               </div>

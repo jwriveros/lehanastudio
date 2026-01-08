@@ -21,7 +21,6 @@ export async function POST(request: Request) {
         const { error, data } = await supabaseAdmin 
             .from("appointments")
             .update({
-                is_paid: true,
                 estado: "Cita pagada", 
                 updated_at: new Date().toISOString()
             })
@@ -47,39 +46,26 @@ export async function POST(request: Request) {
 
         // 2. Notificar a n8n para disparar la encuesta de WhatsApp
         if (process.env.N8N_WEBHOOK_URL) {
-            // Normalizar el celular (asegurar formato +57...)
-            const rawPhone = String(updatedAppointment.celular || "").replace(/\D/g, "");
-            const normalizedPhone = rawPhone.startsWith("57") 
-                ? `+${rawPhone}` 
-                : `+57${rawPhone}`;
-
             try {
-                // No usamos await aquí si no queremos bloquear la respuesta al cliente, 
-                // pero es recomendable para asegurar que n8n reciba los datos.
+                // Usamos AbortController para que la API no se quede colgada si n8n no responde
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000); 
+
                 await fetch(process.env.N8N_WEBHOOK_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        action: "PAID", // Acción para el Switch de n8n
-                        customerName: updatedAppointment.cliente,
-                        customerPhone: normalizedPhone,
-                        servicio: updatedAppointment.servicio,
-                        especialista: updatedAppointment.especialista,
-                        appointmentId: updatedAppointment.id,
-                        sede: updatedAppointment.sede
-                    }),
+                    body: JSON.stringify({ /* tu payload */ }),
+                    signal: controller.signal
                 });
-                console.log("✅ Notificación de pago enviada a n8n");
+                clearTimeout(timeoutId);
             } catch (webhookError) {
-                console.error("❌ Error enviando a n8n:", webhookError);
-                // Continuamos aunque falle el webhook para no afectar la experiencia del usuario
+                // Logeamos el error pero NO enviamos un error 500 al cliente
+                // Así el pago queda guardado aunque el WhatsApp no se envíe
+                console.error("⚠️ Webhook n8n falló, pero el pago se registró:", webhookError);
             }
         }
 
-        return NextResponse.json({ 
-            success: true, 
-            message: "Cita marcada como pagada exitosamente y notificación enviada." 
-        });
+        return NextResponse.json({ success: true });
 
     } catch (e: any) {
         console.error("API Processing Error:", e);

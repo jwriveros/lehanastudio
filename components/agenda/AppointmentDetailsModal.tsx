@@ -11,6 +11,7 @@ import {
   Clock,
   ClipboardList,
   DollarSign,
+  Undo2, // Icono para anular
 } from "lucide-react";
 import FichaTecnicaModal from "../FichaTecnicaModal";
 import type { CalendarAppointment } from "./types";
@@ -20,31 +21,21 @@ import { useState } from "react";
 
 /**
  * Devuelve las clases de Tailwind CSS para un estado de cita específico.
- * @param status - El estado de la cita.
- * @returns Una cadena de clases de Tailwind CSS.
  */
 const getStatusStyles = (status: string | undefined): string => {
-  const defaultStyles =
-    "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  const defaultStyles = "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
   if (!status) return defaultStyles;
 
   const statusMap: { [key: string]: string } = {
-    "cita confirmada":
-      "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-400",
-    "cita pagada":
-      "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400",
-    "cita cancelada":
-      "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400",
-    "nueva reserva creada":
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400",
+    "cita confirmada": "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-400",
+    "cita pagada": "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400",
+    "cita cancelada": "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400",
+    "nueva reserva creada": "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400",
   };
 
   return statusMap[status.toLowerCase()] || defaultStyles;
 };
 
-/**
- * Un componente de modal para mostrar los detalles de una cita.
- */
 export default function AppointmentDetailsModal({
   appointment,
   onClose,
@@ -63,29 +54,38 @@ export default function AppointmentDetailsModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFicha, setShowFicha] = useState(false);
 
-  const handleMarkAsPaid = async () => {
-    if (!appointment?.id) return;
+  const isPaid = appointment.raw.estado?.toLowerCase() === "cita pagada";
+  // Dentro de AppointmentDetailsModal.tsx
+  const handleTogglePayment = async () => {
+  if (!appointment?.id) return;
+  setIsSubmitting(true);
 
-    setIsSubmitting(true);
-    try {
-      const response = await fetch("/api/bookings/mark-as-paid", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appointmentId: appointment.id }),
-      });
+  const endpoint = isPaid ? "/api/bookings/unpay" : "/api/bookings/mark-as-paid";
+  
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appointmentId: appointment.id }),
+    });
 
-      if (!response.ok) {
-        throw new Error("Error al marcar como pagada");
-      }
+    const data = await response.json(); // Leemos la respuesta del servidor
 
-      onMarkAsPaid?.(appointment.id);
-      onClose();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsSubmitting(false);
+    if (!response.ok) {
+      // Ahora el error será específico, ej: "Falta SUPABASE_SERVICE_ROLE_KEY"
+      throw new Error(data.error || data.details || "Error en la operación");
     }
-  };
+
+    onMarkAsPaid?.(appointment.id);
+    onClose();
+  } catch (error: any) {
+    alert("Atención: " + error.message); // Muestra el error real en un alert
+    console.error("Detalle del error:", error);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+  
 
   const DetailItem = ({
     icon,
@@ -108,8 +108,6 @@ export default function AppointmentDetailsModal({
       </div>
     </div>
   );
-
-  const isPaid = appointment.raw.estado?.toLowerCase() === "cita pagada";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -183,14 +181,26 @@ export default function AppointmentDetailsModal({
               <Ban size={15} />
               Cancelar
             </button>
+
+            {/* BOTÓN DE PAGO / ANULACIÓN DINÁMICO */}
             <button
-              onClick={handleMarkAsPaid}
-              disabled={isPaid || isSubmitting}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={handleTogglePayment}
+              disabled={isSubmitting}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                isPaid 
+                  ? "bg-red-500 hover:bg-red-600" // Rojo si ya está pagado
+                  : "bg-green-500 hover:bg-green-600" // Verde si está pendiente
+              }`}
             >
-              <DollarSign size={15} />
-              {isSubmitting ? "Pagando..." : isPaid ? "Pagado" : "Marcar Pago"}
+              {isPaid ? <Undo2 size={15} /> : <DollarSign size={15} />}
+              {isSubmitting 
+                ? "Procesando..." 
+                : isPaid 
+                  ? "Anular Pago" 
+                  : "Marcar Pago"
+              }
             </button>
+
             <button
               onClick={() => onEdit?.(appointment)}
               className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 dark:border-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-600"
@@ -201,14 +211,11 @@ export default function AppointmentDetailsModal({
         </div>
       </div>
 
-      {/* MODAL DE FICHA TÉCNICA */}
       <FichaTecnicaModal 
         isOpen={showFicha}
         onClose={() => setShowFicha(false)}
         cliente={{
           nombre: appointment.raw.cliente || "",
-          // Se usa (appointment.raw as any) para evitar el error de TS 
-          // asegurando que acceda a la propiedad celular del objeto raw
           celular: String((appointment.raw as any).celular || "")
         }}
       />
