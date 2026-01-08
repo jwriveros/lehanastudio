@@ -1,14 +1,22 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { normalizePhone, getSenderRole } from "@/lib/chatUtils";
+import { useSessionStore } from "@/lib/sessionStore";
 import {
   ArrowLeft,
-  Check,
   Send,
   Loader2,
   Calendar, 
-  Inbox
+  Inbox,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  Download,
+  TrendingUp,
+  DollarSign,
+  CheckCircle2
 } from "lucide-react";
 
 type Thread = {
@@ -17,7 +25,7 @@ type Thread = {
   phone: string;
   lastMessage: string;
   updated_at?: string;
-  isBookingOpen: boolean; // Crucial para el filtro
+  isBookingOpen: boolean;
 };
 
 type Message = {
@@ -28,14 +36,18 @@ type Message = {
 };
 
 export default function ReservasChat() {
+  const { session } = useSessionStore();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeChat, setActiveChat] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   
-  const knownNamesRef = useRef<Map<string, string>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // --- LÓGICA DE NAVEGACIÓN DE FECHAS (DE MIS-INFORMES) ---
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const [dateRange, setDateRange] = useState({ start: todayStr, end: todayStr });
 
   const scrollBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     requestAnimationFrame(() => {
@@ -43,66 +55,63 @@ export default function ReservasChat() {
     });
   }, []);
 
+  // --- OBTENER HILOS Y NOMBRES DE CLIENTES ---
   const fetchThreads = useCallback(async () => {
     setLoading(true);
-    
-    // 1. Obtener sesiones y solicitudes de reserva OPEN simultáneamente
-    const [sessionsRes, bookingsRes] = await Promise.all([
-      supabase
-        .from("chat_sessions")
-        .select("*")
-        .order("updated_at", { ascending: false }),
-      supabase
-        .from("booking_requests")
-        .select("customer_phone")
-        .eq("status", "OPEN")
-    ]);
+    try {
+      const [sessionsRes, bookingsRes] = await Promise.all([
+        supabase.from("chat_sessions").select("*").order("updated_at", { ascending: false }),
+        supabase.from("booking_requests").select("customer_phone").eq("status", "OPEN")
+      ]);
 
-    const sessions = sessionsRes.data || [];
-    const openBookings = bookingsRes.data || [];
+      const sessions = sessionsRes.data || [];
+      const openBookings = bookingsRes.data || [];
+      const openBookingPhones = new Set(
+        openBookings.map(b => normalizePhone(b.customer_phone)).filter(Boolean)
+      );
 
-    // 2. Crear Set de teléfonos con reservas abiertas
-    const openBookingPhones = new Set(
-      openBookings.map(b => normalizePhone(b.customer_phone)).filter(Boolean)
-    );
+      // Obtener nombres desde la tabla 'clients'
+      const rawPhones = sessions.map((s) => normalizePhone(s.client_phone)).filter(Boolean) as string[];
+      const searchPhones = [...rawPhones, ...rawPhones.map(p => `+${p}`)];
 
-    // 3. Obtener nombres de clientes
-    const phones = sessions.map((s) => normalizePhone(s.client_phone)).filter(Boolean) as string[];
-    const { data: clients } = await supabase
-      .from("clients")
-      .select("nombre, numberc")
-      .in("numberc", phones);
+      const { data: clients } = await supabase
+        .from("clients")
+        .select("nombre, numberc")
+        .in("numberc", searchPhones);
 
-    const clientsMap = new Map<string, string>();
-    clients?.forEach((c) => {
-      if (c.numberc) clientsMap.set(String(c.numberc), c.nombre);
-    });
+      const clientsMap = new Map<string, string>();
+      clients?.forEach((c) => {
+        if (c.numberc) {
+          const cleanKey = normalizePhone(c.numberc);
+          if (cleanKey) clientsMap.set(cleanKey, c.nombre);
+        }
+      });
 
-    // 4. Mapear y Filtrar (Solo los que tienen isBookingOpen)
-    const mapped: Thread[] = sessions
-      .map((s) => {
-        const phone = normalizePhone(s.client_phone) || String(s.client_phone);
-        const name = clientsMap.get(phone) || s.client_name || `Cliente (${phone})`;
-        
-        return {
-          id: phone,
-          phone,
-          cliente: name,
-          lastMessage: s.last_message || "",
-          updated_at: s.updated_at,
-          isBookingOpen: openBookingPhones.has(phone)
-        };
-      })
-      .filter(t => t.isBookingOpen); // <--- FILTRO DE RESERVAS ACTIVAS
+      const mapped: Thread[] = sessions
+        .map((s) => {
+          const phone = normalizePhone(s.client_phone) || String(s.client_phone);
+          const displayName = clientsMap.get(phone) || s.client_name || phone;
+          
+          return {
+            id: phone,
+            phone,
+            cliente: displayName,
+            lastMessage: s.last_message || "",
+            updated_at: s.updated_at,
+            isBookingOpen: openBookingPhones.has(phone)
+          };
+        })
+        .filter(t => t.isBookingOpen);
 
-    setThreads(mapped);
-    setLoading(false);
+      setThreads(mapped);
+    } catch (error) {
+      console.error("Error fetching threads:", error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => {
-    fetchThreads();
-  }, [fetchThreads]);
-
+  // --- MENSAJES Y REALTIME ---
   const fetchMessages = useCallback(async (phoneId: string) => {
     const clean = normalizePhone(phoneId);
     const { data } = await supabase
@@ -114,7 +123,8 @@ export default function ReservasChat() {
     if (data) {
       setMessages(data.map((m) => ({
         id: m.id,
-        from: getSenderRole(m),
+        // CORRECCIÓN: Si el rol es 'staff' O 'bot', se muestra a la derecha
+        from: (m.sender_role === "staff" || m.sender_role === "bot") ? "staff" : "client",
         text: m.content || m.message || "",
         created_at: m.created_at,
       })));
@@ -123,11 +133,14 @@ export default function ReservasChat() {
   }, [scrollBottom]);
 
   useEffect(() => {
+    fetchThreads();
+  }, [fetchThreads]);
+
+  useEffect(() => {
     if (!activeChat) return;
     fetchMessages(activeChat.phone);
   }, [activeChat, fetchMessages]);
 
-  // REALTIME
   useEffect(() => {
     const channel = supabase
       .channel("reservas-updates")
@@ -152,7 +165,6 @@ export default function ReservasChat() {
     const textToSend = input;
     setInput("");
 
-    // Optimistic Update
     setMessages(prev => [...prev, { from: "staff", text: textToSend, created_at: new Date().toISOString() }]);
     scrollBottom("smooth");
 
@@ -165,7 +177,7 @@ export default function ReservasChat() {
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-gray-900 overflow-hidden">
-      {/* HEADER */}
+      {/* HEADER DINÁMICO */}
       <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 z-10">
         <div className="flex items-center gap-3">
           {activeChat && (
@@ -183,7 +195,7 @@ export default function ReservasChat() {
         </div>
       </div>
 
-      {/* CONTENIDO */}
+      {/* LISTADO O CHAT ACTIVO */}
       <div className="flex-1 overflow-hidden relative flex flex-col">
         {loading && threads.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 z-10">
@@ -196,27 +208,30 @@ export default function ReservasChat() {
             {threads.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
                 <Inbox size={40} className="opacity-20" />
-                <p className="text-sm">No hay reservas con estado OPEN.</p>
+                <p className="text-sm font-medium">No hay reservas con estado OPEN.</p>
               </div>
             ) : (
               threads.map((t) => (
                 <div 
                   key={t.id} 
                   onClick={() => setActiveChat(t)} 
-                  className="p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 cursor-pointer transition-colors"
+                  className="p-4 border-b border-gray-50 dark:border-gray-800 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 cursor-pointer transition-all"
                 >
                   <div className="flex justify-between items-start mb-1">
-                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t.cliente}</div>
-                    <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold uppercase">Open</span>
+                    <div className="text-sm font-bold text-gray-800 dark:text-gray-200">
+                      {t.cliente}
+                    </div>
+                    <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-lg font-black uppercase tracking-tighter">Open</span>
                   </div>
-                  <div className="text-xs text-gray-500 truncate max-w-[280px]">{t.lastMessage}</div>
+                  <div className="text-xs text-gray-500 truncate">{t.lastMessage}</div>
                 </div>
               ))
             )}
           </div>
         ) : (
           <div className="flex flex-col h-full bg-[#f0f2f5] dark:bg-gray-950">
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll">
+            {/* MENSAJES */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.from === "client" ? "justify-start" : "justify-end"}`}>
                   <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm shadow-sm ${
@@ -226,7 +241,7 @@ export default function ReservasChat() {
                   }`}>
                     {m.text}
                     <div className={`text-[9px] mt-1 text-right ${m.from === "client" ? "text-gray-400" : "text-indigo-200"}`}>
-                       {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                       {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                     </div>
                   </div>
                 </div>
@@ -234,7 +249,7 @@ export default function ReservasChat() {
               <div ref={bottomRef} />
             </div>
 
-            {/* INPUT */}
+            {/* BARRA DE ENTRADA */}
             <div className="p-3 bg-white dark:bg-gray-900 border-t dark:border-gray-800 flex items-center gap-2">
               <input 
                 className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"

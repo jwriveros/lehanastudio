@@ -278,7 +278,8 @@ useEffect(() => {
       if (data) {
         setMessages(data.map(m => ({
           id: m.id,
-          from: getSenderRole(m),
+          // CORRECCIÓN: Bot y Staff a la derecha
+          from: (m.sender_role === "agent" || m.sender_role === "bot") ? "staff" : "client",
           text: m.content || m.message || "",
           created_at: m.created_at,
         })));
