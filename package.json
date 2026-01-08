@@ -1,6 +1,6 @@
 {
   "name": "lehanastudio",
-  "version": "6.0.0",
+  "version": "7.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

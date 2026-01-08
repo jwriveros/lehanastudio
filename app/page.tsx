@@ -62,7 +62,7 @@ export default function Home() {
         {/* Logo */}
         <div className="relative mx-auto mb-6 h-auto w-full max-w-[240px] aspect-[3/1]">
           <Image
-            src="/logo-login.png"
+            src="/images/logo.png"
             alt="Lehana Studio Logo"
             fill
             priority

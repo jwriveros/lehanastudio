@@ -23,9 +23,16 @@ export default function AppSidebar() {
   const router = useRouter();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/"); // Redirige a la página de login o a la raíz
-  };
+  // 1. Cerrar sesión en Supabase
+  await supabase.auth.signOut();
+
+  // 2. Limpiar todo rastro de datos locales
+  localStorage.clear();
+  sessionStorage.clear();
+
+  // 3. Redirección forzada (esto refresca la página y limpia el estado de React)
+  window.location.href = "/";
+};
 
   const menuItems = [
     { icon: MessageSquare, href: "/support", label: "Soporte" },
