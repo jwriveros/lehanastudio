@@ -10,6 +10,8 @@ import React, {
 import AutocompleteInput from "./AutocompleteInput";
 import { supabase } from "@/lib/supabaseClient";
 import { useUIStore } from "@/lib/uiStore";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import {
   Plus,
   Trash2,
@@ -23,7 +25,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  History
+  History,
+  Tag
 } from "lucide-react";
 
 /* =========================
@@ -58,6 +61,7 @@ type FormState = {
   celular: string;
   sede: string;
   cantidad: number;
+  estado: string;
   lines: ServiceLine[];
 };
 
@@ -81,6 +85,7 @@ const EMPTY_FORM: FormState = {
   celular: "",
   sede: "Marquetalia",
   cantidad: 1,
+  estado: "Nueva reserva creada", //
   lines: [{ ...EMPTY_LINE }],
 };
 
@@ -125,7 +130,7 @@ export default function ReservationForm({
   const [activeTab, setActiveTab] = useState<'reservas' | 'fichas'>('fichas');
 
   /* =========================
-     CARGAR ESPECIALISTAS
+      CARGAR ESPECIALISTAS
   ========================= */
   useEffect(() => {
     let mounted = true;
@@ -151,12 +156,12 @@ export default function ReservationForm({
   }, []);
 
   /* =========================
-     PRECARGAR (EDICIÓN) / RESET
+      PRECARGAR (EDICIÓN) / RESET
   ========================= */
   useEffect(() => {
     if (!appointmentData?.id) {
       setForm(EMPTY_FORM);
-      setSaveClient(false);
+      setSaveClient(false); 
       return;
     }
     const raw = appointmentData.raw ?? {};
@@ -165,6 +170,7 @@ export default function ReservationForm({
       celular: String(raw.celular ?? appointmentData.celular ?? ""),
       sede: raw.sede ?? "Marquetalia",
       cantidad: 1,
+      estado: raw.estado ?? "Nueva reserva creada",
       lines: [
         {
           servicio: raw.servicio ?? appointmentData.title ?? "",
@@ -181,7 +187,7 @@ export default function ReservationForm({
   }, [appointmentData]);
 
   /* =========================
-     HELPERS FORMULARIO
+      HELPERS FORMULARIO
   ========================= */
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -251,7 +257,11 @@ export default function ReservationForm({
       }
       if (isEditing) {
         const l = lines[0];
-        await supabase
+        const dateObj = new Date(l.appointment_at);
+        const newAt = localDateTimeToUTC(l.appointment_at);
+
+        // 1. Actualizar en Supabase
+        const { error } = await supabase
           .from("appointments")
           .update({
             cliente: form.cliente.trim(),
@@ -260,9 +270,40 @@ export default function ReservationForm({
             servicio: l.servicio,
             especialista: l.especialista,
             duration: l.duracion,
-            appointment_at: localDateTimeToUTC(l.appointment_at),
+            appointment_at: newAt,
+            estado: form.estado,
           })
           .eq("id", Number(appointmentData.id));
+
+        if (error) throw error;
+
+        // 2. Notificar a n8n del cambio (Acción EDITED)
+        try {
+          const rawPhone = String(form.celular).replace(/\D/g, "");
+          const normalizedPhone = rawPhone.startsWith("57") ? `+${rawPhone}` : `+57${rawPhone}`;
+          const dateObj = new Date(l.appointment_at);
+
+          await fetch("/api/bookings/notify-update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "EDITED",
+              customerName: form.cliente.trim(),
+              customerPhone: normalizedPhone,
+              servicio: l.servicio,
+              especialista: l.especialista,
+              // Forzamos el envío de estos campos para que n8n no los reciba vacíos
+              fecha: format(dateObj, "PPPP", { locale: es }), 
+              hora: format(dateObj, "p", { locale: es }),
+              sede: form.sede, // <-- Añade la sede aquí también
+              appointmentId: appointmentData.id,
+              estado: form.estado
+            }),
+          });
+        } catch (webhookErr) {
+          console.error("Error enviando notificación de edición:", webhookErr);
+        }
+
         onSuccess?.();
         closeReservationDrawer();
         return;
@@ -302,7 +343,7 @@ export default function ReservationForm({
   }, [form.lines]);
 
   /* =========================
-     RENDER PRINCIPAL
+      RENDER PRINCIPAL
   ========================= */
   return (
     <div className="flex h-full w-full overflow-hidden bg-gray-50 dark:bg-zinc-950">
@@ -538,6 +579,23 @@ export default function ReservationForm({
             <section className="space-y-4 rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800/50 dark:ring-gray-700/50">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Detalles Adicionales</h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="estado" className="text-sm font-medium text-gray-700 dark:text-gray-400">Estado de la Cita</label>
+                  <div className="group relative">
+                    <Tag className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" />
+                    <select
+                      id="estado"
+                      value={form.estado}
+                      onChange={(e) => updateField("estado", e.target.value)}
+                      className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
+                    >
+                      <option value="Nueva reserva creada">Nueva reserva creada</option>
+                      <option value="Cita confirmada">Cita confirmada</option>
+                      <option value="Cita pagada">Cita pagada</option>
+                      <option value="Cita cancelada">Cita cancelada</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <label htmlFor="sede" className="text-sm font-medium text-gray-700 dark:text-gray-400">Sede</label>
                   <div className="group relative">

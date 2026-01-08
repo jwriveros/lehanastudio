@@ -55,7 +55,55 @@ export default function AppointmentDetailsModal({
   const [showFicha, setShowFicha] = useState(false);
 
   const isPaid = appointment.raw.estado?.toLowerCase() === "cita pagada";
+  const isCancelled = appointment.raw.estado?.toLowerCase() === "cita cancelada";
   // Dentro de AppointmentDetailsModal.tsx
+  const notifyN8N = async (action: "EDITED" | "CANCELLED") => {
+    try {
+      // Normalizamos el celular para el webhook
+      const rawPhone = String((appointment.raw as any).celular || "").replace(/\D/g, "");
+      const normalizedPhone = rawPhone.startsWith("57") ? `+${rawPhone}` : `+57${rawPhone}`;
+
+      await fetch("/api/bookings/notify-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action, // "EDITED" o "CANCELLED"
+          appointmentId: appointment.id,
+          customerName: appointment.raw.cliente,
+          customerPhone: normalizedPhone,
+          servicio: appointment.title,
+          especialista: appointment.raw.especialista,
+          fecha: format(appointment.start, "PPP", { locale: es }),
+          hora: format(appointment.start, "p", { locale: es }),
+        }),
+      });
+    } catch (error) {
+      console.error(`Error notificando ${action}:`, error);
+    }
+  };
+  const handleCancelAction = async () => {
+  if (!appointment?.id) return;
+  if (!confirm("¿Deseas cancelar esta cita? El cliente recibirá un mensaje.")) return;
+
+  setIsSubmitting(true);
+  try {
+    const response = await fetch("/api/bookings/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appointmentId: appointment.id }),
+    });
+
+    if (!response.ok) throw new Error("Error al cancelar");
+
+    onCancel?.(appointment); // Refresca el calendario
+    onClose();
+  } catch (error) {
+    alert("No se pudo cancelar la cita.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
   const handleTogglePayment = async () => {
   if (!appointment?.id) return;
   setIsSubmitting(true);
@@ -175,11 +223,17 @@ export default function AppointmentDetailsModal({
           </button>
           <div className="flex gap-3">
             <button
-              onClick={() => onCancel?.(appointment)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-100/60 dark:text-zinc-200 dark:hover:bg-zinc-800/30"
+              onClick={handleCancelAction}
+              // Se deshabilita si ya está enviando, o si ya está pagada, o si ya está cancelada
+              disabled={isSubmitting || isPaid || isCancelled}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                isCancelled 
+                  ? "bg-red-50 text-red-400 border border-red-100" // Estilo "Ya cancelado"
+                  : "text-zinc-800 hover:bg-zinc-100/60 dark:text-zinc-200 dark:hover:bg-zinc-800/30"
+              }`}
             >
               <Ban size={15} />
-              Cancelar
+              {isSubmitting ? "Cancelando..." : isCancelled ? "Cancelada" : "Cancelar"}
             </button>
 
             {/* BOTÓN DE PAGO / ANULACIÓN DINÁMICO */}
