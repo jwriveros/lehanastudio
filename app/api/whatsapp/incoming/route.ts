@@ -1,48 +1,49 @@
+// app/api/whatsapp/incoming/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseClient";
 
-// Helper para normalizar números de teléfono
+/**
+ * Normaliza el número de teléfono:
+ * Quita el prefijo "whatsapp:", elimina espacios/guiones,
+ * pero mantiene los números y el símbolo "+" inicial.
+ */
 function normalizePhoneNumber(phone: string): string {
-  return phone.replace(/^whatsapp:/, "").replace(/\D/g, "");
-}
-
-interface WhatsappWebhookPayload {
-  from: string;
-  text: string;
-  timestamp: string;
-  profileName?: string;
-  messageId?: string;
+  return phone.replace(/^whatsapp:/, "").replace(/[^\d+]/g, "");
 }
 
 export async function POST(request: Request) {
-  const payload: WhatsappWebhookPayload = await request.json();
-
+  // 1. Validar cliente de Supabase Admin
   if (!supabaseAdmin) {
     console.error("Supabase Admin client no inicializado.");
     return NextResponse.json({ error: "Configuración de Supabase incompleta." }, { status: 500 });
   }
 
   try {
+    const payload = await request.json();
     const clientPhone = normalizePhoneNumber(payload.from);
     const messageContent = payload.text;
-    const receivedAt = new Date(payload.timestamp).toISOString();
+    const receivedAt = new Date(payload.timestamp || Date.now()).toISOString();
+
+    console.log("--- PROCESANDO MENSAJE ENTRANTE ---");
+    console.log("De:", clientPhone);
+    console.log("Contenido:", messageContent);
 
     if (!clientPhone || !messageContent) {
-      return NextResponse.json({ error: "Faltan datos obligatorios (from/text)." }, { status: 400 });
+      return NextResponse.json({ error: "Datos incompletos (from/text)." }, { status: 400 });
     }
 
-    // 1. Buscar o Crear Cliente
-    let clientData;
-    const { data: existingClient, error: clientFetchError } = await supabaseAdmin
+    // --- PASO 1: BUSCAR O CREAR CLIENTE ---
+    const { data: clientData, error: clientFetchError } = await supabaseAdmin
       .from("clients")
-      .select("id, nombre, celular")
+      .select("id, nombre")
       .eq("celular", clientPhone)
       .maybeSingle();
 
-    if (clientFetchError) throw new Error(clientFetchError.message);
+    if (clientFetchError) throw new Error(`Error buscando cliente: ${clientFetchError.message}`);
 
-    if (existingClient) {
-      clientData = existingClient;
+    let finalClientId;
+    if (clientData) {
+      finalClientId = clientData.id;
     } else {
       const { data: newClient, error: newClientError } = await supabaseAdmin
         .from("clients")
@@ -51,73 +52,81 @@ export async function POST(request: Request) {
           nombre: payload.profileName || `Cliente ${clientPhone}`,
           tipo: "WhatsApp",
           estado: "activo",
-          indicador: clientPhone.length > 10 ? clientPhone.slice(0, -10) : "57",
+          indicador: "57",
           numberc: clientPhone.slice(-10),
           created_at: receivedAt,
         })
-        .select("id, nombre, celular")
+        .select("id")
         .single();
 
-      if (newClientError) throw new Error(newClientError.message);
-      clientData = newClient;
+      if (newClientError) throw new Error(`Error creando cliente: ${newClientError.message}`);
+      finalClientId = newClient.id;
     }
 
-    // 2. Buscar o Crear Sesión de Chat
-    let chatSession;
+    // --- PASO 2: BUSCAR O CREAR SESIÓN DE CHAT ---
     const { data: existingSession, error: sessionFetchError } = await supabaseAdmin
       .from("chat_sessions")
       .select("*")
       .eq("client_phone", clientPhone)
       .maybeSingle();
 
-    if (sessionFetchError) throw new Error(sessionFetchError.message);
+    if (sessionFetchError) throw new Error(`Error buscando sesión: ${sessionFetchError.message}`);
 
-    let newStatus: string = "active";
-    
+    let newStatus: string = "pending_agent";
+
     if (existingSession) {
-      chatSession = existingSession;
-      // Lógica de estados corregida:
-      // Si está en 'pending_active' (bot trabajando), un nuevo mensaje lo mueve a 'pending_agent' (Reservas)
-      if (chatSession.status === "bot_active" || chatSession.status === "new" || chatSession.status === "pending_active") {
-        newStatus = "pending_agent"; 
-      } else {
-        newStatus = chatSession.status;
+      // Determinar el nuevo estado
+      newStatus = existingSession.status === "agent_active" ? "agent_active" : "pending_agent";
+
+      console.log(`Ejecutando incremento RPC para: ${clientPhone}`);
+      
+      // A. INCREMENTO ATÓMICO (Usa la función SQL que creamos)
+      const { error: rpcError } = await supabaseAdmin.rpc('increment_unread_count', { 
+        phone_text: clientPhone 
+      });
+
+      if (rpcError) {
+        console.error("Fallo en RPC increment_unread_count:", rpcError.message);
+        // Fallback manual en caso de que el RPC falle
+        const currentCount = Number(existingSession.unread_count || 0);
+        await supabaseAdmin
+          .from("chat_sessions")
+          .update({ unread_count: currentCount + 1 })
+          .eq("client_phone", clientPhone);
       }
 
+      // B. ACTUALIZAR RESTO DE LA SESIÓN
       const { error: sessionUpdateError } = await supabaseAdmin
         .from("chat_sessions")
         .update({
           last_message: messageContent,
           last_activity: receivedAt,
           status: newStatus,
-          unread_count: (chatSession.unread_count || 0) + 1,
           updated_at: new Date().toISOString(),
         })
         .eq("client_phone", clientPhone);
 
-      if (sessionUpdateError) throw new Error(sessionUpdateError.message);
+      if (sessionUpdateError) throw new Error(`Error update sesión: ${sessionUpdateError.message}`);
+
     } else {
-      newStatus = "pending_agent"; // Nueva sesión directo a Reservas
-      const { data: newSession, error: newSessionError } = await supabaseAdmin
+      // CREAR SESIÓN NUEVA
+      console.log(`Creando nueva sesión para: ${clientPhone}`);
+      const { error: newSessionError } = await supabaseAdmin
         .from("chat_sessions")
         .insert({
-          client_id: clientData.id,
+          client_id: finalClientId,
           client_phone: clientPhone,
           last_message: messageContent,
           last_activity: receivedAt,
-          status: newStatus,
+          status: "pending_agent",
           unread_count: 1,
-        })
-        .select("*")
-        .single();
+        });
 
-      if (newSessionError) throw new Error(newSessionError.message);
-      chatSession = newSession;
+      if (newSessionError) throw new Error(`Error insert sesión: ${newSessionError.message}`);
     }
 
-    // 3. Insertar el Mensaje
+    // --- PASO 3: INSERTAR EL MENSAJE EN LA TABLA MENSAJES ---
     const { error: messageInsertError } = await supabaseAdmin.from("mensajes").insert({
-      client_id: clientData.id,
       client_phone: clientPhone,
       content: messageContent,
       from_client: true,
@@ -125,24 +134,13 @@ export async function POST(request: Request) {
       message_id: payload.messageId || null,
     });
 
-    if (messageInsertError) throw new Error(messageInsertError.message);
+    if (messageInsertError) throw new Error(`Error insert mensaje: ${messageInsertError.message}`);
 
-    // 4. REALTIME BROADCAST: Notificar al panel de chat inmediatamente
-    await supabaseAdmin.channel("chat-updates").send({
-      type: "broadcast",
-      event: "new-message",
-      payload: {
-        phone: clientPhone,
-        status: newStatus,
-        text: messageContent,
-        clientName: clientData.nombre
-      },
-    });
-
-    return NextResponse.json({ received: true, newStatus }, { status: 200 });
+    console.log("--- PROCESO COMPLETADO EXITOSAMENTE ---");
+    return NextResponse.json({ ok: true, status: newStatus }, { status: 200 });
 
   } catch (err: any) {
-    console.error("Error fatal en webhook:", err.message);
+    console.error("Error fatal en webhook incoming:", err.message);
     return NextResponse.json({ error: "Internal Server Error", details: err.message }, { status: 500 });
   }
 }
