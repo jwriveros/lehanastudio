@@ -61,7 +61,10 @@ export default function AppointmentDetailsModal({
     try {
       // Normalizamos el celular para el webhook
       const rawPhone = String((appointment.raw as any).celular || "").replace(/\D/g, "");
-      const normalizedPhone = rawPhone.startsWith("57") ? `+${rawPhone}` : `+57${rawPhone}`;
+      const rawIndicativo = String((appointment.raw as any).indicativo || "57").replace(/\D/g, "");
+      
+      // 2. Creamos el número completo formateado
+      const fullPhone = `+${rawIndicativo}${rawPhone}`;
 
       await fetch("/api/bookings/notify-update", {
         method: "POST",
@@ -70,11 +73,12 @@ export default function AppointmentDetailsModal({
           action, // "EDITED" o "CANCELLED"
           appointmentId: appointment.id,
           customerName: appointment.raw.cliente,
-          customerPhone: normalizedPhone,
+          customerPhone: fullPhone, // Envía el número internacional real
           servicio: appointment.title,
           especialista: appointment.raw.especialista,
           fecha: format(appointment.start, "PPP", { locale: es }),
           hora: format(appointment.start, "p", { locale: es }),
+          indicativo: (appointment.raw as any).indicativo || "+57"
         }),
       });
     } catch (error) {
@@ -94,6 +98,7 @@ export default function AppointmentDetailsModal({
     });
 
     if (!response.ok) throw new Error("Error al cancelar");
+    await notifyN8N("CANCELLED");
 
     onCancel?.(appointment); // Refresca el calendario
     onClose();

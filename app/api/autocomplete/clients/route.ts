@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("clients")
-    .select("nombre, celular, numberc")
+    .select("nombre, celular, numberc, indicador")
     .order("nombre", { ascending: true })
     .limit(10);
 

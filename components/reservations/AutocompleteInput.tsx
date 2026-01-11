@@ -19,6 +19,7 @@ interface AutocompleteInputProps<T> {
   renderItem?: (item: T) => React.ReactNode;
   getKey?: (item: T, index: number) => string | number;
   onSelect: (item: T) => void;
+  onChange?: (value: string) => void;
   inputClassName?: string;
 }
 
@@ -31,6 +32,7 @@ function AutocompleteInput<T>({
   renderItem,
   getKey,
   onSelect,
+  onChange,
   inputClassName,
 }: AutocompleteInputProps<T>) {
   const [inputValue, setInputValue] = useState(initialValue);
@@ -43,11 +45,14 @@ function AutocompleteInput<T>({
   const ignoreSearchRef = useRef(false);
 
   // Sincronizar el valor interno cuando cambia el valor inicial (útil al cargar datos de edición)
+  // ✅ DESPUÉS (Solo sincroniza si el cambio viene de afuera)
   useEffect(() => {
-    if (initialValue !== undefined) {
+    // Solo actualizamos e ignoramos la búsqueda si el valor es DISTINTO al actual
+    if (initialValue !== undefined && initialValue !== inputValue) {
       ignoreSearchRef.current = true;
       setInputValue(initialValue);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValue]);
 
   const defaultInputClasses = "w-full rounded-md border border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
@@ -154,7 +159,11 @@ function AutocompleteInput<T>({
           type="text"
           value={inputValue}
           placeholder={placeholder}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setInputValue(val);
+            if (onChange) onChange(val); // <--- Avisar al padre del cambio de texto
+          }}
           onFocus={() => setIsOpen(true)}
           className={inputClassName || defaultInputClasses}
           autoComplete="off"
