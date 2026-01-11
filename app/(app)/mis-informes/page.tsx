@@ -5,7 +5,7 @@ import { useSessionStore } from "@/lib/sessionStore";
 import { 
   DollarSign, Loader2, Calendar as CalendarIcon,
   ChevronLeft, ChevronRight, CalendarDays,
-  TrendingUp, CheckCircle2, Clock, Download
+  TrendingUp, CheckCircle2, Clock, Download, Filter
 } from "lucide-react";
 
 export default function MisInformes() {
@@ -15,21 +15,38 @@ export default function MisInformes() {
   const [appointments, setAppointments] = useState<any[]>([]);
   
   const todayStr = new Date().toLocaleDateString('en-CA');
+  // Ahora el estado inicial permite rangos
   const [dateRange, setDateRange] = useState({ start: todayStr, end: todayStr });
 
-  // --- NAVEGACIÓN DÍA A DÍA ---
-  const handlePrevDay = () => {
-    const current = new Date(dateRange.start + 'T00:00:00');
-    current.setDate(current.getDate() - 1);
-    const dateStr = current.toISOString().split('T')[0];
-    setDateRange({ start: dateStr, end: dateStr });
-  };
+  // --- LÓGICA DE PERIODOS RÁPIDOS ---
+  const setQuickPeriod = (period: 'hoy' | 'semana' | 'mes') => {
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
 
-  const handleNextDay = () => {
-    const current = new Date(dateRange.start + 'T00:00:00');
-    current.setDate(current.getDate() + 1);
-    const dateStr = current.toISOString().split('T')[0];
-    setDateRange({ start: dateStr, end: dateStr });
+    if (period === 'hoy') {
+      const str = now.toLocaleDateString('en-CA');
+      setDateRange({ start: str, end: str });
+      return;
+    }
+
+    if (period === 'semana') {
+      const day = now.getDay(); // 0 es domingo
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Ajuste a Lunes
+      start = new Date(now.setDate(diff));
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+    }
+
+    if (period === 'mes') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
+
+    setDateRange({ 
+      start: start.toLocaleDateString('en-CA'), 
+      end: end.toLocaleDateString('en-CA') 
+    });
   };
 
   // --- FORMATEO 12H SEGURO ---
@@ -82,7 +99,7 @@ export default function MisInformes() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#F8F9FC] dark:bg-zinc-950 p-4 md:p-8 max-w-7xl mx-auto w-full">
-      <header className="flex-none mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <header className="flex-none mb-6 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
         <div>
           <h1 className="text-3xl font-black text-zinc-900 dark:text-zinc-50 tracking-tight">Reporte de Ingresos</h1>
           <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest">
@@ -90,25 +107,46 @@ export default function MisInformes() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-zinc-900/50 p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-          <div className="flex items-center border-r border-zinc-100 pr-2 mr-1">
-            <button onClick={handlePrevDay} className="p-2 hover:bg-zinc-100 rounded-xl transition-all"><ChevronLeft size={18}/></button>
-            <button onClick={() => setDateRange({start: todayStr, end: todayStr})} className="px-3 py-1.5 text-[11px] font-bold uppercase text-indigo-600">Hoy</button>
-            <button onClick={handleNextDay} className="p-2 hover:bg-zinc-100 rounded-xl transition-all"><ChevronRight size={18}/></button>
+        {/* SELECTORES DE FECHA AVANZADOS */}
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
+          {/* Botones rápidos */}
+          <div className="flex bg-white dark:bg-zinc-900 rounded-2xl p-1 shadow-sm border border-zinc-200 dark:border-zinc-800">
+            <button onClick={() => setQuickPeriod('hoy')} className="px-4 py-2 text-[10px] font-black uppercase hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl transition-all">Hoy</button>
+            <button onClick={() => setQuickPeriod('semana')} className="px-4 py-2 text-[10px] font-black uppercase hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl transition-all">Semana</button>
+            <button onClick={() => setQuickPeriod('mes')} className="px-4 py-2 text-[10px] font-black uppercase hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl transition-all border-l dark:border-zinc-800">Mes</button>
           </div>
-          <div className="flex items-center gap-2 px-2">
-            <CalendarDays size={14} className="text-zinc-400"/>
-            <input type="date" value={dateRange.start} onChange={(e) => setDateRange({start: e.target.value, end: e.target.value})} className="text-[11px] font-semibold bg-transparent border-none p-0 focus:ring-0 dark:text-zinc-200" />
+
+          {/* Rango personalizado */}
+          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 px-4 py-2 rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-800">
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-black text-zinc-400 uppercase">Desde</span>
+              <input 
+                type="date" 
+                value={dateRange.start} 
+                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))} 
+                className="text-[11px] font-bold bg-transparent border-none p-0 focus:ring-0 dark:text-zinc-200" 
+              />
+            </div>
+            <div className="h-4 w-[1px] bg-zinc-200 dark:bg-zinc-700 mx-2"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-black text-zinc-400 uppercase">Hasta</span>
+              <input 
+                type="date" 
+                value={dateRange.end} 
+                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))} 
+                className="text-[11px] font-bold bg-transparent border-none p-0 focus:ring-0 dark:text-zinc-200" 
+              />
+            </div>
           </div>
         </div>
       </header>
 
       {/* STATS CARDS */}
       <div className="flex-none grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Ganancia Total" value={`$${stats.totalPeriodo.toLocaleString()}`} color="text-indigo-600" />
-        <StatCard title="Hoy" value={`$${stats.hoy.toLocaleString()}`} color="text-emerald-600" />
-        <StatCard title="Citas" value={stats.totalCitas} color="text-zinc-800 dark:text-zinc-100" />
-        <StatCard title="Confirmadas" value={stats.confirmadas} color="text-orange-500" />
+        <StatCard title="Ganancia en Periodo" value={`$${stats.totalPeriodo.toLocaleString()}`} color="text-indigo-600" icon={<TrendingUp size={14}/>} />
+        <StatCard title="Total Pagado Hoy" value={`$${stats.hoy.toLocaleString()}`} color="text-emerald-600" icon={<CheckCircle2 size={14}/>} />
+        <StatCard title="Citas en Lista" value={stats.totalCitas} color="text-zinc-800 dark:text-zinc-100" icon={<CalendarIcon size={14}/>} />
+        <StatCard title="Pendientes" value={stats.confirmadas} color="text-orange-500" icon={<Clock size={14}/>} />
       </div>
 
       {/* TABLA CON SCROLL INTERNO */}
@@ -116,6 +154,11 @@ export default function MisInformes() {
         <div className="overflow-y-auto w-full">
           {loading ? (
             <div className="p-32 flex flex-col items-center justify-center gap-3"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>
+          ) : appointments.length === 0 ? (
+            <div className="p-20 text-center flex flex-col items-center gap-2">
+               <div className="w-16 h-16 bg-zinc-50 dark:bg-zinc-800 rounded-full flex items-center justify-center text-zinc-300"><Filter size={24}/></div>
+               <p className="text-zinc-400 text-sm font-medium">No hay registros para este rango de fechas</p>
+            </div>
           ) : (
             <table className="w-full text-left">
               <thead className="sticky top-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm z-20 border-b dark:border-zinc-800">
@@ -123,7 +166,7 @@ export default function MisInformes() {
                   <th className="px-8 py-6">Fecha / Hora</th>
                   <th className="px-8 py-6">Cliente & Servicio</th>
                   <th className="px-8 py-6 text-center">Estado</th>
-                  <th className="px-8 py-6 text-right">Ganancia</th>
+                  <th className="px-8 py-6 text-right">Tu Ganancia</th>
                 </tr>
               </thead>
               <tbody className="divide-y dark:divide-zinc-800/50">
@@ -169,10 +212,13 @@ export default function MisInformes() {
   );
 }
 
-function StatCard({ title, value, color }: any) {
+function StatCard({ title, value, color, icon }: any) {
   return (
     <div className="bg-white dark:bg-zinc-900 p-5 rounded-3xl border border-zinc-200/60 dark:border-zinc-800 shadow-sm">
-      <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">{title}</p>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">{title}</p>
+        <div className="text-zinc-300">{icon}</div>
+      </div>
       <p className={`text-2xl font-black ${color}`}>{value}</p>
     </div>
   );
