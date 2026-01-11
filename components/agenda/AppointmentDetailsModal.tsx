@@ -17,7 +17,8 @@ import FichaTecnicaModal from "../FichaTecnicaModal";
 import type { CalendarAppointment } from "./types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 /**
  * Devuelve las clases de Tailwind CSS para un estado de cita específico.
@@ -51,11 +52,31 @@ export default function AppointmentDetailsModal({
   onDelete?: (appointment: CalendarAppointment) => void;
   onMarkAsPaid?: (appointmentId: string) => void;
 }) {
+  const [associatedServices, setAssociatedServices] = useState<any[]>([]);
+  const [loadingGroup, setLoadingGroup] = useState(false);
+  const [isEditingPrices, setIsEditingPrices] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFicha, setShowFicha] = useState(false);
 
   const isPaid = appointment.raw.estado?.toLowerCase() === "cita pagada";
   const isCancelled = appointment.raw.estado?.toLowerCase() === "cita cancelada";
+  
+  useEffect(() => {
+    async function fetchGroup() {
+      const groupId = (appointment.raw as any).appointment_id;
+      const { data } = await supabase
+        .from("appointments")
+        .select("*")
+        .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointment.id}`)
+        .order("id", { ascending: true });
+      if (data) setAssociatedServices(data);
+    }
+    fetchGroup();
+  }, [appointment]);
+  const updatePriceLocal = (id: number, newPrice: number) => {
+    setAssociatedServices(prev => prev.map(s => s.id === id ? { ...s, price: newPrice } : s));
+  };
+  const currentTotal = associatedServices.reduce((acc, s) => acc + Number(s.price || 0), 0);
   // Dentro de AppointmentDetailsModal.tsx
   const notifyN8N = async (action: "EDITED" | "CANCELLED") => {
     try {
@@ -110,34 +131,41 @@ export default function AppointmentDetailsModal({
 };
 
   const handleTogglePayment = async () => {
-  if (!appointment?.id) return;
-  setIsSubmitting(true);
-
-  const endpoint = isPaid ? "/api/bookings/unpay" : "/api/bookings/mark-as-paid";
-  
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appointmentId: appointment.id }),
-    });
-
-    const data = await response.json(); // Leemos la respuesta del servidor
-
-    if (!response.ok) {
-      // Ahora el error será específico, ej: "Falta SUPABASE_SERVICE_ROLE_KEY"
-      throw new Error(data.error || data.details || "Error en la operación");
+    if (isPaid) {
+      // Si ya está pagado, anular pago directamente
+      setIsSubmitting(true);
+      await fetch("/api/bookings/unpay", { method: "POST", body: JSON.stringify({ appointmentId: appointment.id }) });
+      onMarkAsPaid?.(appointment.id);
+      return;
     }
 
-    onMarkAsPaid?.(appointment.id);
-    onClose();
-  } catch (error: any) {
-    alert("Atención: " + error.message); // Muestra el error real en un alert
-    console.error("Detalle del error:", error);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+    // Si NO está pagado y NO estamos editando precios, entramos en modo edición
+    if (!isEditingPrices) {
+      setIsEditingPrices(true);
+      return;
+    }
+
+    // Si ya estamos en modo edición, confirmamos y enviamos los nuevos precios
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/bookings/mark-as-paid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          appointmentId: appointment.id,
+          serviceUpdates: associatedServices.map(s => ({ id: s.id, price: s.price })) // <--- ENVIAMOS LOS PRECIOS
+        }),
+      });
+
+      if (!response.ok) throw new Error("Error al pagar");
+      onMarkAsPaid?.(appointment.id);
+      onClose();
+    } catch (error) {
+      alert("No se pudo procesar el pago");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   
 
   const DetailItem = ({
@@ -193,9 +221,34 @@ export default function AppointmentDetailsModal({
               </button>
             </div>
           </DetailItem>
-          <DetailItem icon={<Scissors size={18} />} label="Servicio">
-            {appointment.title}
-          </DetailItem>
+          <DetailItem icon={<DollarSign size={18} />} label="Servicios y Precios">
+        <div className="space-y-2 mt-2">
+          {associatedServices.map((s) => (
+            <div key={s.id} className="flex items-center justify-between gap-4 bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800">
+              <span className="text-xs font-bold text-zinc-600 dark:text-zinc-400 truncate flex-1">{s.servicio}</span>
+              {isEditingPrices ? (
+                <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-28">
+                  <span className="text-[10px] font-bold mr-1">$</span>
+                  <input 
+                    type="number"
+                    value={s.price}
+                    onChange={(e) => updatePriceLocal(s.id, Number(e.target.value))}
+                    className="w-full bg-transparent text-xs font-black outline-none"
+                  />
+                </div>
+              ) : (
+                <span className="text-sm font-black text-indigo-600">${Number(s.price).toLocaleString()}</span>
+              )}
+            </div>
+          ))}
+          
+          {/* TOTAL ACUMULADO */}
+          <div className="flex justify-between items-center pt-2 border-t border-dashed">
+            <span className="text-[10px] font-black uppercase text-zinc-400">Total a pagar</span>
+            <span className="text-xl font-black text-emerald-600">${currentTotal.toLocaleString()}</span>
+          </div>
+        </div>
+      </DetailItem>
           <DetailItem icon={<User size={18} />} label="Especialista">
             {appointment.raw.especialista}
           </DetailItem>

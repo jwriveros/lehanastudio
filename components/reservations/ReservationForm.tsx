@@ -51,6 +51,7 @@ type SpecialistItem = {
   role?: string;
 };
 type ServiceLine = {
+  id?: number; // Añadido para identificar filas existentes
   servicio: string;
   precio: number;
   duracion: string;
@@ -146,12 +147,12 @@ const EMPTY_FORM: FormState = {
   indicativo: "+57",
   sede: "Marquetalia",
   cantidad: 1,
-  estado: "Nueva reserva creada", //
+  estado: "Nueva reserva creada",
   lines: [{ ...EMPTY_LINE }],
 };
 
 /* =========================
-   HELPERS
+   HELPERS (ORIGINALES)
 ========================= */
 function toDatetimeLocal(dateString: string) {
   const d = new Date(dateString);
@@ -179,14 +180,11 @@ export default function ReservationForm({
   const formRef = useRef<HTMLFormElement>(null);
   const isEditing = !!appointmentData?.id && !isNaN(Number(appointmentData.id));
   
-  // Estados originales
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [saveClient, setSaveClient] = useState(false);
   const [specialists, setSpecialists] = useState<SpecialistItem[]>([]);
   const [loadingSpecialists, setLoadingSpecialists] = useState(false);
-
-  // Nuevos estados para el Panel Lateral
   const [showDetails, setShowDetails] = useState(false);
   const [activeTab, setActiveTab] = useState<'reservas' | 'fichas'>('fichas');
 
@@ -217,7 +215,7 @@ export default function ReservationForm({
   }, []);
 
   /* =========================
-      PRECARGAR (EDICIÓN) / RESET
+      PRECARGAR (CON GRUPOS)
   ========================= */
   useEffect(() => {
     if (!appointmentData?.id) {
@@ -225,26 +223,59 @@ export default function ReservationForm({
       setSaveClient(false); 
       return;
     }
-    const raw = appointmentData.raw ?? {};
-    setForm({
-      cliente: raw.cliente ?? appointmentData.cliente ?? "",
-      celular: String(raw.celular ?? appointmentData.celular ?? ""),
-      indicativo: raw.indicativo ?? "+57",
-      sede: raw.sede ?? "Marquetalia",
-      cantidad: 1,
-      estado: raw.estado ?? "Nueva reserva creada",
-      lines: [
-        {
-          servicio: raw.servicio ?? appointmentData.title ?? "",
-          precio: Number(raw.price ?? 0),
-          duracion: String(raw.duration ?? "60"),
-          especialista: raw.especialista ?? "",
-          appointment_at: toDatetimeLocal(
-            raw.appointment_at_local ?? raw.appointment_at ?? appointmentData.start
-          ),
-        },
-      ],
-    });
+
+    const loadData = async () => {
+        const raw = appointmentData.raw ?? {};
+        const groupId = raw.appointment_id;
+
+        let linesData: ServiceLine[] = [];
+
+        // Si hay ID de grupo, buscamos todos los servicios asociados
+        if (groupId) {
+            const { data } = await supabase
+                .from("appointments")
+                .select("*")
+                .eq("appointment_id", groupId)
+                .order("appointment_at", { ascending: true });
+            
+            if (data && data.length > 0) {
+                linesData = data.map(l => ({
+                    id: l.id,
+                    servicio: l.servicio,
+                    precio: Number(l.price || 0),
+                    duracion: String(l.duration || "60"),
+                    especialista: l.especialista,
+                    appointment_at: toDatetimeLocal(l.appointment_at)
+                }));
+            }
+        }
+
+        // Si no hay grupo o falló la carga, usamos la línea individual actual
+        if (linesData.length === 0) {
+            linesData = [{
+                id: Number(appointmentData.id),
+                servicio: raw.servicio ?? appointmentData.title ?? "",
+                precio: Number(raw.price ?? 0),
+                duracion: String(raw.duration ?? "60"),
+                especialista: raw.especialista ?? "",
+                appointment_at: toDatetimeLocal(
+                    raw.appointment_at_local ?? raw.appointment_at ?? appointmentData.start
+                ),
+            }];
+        }
+
+        setForm({
+            cliente: raw.cliente ?? appointmentData.cliente ?? "",
+            celular: String(raw.celular ?? appointmentData.celular ?? ""),
+            indicativo: raw.indicativo ?? "+57",
+            sede: raw.sede ?? "Marquetalia",
+            cantidad: 1,
+            estado: raw.estado ?? "Nueva reserva creada",
+            lines: linesData
+        });
+    };
+
+    loadData();
     setSaveClient(false);
   }, [appointmentData]);
 
@@ -270,10 +301,7 @@ export default function ReservationForm({
         const currentDate = new Date(lastLine.appointment_at);
         const durationMinutes = parseInt(lastLine.duracion, 10) || 0;
         const nextDate = new Date(currentDate.getTime() + durationMinutes * 60000);
-        const pad = (n: number) => String(n).padStart(2, "0");
-        nextTime = `${nextDate.getFullYear()}-${pad(nextDate.getMonth() + 1)}-${pad(
-          nextDate.getDate()
-        )}T${pad(nextDate.getHours())}:${pad(nextDate.getMinutes())}`;
+        nextTime = toDatetimeLocal(nextDate.toISOString());
       }
       return {
         ...prev,
@@ -322,38 +350,43 @@ export default function ReservationForm({
             indicador: form.indicativo 
           },
           { onConflict: "celular" }
-          
         );
       }
-      if (isEditing) {
-        const l = lines[0];
-        const dateObj = new Date(l.appointment_at);
-        const newAt = localDateTimeToUTC(l.appointment_at);
 
-        // 1. Actualizar en Supabase
-        const { error } = await supabase
-          .from("appointments")
-          .update({
+      if (isEditing) {
+        // ACTUALIZACIÓN DE MÚLTIPLES LÍNEAS
+        const updatePromises = lines.map((l) => {
+          const updates = {
             cliente: form.cliente.trim(),
-            celular: cleanPhone,            
+            celular: cleanPhone,             
             indicativo: form.indicativo,
             sede: form.sede,
             servicio: l.servicio,
             especialista: l.especialista,
             duration: l.duracion,
-            appointment_at: newAt,
+            price: l.precio, // Mantener el precio
+            appointment_at: localDateTimeToUTC(l.appointment_at),
             estado: form.estado,
-          })
-          .eq("id", Number(appointmentData.id));
+          };
 
-        if (error) throw error;
+          if (l.id) {
+            return supabase.from("appointments").update(updates).eq("id", l.id);
+          } else {
+            // Si añadimos una línea nueva en edición, le ponemos el ID de grupo
+            return supabase.from("appointments").insert({
+                ...updates,
+                appointment_id: (appointmentData.raw as any).appointment_id
+            });
+          }
+        });
 
-        // 2. Notificar a n8n del cambio (Acción EDITED)
+        const results = await Promise.all(updatePromises);
+        if (results.some(r => r.error)) throw new Error("Error actualizando la reserva");
+
+        // Notificación a n8n del cambio (usando la primera línea como referencia)
         try {
-          const rawPhone = String(form.celular).replace(/\D/g, "");
-          const normalizedPhone = rawPhone.startsWith("57") ? `+${rawPhone}` : `+57${rawPhone}`;
+          const l = lines[0];
           const dateObj = new Date(l.appointment_at);
-
           await fetch("/api/bookings/notify-update", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -365,24 +398,26 @@ export default function ReservationForm({
               especialista: l.especialista,
               fecha: format(dateObj, "PPPP", { locale: es }), 
               hora: format(dateObj, "p", { locale: es }),
-              sede: form.sede, // <-- Añade la sede aquí también
+              sede: form.sede,
               appointmentId: appointmentData.id,
               estado: form.estado
             }),
           });
         } catch (webhookErr) {
-          console.error("Error enviando notificación de edición:", webhookErr);
+          console.error("Error enviando notificación:", webhookErr);
         }
 
         onSuccess?.();
         closeReservationDrawer();
         return;
       }
+
+      // CREACIÓN NUEVA
       const payload = {
         action: "CREATE",
         cliente: form.cliente.trim(),
         celular: cleanPhone,
-        indicativo: form.indicativo, // Enviamos el indicativo por separado si n8n lo necesita
+        indicativo: form.indicativo,
         fullPhone: fullPhone,
         sede: form.sede,
         cantidad: String(form.cantidad),
@@ -390,16 +425,20 @@ export default function ReservationForm({
           servicio: l.servicio,
           especialista: l.especialista,
           duration: l.duracion,
+          price: l.precio, // Incluimos el precio en la creación
           appointment_at: localDateTimeToUTC(l.appointment_at),
         })),
       };
+
       const res = await fetch("/api/bookings/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       const json = await res.json();
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Error creando la reserva");
+      
       onSuccess?.();
       closeReservationDrawer();
     } catch (e: any) {
@@ -415,7 +454,7 @@ export default function ReservationForm({
   }, [form.lines]);
 
   /* =========================
-      RENDER PRINCIPAL
+      RENDER PRINCIPAL (TU UI ORIGINAL)
   ========================= */
   return (
     <div className="flex h-full w-full overflow-hidden bg-gray-50 dark:bg-zinc-950">
@@ -525,7 +564,6 @@ export default function ReservationForm({
                 </label>
                 
                 <div className="flex gap-2">
-                  {/* Campo de indicativo EDITABLE con sugerencias */}
                   <div className="relative w-28">
                     <input
                       type="text"
@@ -535,7 +573,6 @@ export default function ReservationForm({
                       className="w-full rounded-md border border-gray-300 bg-white py-2 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white font-bold text-center"
                       placeholder="+00"
                     />
-                    {/* Lista de sugerencias (Datalist) */}
                     <datalist id="indicativos-list">
                       {COUNTRIES.map((c) => (
                         <option key={`${c.name}-${c.code}`} value={c.code}>
@@ -545,7 +582,6 @@ export default function ReservationForm({
                     </datalist>
                   </div>
 
-                  {/* Campo de número de celular */}
                   <div className="group relative flex-1">
                     <Phone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400 group-focus-within:text-indigo-500" />
                     <input
@@ -578,22 +614,20 @@ export default function ReservationForm({
             <section className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Servicios</h3>
-                {!isEditing && (
-                  <button
-                    type="button"
-                    onClick={addLine}
-                    disabled={!isLastLineComplete}
-                    className="inline-flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300"
-                  >
-                    <Plus size={16} /> <span>Añadir</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={addLine}
+                  disabled={!isLastLineComplete}
+                  className="inline-flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300"
+                >
+                  <Plus size={16} /> <span>Añadir</span>
+                </button>
               </div>
 
               <div className="space-y-4">
                 {form.lines.map((line, index) => (
                   <div key={index} className="relative rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200/50 dark:bg-gray-800/50 dark:ring-gray-700/50">
-                    {!isEditing && form.lines.length > 1 && (
+                    {form.lines.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeLine(index)}
@@ -741,12 +775,10 @@ export default function ReservationForm({
 
           {/* FOOTER */}
           <div className="sticky bottom-0 z-10 mt-auto border-t border-gray-200 bg-white/95 p-4 backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/95">
-            {!isEditing && (
-              <div className="mb-4 flex items-center justify-between rounded-xl bg-indigo-50 p-4 dark:bg-indigo-900/30">
-                <span className="text-base font-semibold text-indigo-800 dark:text-indigo-200">Total Estimado</span>
-                <span className="text-2xl font-bold text-indigo-900 dark:text-white">${Number(totalEstimado).toLocaleString("es-CO")}</span>
-              </div>
-            )}
+            <div className="mb-4 flex items-center justify-between rounded-xl bg-indigo-50 p-4 dark:bg-indigo-900/30">
+              <span className="text-base font-semibold text-indigo-800 dark:text-indigo-200">Total Reserva</span>
+              <span className="text-2xl font-bold text-indigo-900 dark:text-white">${Number(totalEstimado).toLocaleString("es-CO")}</span>
+            </div>
             <button
               type="submit"
               disabled={saving}

@@ -52,13 +52,6 @@ export default function AgendaEventCard({
     >
       <div className="p-1.5 h-full flex flex-col overflow-hidden">
         
-        {/* NOMBRE DEL CLIENTE: TAMAÑO REDUCIDO */}
-        <div className="leading-tight mb-0.5">
-          <span className="block font-black text-[12px] text-white uppercase tracking-tight truncate">
-            {appointment.raw?.cliente}
-          </span>
-        </div>
-
         {/* SERVICIO */}
         <div className="leading-tight">
           <span className="block font-medium text-[12px] text-white/90 line-clamp-2 Poppins sans-seriff uppercase tracking-tighter">

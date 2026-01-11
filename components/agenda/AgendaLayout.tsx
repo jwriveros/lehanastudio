@@ -17,12 +17,7 @@ import { useUIStore } from "@/lib/uiStore";
 import { CalendarAppointment, AgendaAppointmentDB } from "./types";
 
 /* =========================
-   TIPOS
-========================= */
-type ViewMode = "day" | "week" | "month";
-
-/* =========================
-   FECHAS (Lógica original intacta)
+    FECHAS (Tu lógica original intacta)
 ========================= */
 function parseLocalDate(dateString: string) {
   const [date, time = "00:00:00"] = dateString.split("T");
@@ -59,48 +54,41 @@ function toLocalDateTimeString(d: Date) {
 }
 
 /* =========================
-   COMPONENTE
+    COMPONENTE
 ========================= */
 export default function AgendaLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { register } = useAgendaCollapse();
   const [appointments, setAppointments] = useState<AgendaAppointmentDB[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>("week");
-  const [currentDate, setCurrentDate] = useState(
-    normalizeLocalDate(new Date())
-  );
+  const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
+  const [currentDate, setCurrentDate] = useState(normalizeLocalDate(new Date()));
+  
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [specialistFilter, setSpecialistFilter] = useState<string[]>([]);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
-  const [selectedAppointment, setSelectedAppointment] =
-    useState<CalendarAppointment | null>(null);
-  const isReservationDrawerOpen = useUIStore(
-    (state) => state.isReservationDrawerOpen
-  );
-  const closeReservationDrawer = useUIStore(
-    (state) => state.closeReservationDrawer
-  );
-  const openReservationDrawer = useUIStore(
-    (state) => state.openReservationDrawer
-  );
-  const [editingAppointment, setEditingAppointment] =
-    useState<CalendarAppointment | null>(null);
+  
+  const [selectedAppointment, setSelectedAppointment] = useState<CalendarAppointment | null>(null);
+  const isReservationDrawerOpen = useUIStore((state) => state.isReservationDrawerOpen);
+  const closeReservationDrawer = useUIStore((state) => state.closeReservationDrawer);
+  const openReservationDrawer = useUIStore((state) => state.openReservationDrawer);
+  const [editingAppointment, setEditingAppointment] = useState<CalendarAppointment | null>(null);
+
   const toggleSidebar = () => setSidebarCollapsed((v) => !v);
-  /* =========================
-      REGISTER COLLAPSE
-  ========================= */
+
   useEffect(() => {
     register(toggleSidebar);
     return () => register(null);
   }, [register]);
+
   /* =========================
-      FETCH (Lógica original)
+      FETCH (Con price y appointment_id)
   ========================= */
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
     let from: Date;
     let to: Date;
+
     if (viewMode === "day") {
       from = startOfDay(currentDate);
       to = new Date(from.getTime() + 86400000);
@@ -111,61 +99,62 @@ export default function AgendaLayout() {
       from = startOfMonth(currentDate);
       to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
     }
+
     const { data, error } = await supabase
       .from("appointments")
       .select(
-        "id, cliente, celular, servicio, especialista, appointment_at, estado, bg_color, duration"
+        "id, cliente, celular, servicio, especialista, appointment_at, estado, bg_color, duration, price, appointment_id"
       )
       .gte("appointment_at", toLocalDateTimeString(from))
       .lt("appointment_at", toLocalDateTimeString(to))
       .order("appointment_at", { ascending: true });
-    setAppointments(error ? [] : data ?? []);
+
+    setAppointments(error ? [] : (data as any) ?? []);
     setLoading(false);
   }, [currentDate, viewMode]);
+
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
+
   /* =========================
-      HANDLERS (Lógica original)
+      HANDLERS (Agrupados)
   ========================= */
   const handleCancelAppointment = async (appointment: CalendarAppointment) => {
-    if (!confirm("¿Seguro que deseas cancelar esta cita?")) return;
+    if (!confirm("¿Deseas cancelar esta reserva? (Se cancelarán todos los servicios asociados)")) return;
+    const groupId = (appointment.raw as any).appointment_id;
+
     const { error } = await supabase
       .from("appointments")
       .update({ estado: "Cita cancelada" })
-      .eq("id", Number(appointment.id));
-    if (error) {
-      alert("Error al cancelar la cita");
-      return;
-    }
+      .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointment.id}`);
+
+    if (error) { alert("Error al cancelar"); return; }
     setSelectedAppointment(null);
     fetchAppointments();
   };
+
   const handleDeleteAppointment = async (appointment: CalendarAppointment) => {
-    if (!confirm("⚠️ Esta acción eliminará la cita permanentemente.")) return;
+    if (!confirm("⚠️ ¿Eliminar permanentemente toda la reserva?")) return;
+    const groupId = (appointment.raw as any).appointment_id;
+
     const { error } = await supabase
       .from("appointments")
       .delete()
-      .eq("id", Number(appointment.id));
-    if (error) {
-      alert("Error al eliminar la cita");
-      return;
-    }
+      .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointment.id}`);
+
+    if (error) { alert("Error al eliminar"); return; }
     setSelectedAppointment(null);
     fetchAppointments();
   };
+
   const handleEditAppointment = (appointment: CalendarAppointment) => {
     setSelectedAppointment(null);
     setEditingAppointment(appointment);
     openReservationDrawer();
   };
-  const handleCreateFromSlot = ({
-    especialista,
-    start,
-  }: {
-    especialista: string;
-    start: Date;
-  }) => {
+
+  const handleCreateFromSlot = ({ especialista, start }: { especialista: string; start: Date }) => {
     setEditingAppointment({
       id: "new",
       title: "",
@@ -182,37 +171,48 @@ export default function AgendaLayout() {
   };
 
   /* =========================
-      MAP CALENDAR (Lógica original)
+      MAP CALENDAR (Cálculo de Totales)
   ========================= */
   const calendarAppointments = useMemo(() => {
+    // Calcular totales por grupo para mostrar en las tarjetas
+    const groupTotals: Record<string, number> = {};
+    appointments.forEach(a => {
+      if (a.appointment_id) {
+        groupTotals[a.appointment_id] = (groupTotals[a.appointment_id] || 0) + Number(a.price || 0);
+      }
+    });
+
     return appointments
       .filter((a) => {
-        const statusMatch =
-          statusFilter.length === 0 || statusFilter.includes(a.estado);
-        const specialistMatch =
-          specialistFilter.length === 0 ||
-          specialistFilter.includes(a.especialista);
-        const serviceMatch =
-          serviceFilter.length === 0 || serviceFilter.includes(a.servicio);
+        const statusMatch = statusFilter.length === 0 || statusFilter.includes(a.estado);
+        const specialistMatch = specialistFilter.length === 0 || specialistFilter.includes(a.especialista);
+        const serviceMatch = serviceFilter.length === 0 || serviceFilter.includes(a.servicio);
         return statusMatch && specialistMatch && serviceMatch;
       })
       .map((a) => {
         const start = parseLocalDate(a.appointment_at);
-        const end = new Date(
-          start.getTime() + Number(a.duration || 60) * 60000
-        );
+        const end = new Date(start.getTime() + Number(a.duration || 60) * 60000);
+        
+        // El total es el del grupo si existe, si no, el precio individual
+        const totalCalculado = a.appointment_id ? groupTotals[a.appointment_id] : Number(a.price || 0);
+
         return {
           id: String(a.id),
           title: a.servicio,
           start,
           end,
           bg_color: a.bg_color,
-          raw: { ...a, appointment_at_local: start.toISOString() },
+          raw: { 
+            ...a, 
+            appointment_at_local: start.toISOString(),
+            groupTotal: totalCalculado 
+          },
         };
       });
   }, [appointments, statusFilter, specialistFilter, serviceFilter]);
+
   return (
-    <div className="min-h-[100dvh]flex h-full w-full flex-col overflow-hidden bg-white">
+    <div className="min-h-[100dvh] flex h-full w-full flex-col overflow-hidden bg-white">
       <AgendaShell
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={toggleSidebar}
@@ -221,24 +221,8 @@ export default function AgendaLayout() {
             onToggleAgendaSidebar={toggleSidebar}
             currentDate={currentDate}
             onToday={() => setCurrentDate(normalizeLocalDate(new Date()))}
-            onPrev={() =>
-              setCurrentDate((d) =>
-                normalizeLocalDate(
-                  new Date(
-                    d.getTime() - 86400000 * (viewMode === "week" ? 7 : 1)
-                  )
-                )
-              )
-            }
-            onNext={() =>
-              setCurrentDate((d) =>
-                normalizeLocalDate(
-                  new Date(
-                    d.getTime() + 86400000 * (viewMode === "week" ? 7 : 1)
-                  )
-                )
-              )
-            }
+            onPrev={() => setCurrentDate(d => normalizeLocalDate(new Date(d.getTime() - 86400000 * (viewMode === "week" ? 7 : 1))))}
+            onNext={() => setCurrentDate(d => normalizeLocalDate(new Date(d.getTime() + 86400000 * (viewMode === "week" ? 7 : 1))))}
             view={viewMode}
             setView={setViewMode}
             statusFilter={statusFilter}
@@ -252,30 +236,15 @@ export default function AgendaLayout() {
         sidebar={<AgendaSidebar collapsed={sidebarCollapsed} />}
         agenda={
           loading ? (
-            <div className="flex h-full items-center justify-center text-sm text-zinc-500">
-              Cargando agenda…
-            </div>
+            <div className="flex h-full items-center justify-center text-sm text-zinc-500">Cargando agenda…</div>
           ) : (
             <div className="h-full w-full">
               {viewMode === "day" ? (
-                <DailyAgendaGrid
-                  appointments={calendarAppointments}
-                  currentDate={currentDate}
-                  onViewDetails={setSelectedAppointment}
-                  onCreateFromSlot={handleCreateFromSlot}
-                />
+                <DailyAgendaGrid appointments={calendarAppointments} currentDate={currentDate} onViewDetails={setSelectedAppointment} onCreateFromSlot={handleCreateFromSlot} />
               ) : viewMode === "month" ? (
-                <MonthlyAgendaGrid
-                  appointments={calendarAppointments}
-                  currentDate={currentDate}
-                />
+                <MonthlyAgendaGrid appointments={calendarAppointments} currentDate={currentDate} />
               ) : (
-                <WeeklyAgendaGrid
-                  appointments={calendarAppointments}
-                  currentDate={currentDate}
-                  onViewDetails={setSelectedAppointment}
-                  onCreateFromSlot={handleCreateFromSlot}
-                />
+                <WeeklyAgendaGrid appointments={calendarAppointments} currentDate={currentDate} onViewDetails={setSelectedAppointment} onCreateFromSlot={handleCreateFromSlot} />
               )}
             </div>
           )
@@ -293,10 +262,7 @@ export default function AgendaLayout() {
       )}
       <ReservationDrawer
         isOpen={isReservationDrawerOpen}
-        onClose={() => {
-          closeReservationDrawer();
-          setEditingAppointment(null);
-        }}
+        onClose={() => { closeReservationDrawer(); setEditingAppointment(null); }}
         appointmentData={editingAppointment}
         onSuccess={fetchAppointments}
       />

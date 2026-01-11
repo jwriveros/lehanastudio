@@ -5,30 +5,17 @@ import { randomUUID } from "crypto";
 /* =========================
    🔥 FIX TIMEZONE (UTC-5)
 ========================= */
-function toLocalTimestamp(localDateTime: string) {
+function toUTCTimestamp(localDateTime: string) {
   if (!localDateTime) return null;
-  
-  // Reemplazamos el espacio por 'T' si viene del input datetime-local
-  let ISOStr = localDateTime.replace(" ", "T");
-
-  // Si el string no tiene información de zona horaria (no termina en Z ni en +00:00)
-  // le concatenamos el offset de Colombia (-05:00)
-  if (!ISOStr.includes("Z") && !ISOStr.match(/[+-]\d{2}:\d{2}$/)) {
-    // Aseguramos que tenga segundos para formato ISO completo
-    if (ISOStr.split("T")[1]?.length === 5) {
-      ISOStr += ":00";
-    }
-    return `${ISOStr}-05:00`;
-  }
-  
-  return ISOStr;
+  // Simplemente tomamos el valor del front (que ya viene con 'Z') 
+  // y lo devolvemos como ISO puro
+  return new Date(localDateTime).toISOString();
 }
 
 export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
     const body = await req.json();
-    console.log("📩 API Recibió:", body); // <-- AGREGAR ESTO
 
     const {
       cliente,
@@ -39,9 +26,6 @@ export async function POST(req: Request) {
       items, 
     } = body;
 
-    /* =========================
-        VALIDACIONES
-    ========================= */
     if (!cliente || !celular || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
         { ok: false, error: "Datos incompletos" },
@@ -58,6 +42,7 @@ export async function POST(req: Request) {
     }
 
     const peopleCount = Number(cantidad || 1);
+    // Este UUID agrupará a todos los servicios de esta reserva
     const appointmentGroupId = randomUUID();
     const normalizedCelular = String(celular).replace(/\D/g, "");
 
@@ -97,8 +82,7 @@ export async function POST(req: Request) {
           cliente: isPrimary ? cliente : `Acompañante de ${cliente}`,
           servicio: s.servicio,
           especialista: s.especialista ?? null,
-          // ✅ Aplicamos el fix de zona horaria aquí
-          appointment_at: toLocalTimestamp(s.appointment_at),
+          appointment_at: toUTCTimestamp(s.appointment_at),
           duration: s.duration ?? null,
           celular: isPrimary ? normalizedCelular : null,
           sede,
@@ -106,7 +90,9 @@ export async function POST(req: Request) {
           indicativo: isPrimary ? indicativo : null,
           is_primary_client: isPrimary,
           primary_client_name: cliente,
-          appointment_group_id: appointmentGroupId,
+          // ✅ CORRECCIÓN: Se cambia 'appointment_group_id' por 'appointment_id'
+          // que es el nombre real en tu tabla 'appointments'
+          appointment_id: appointmentGroupId, 
           estado: "Nueva reserva creada",
         });
       }
@@ -144,14 +130,11 @@ export async function POST(req: Request) {
     /* =========================
        5️⃣ NOTIFICAR A N8N
     ========================= */
-    /* =========================
-       5️⃣ NOTIFICAR A N8N (Individualmente por servicio)
-    ========================= */
     if (process.env.N8N_WEBHOOK_URL && inserted && inserted.length > 0) {
-      // Usamos un bucle para enviar una petición a n8n por cada fila insertada
       for (const row of inserted) {
-        const cleanIndicativo = String(indicativo || "+57").replace(/\D/g, "");
+        const cleanIndicativo = String(indicativo || "57").replace(/\D/g, "");
         const fullPhone = `+${cleanIndicativo}${normalizedCelular}`;
+        
         await fetch(process.env.N8N_WEBHOOK_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -163,8 +146,9 @@ export async function POST(req: Request) {
             servicio: row.servicio,
             especialista: row.especialista,
             price: row.price,
-            appointment_at: row.appointment_at, // Ya viene en formato ISO
-            appointmentGroupId: row.appointment_group_id
+            appointment_at: row.appointment_at,
+            // ✅ CORRECCIÓN: Usamos el campo correcto retornado por la DB
+            appointmentGroupId: row.appointment_id 
           }),
         });
       }

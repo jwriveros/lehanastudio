@@ -5,9 +5,11 @@ export type AgendaAppointmentDB = {
   servicio: string;
   especialista: string;
   appointment_at: string;
+  appointment_id: number | null;
   appointment_at_local?: string;
   estado: string;
   bg_color: string;
+  price: string | null;
   duration?: string | null;
 };
 
