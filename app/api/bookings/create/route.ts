@@ -33,6 +33,7 @@ export async function POST(req: Request) {
     const {
       cliente,
       celular,
+      indicativo,
       sede,
       cantidad,
       items, 
@@ -75,6 +76,7 @@ export async function POST(req: Request) {
         {
           nombre: cliente,
           celular: normalizedCelular,
+          indicador: indicativo,
           creado_desde: "CRM_BOOKING",
           tipo: "Contacto",
           estado: "Activo",
@@ -101,6 +103,7 @@ export async function POST(req: Request) {
           celular: isPrimary ? normalizedCelular : null,
           sede,
           cantidad: peopleCount,
+          indicativo: isPrimary ? indicativo : null,
           is_primary_client: isPrimary,
           primary_client_name: cliente,
           appointment_group_id: appointmentGroupId,
@@ -147,15 +150,15 @@ export async function POST(req: Request) {
     if (process.env.N8N_WEBHOOK_URL && inserted && inserted.length > 0) {
       // Usamos un bucle para enviar una petición a n8n por cada fila insertada
       for (const row of inserted) {
+        const cleanIndicativo = String(indicativo || "+57").replace(/\D/g, "");
+        const fullPhone = `+${cleanIndicativo}${normalizedCelular}`;
         await fetch(process.env.N8N_WEBHOOK_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "CREATE",
             customerName: row.cliente,
-            customerPhone: normalizedCelular.startsWith("57") 
-              ? `+${normalizedCelular}` 
-              : `+57${normalizedCelular}`,
+            customerPhone: fullPhone,
             sede: row.sede,
             servicio: row.servicio,
             especialista: row.especialista,

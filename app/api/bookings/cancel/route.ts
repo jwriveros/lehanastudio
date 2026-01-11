@@ -34,12 +34,13 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Cita no encontrada." }, { status: 404 });
         }
 
-        const updatedAppointment = data[0];
+        const appointment = data[0];
 
         // 2. Notificar a n8n para avisar al cliente
         if (process.env.N8N_WEBHOOK_URL) {
-            const rawPhone = String(updatedAppointment.celular || "").replace(/\D/g, "");
-            const normalizedPhone = rawPhone.startsWith("57") ? `+${rawPhone}` : `+57${rawPhone}`;
+            const rawPhone = String(appointment.celular || "").replace(/\D/g, "");
+            const rawIndicativo = String(appointment.indicativo || "57").replace(/\D/g, "");
+            const fullPhone = `+${rawIndicativo}${rawPhone}`;
 
             try {
                 await fetch(process.env.N8N_WEBHOOK_URL, {
@@ -47,12 +48,12 @@ export async function POST(request: Request) {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         action: "CANCELLED", // Acción para el Switch en n8n
-                        customerName: updatedAppointment.cliente,
-                        customerPhone: normalizedPhone,
-                        servicio: updatedAppointment.servicio,
-                        especialista: updatedAppointment.especialista,
-                        appointmentId: updatedAppointment.id,
-                        fecha: updatedAppointment.appointment_at
+                        customerName: appointment.cliente,
+                        customerPhone: fullPhone,
+                        servicio: appointment.servicio,
+                        especialista: appointment.especialista,
+                        appointmentId: appointment.id,
+                        fecha: appointment.appointment_at
                     }),
                 });
             } catch (webhookError) {
