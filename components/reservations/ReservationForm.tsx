@@ -26,7 +26,9 @@ import {
   ChevronRight,
   ClipboardList,
   History,
-  Tag
+  Tag,
+  Bell,
+  BellOff
 } from "lucide-react";
 
 /* =========================
@@ -51,7 +53,7 @@ type SpecialistItem = {
   role?: string;
 };
 type ServiceLine = {
-  id?: number; // Añadido para identificar filas existentes
+  id?: number; 
   servicio: string;
   precio: number;
   duracion: string;
@@ -74,7 +76,7 @@ interface ReservationFormProps {
 }
 
 /* =========================
-   CONSTANTES
+   CONSTANTES (LISTA COMPLETA)
 ========================= */
 const COUNTRIES = [
   { code: "+57", flag: "🇨🇴", name: "Colombia" },
@@ -152,21 +154,26 @@ const EMPTY_FORM: FormState = {
 };
 
 /* =========================
-   HELPERS (ORIGINALES)
+   HELPERS (HORA EXACTA)
 ========================= */
-function toDatetimeLocal(dateString: string) {
-  const d = new Date(dateString);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-    d.getDate()
-  )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function toDatetimeLocal(dateValue: any) {
+  if (!dateValue) return "";
+  if (dateValue instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${dateValue.getFullYear()}-${pad(dateValue.getMonth() + 1)}-${pad(dateValue.getDate())}T${pad(dateValue.getHours())}:${pad(dateValue.getMinutes())}`;
+  }
+  const dateString = String(dateValue);
+  const match = dateString.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (match) {
+    const [_, y, m, d, hh, mm] = match;
+    return `${y}-${m}-${d}T${hh}:${mm}`;
+  }
+  return dateString.substring(0, 16).replace(" ", "T");
 }
 
 function localDateTimeToUTC(localDateTime: string) {
-  const localDate = new Date(localDateTime);
-  return new Date(
-    localDate.getTime() - localDate.getTimezoneOffset() * 60000
-  ).toISOString();
+  if (!localDateTime) return "";
+  return `${localDateTime}:00Z`;
 }
 
 /* =========================
@@ -183,6 +190,7 @@ export default function ReservationForm({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [saveClient, setSaveClient] = useState(false);
+  const [notifyOnEdit, setNotifyOnEdit] = useState(true); // <--- NUEVO ESTADO PARA NOTIFICAR
   const [specialists, setSpecialists] = useState<SpecialistItem[]>([]);
   const [loadingSpecialists, setLoadingSpecialists] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -221,16 +229,15 @@ export default function ReservationForm({
     if (!appointmentData?.id) {
       setForm(EMPTY_FORM);
       setSaveClient(false); 
+      setNotifyOnEdit(true);
       return;
     }
 
     const loadData = async () => {
         const raw = appointmentData.raw ?? {};
         const groupId = raw.appointment_id;
-
         let linesData: ServiceLine[] = [];
 
-        // Si hay ID de grupo, buscamos todos los servicios asociados
         if (groupId) {
             const { data } = await supabase
                 .from("appointments")
@@ -250,7 +257,6 @@ export default function ReservationForm({
             }
         }
 
-        // Si no hay grupo o falló la carga, usamos la línea individual actual
         if (linesData.length === 0) {
             linesData = [{
                 id: Number(appointmentData.id),
@@ -279,9 +285,6 @@ export default function ReservationForm({
     setSaveClient(false);
   }, [appointmentData]);
 
-  /* =========================
-      HELPERS FORMULARIO
-  ========================= */
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
@@ -301,7 +304,7 @@ export default function ReservationForm({
         const currentDate = new Date(lastLine.appointment_at);
         const durationMinutes = parseInt(lastLine.duracion, 10) || 0;
         const nextDate = new Date(currentDate.getTime() + durationMinutes * 60000);
-        nextTime = toDatetimeLocal(nextDate.toISOString());
+        nextTime = toDatetimeLocal(nextDate);
       }
       return {
         ...prev,
@@ -345,16 +348,12 @@ export default function ReservationForm({
 
       if (saveClient) {
         await supabase.from("clients").upsert(
-          { nombre: form.cliente.trim(), 
-            celular: cleanPhone,
-            indicador: form.indicativo 
-          },
+          { nombre: form.cliente.trim(), celular: cleanPhone, indicador: form.indicativo },
           { onConflict: "celular" }
         );
       }
 
       if (isEditing) {
-        // ACTUALIZACIÓN DE MÚLTIPLES LÍNEAS
         const updatePromises = lines.map((l) => {
           const updates = {
             cliente: form.cliente.trim(),
@@ -364,7 +363,7 @@ export default function ReservationForm({
             servicio: l.servicio,
             especialista: l.especialista,
             duration: l.duracion,
-            price: l.precio, // Mantener el precio
+            price: l.precio,
             appointment_at: localDateTimeToUTC(l.appointment_at),
             estado: form.estado,
           };
@@ -372,7 +371,6 @@ export default function ReservationForm({
           if (l.id) {
             return supabase.from("appointments").update(updates).eq("id", l.id);
           } else {
-            // Si añadimos una línea nueva en edición, le ponemos el ID de grupo
             return supabase.from("appointments").insert({
                 ...updates,
                 appointment_id: (appointmentData.raw as any).appointment_id
@@ -380,31 +378,32 @@ export default function ReservationForm({
           }
         });
 
-        const results = await Promise.all(updatePromises);
-        if (results.some(r => r.error)) throw new Error("Error actualizando la reserva");
+        await Promise.all(updatePromises);
 
-        // Notificación a n8n del cambio (usando la primera línea como referencia)
-        try {
-          const l = lines[0];
-          const dateObj = new Date(l.appointment_at);
-          await fetch("/api/bookings/notify-update", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "EDITED",
-              customerName: form.cliente.trim(),
-              customerPhone: fullPhone,
-              servicio: l.servicio,
-              especialista: l.especialista,
-              fecha: format(dateObj, "PPPP", { locale: es }), 
-              hora: format(dateObj, "p", { locale: es }),
-              sede: form.sede,
-              appointmentId: appointmentData.id,
-              estado: form.estado
-            }),
-          });
-        } catch (webhookErr) {
-          console.error("Error enviando notificación:", webhookErr);
+        // SOLO NOTIFICAMOS SI EL BOTÓN ESTÁ ACTIVADO
+        if (notifyOnEdit) {
+            try {
+              const l = lines[0];
+              const dateObj = new Date(l.appointment_at);
+              await fetch("/api/bookings/notify-update", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "EDITED",
+                  customerName: form.cliente.trim(),
+                  customerPhone: fullPhone,
+                  servicio: l.servicio,
+                  especialista: l.especialista,
+                  fecha: format(dateObj, "PPPP", { locale: es }), 
+                  hora: format(dateObj, "p", { locale: es }),
+                  sede: form.sede,
+                  appointmentId: appointmentData.id,
+                  estado: form.estado
+                }),
+              });
+            } catch (webhookErr) {
+              console.error("Error enviando notificación:", webhookErr);
+            }
         }
 
         onSuccess?.();
@@ -412,7 +411,6 @@ export default function ReservationForm({
         return;
       }
 
-      // CREACIÓN NUEVA
       const payload = {
         action: "CREATE",
         cliente: form.cliente.trim(),
@@ -425,7 +423,7 @@ export default function ReservationForm({
           servicio: l.servicio,
           especialista: l.especialista,
           duration: l.duracion,
-          price: l.precio, // Incluimos el precio en la creación
+          price: l.precio,
           appointment_at: localDateTimeToUTC(l.appointment_at),
         })),
       };
@@ -454,7 +452,7 @@ export default function ReservationForm({
   }, [form.lines]);
 
   /* =========================
-      RENDER PRINCIPAL (TU UI ORIGINAL)
+      RENDER PRINCIPAL
   ========================= */
   return (
     <div className="flex h-full w-full overflow-hidden bg-gray-50 dark:bg-zinc-950">
@@ -536,12 +534,8 @@ export default function ReservationForm({
                     getKey={(i) => String(i.celular)}
                     renderItem={(i) => (
                       <div className="flex flex-col">
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {i.nombre}
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {i.celular}
-                        </span>
+                        <span className="font-medium text-gray-900 dark:text-white">{i.nombre}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">{i.celular}</span>
                       </div>
                     )}
                     onChange={(val) => updateField("cliente", val)}
@@ -559,10 +553,7 @@ export default function ReservationForm({
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="celular" className="text-sm font-medium text-gray-700 dark:text-gray-400">
-                  Celular
-                </label>
-                
+                <label htmlFor="celular" className="text-sm font-medium text-gray-700 dark:text-gray-400">Celular</label>
                 <div className="flex gap-2">
                   <div className="relative w-28">
                     <input
@@ -575,9 +566,7 @@ export default function ReservationForm({
                     />
                     <datalist id="indicativos-list">
                       {COUNTRIES.map((c) => (
-                        <option key={`${c.name}-${c.code}`} value={c.code}>
-                          {c.flag} {c.name}
-                        </option>
+                        <option key={`${c.name}-${c.code}`} value={c.code}>{c.flag} {c.name}</option>
                       ))}
                     </datalist>
                   </div>
@@ -604,9 +593,7 @@ export default function ReservationForm({
                   onChange={(e) => setSaveClient(e.target.checked)}
                   className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:bg-gray-700 dark:border-gray-600"
                 />
-                <label htmlFor="save-client" className="ml-3 text-sm text-gray-700 dark:text-gray-300">
-                  Guardar este cliente para futuras citas
-                </label>
+                <label htmlFor="save-client" className="ml-3 text-sm text-gray-700 dark:text-gray-300">Guardar este cliente para futuras citas</label>
               </div>
             </section>
 
@@ -614,20 +601,22 @@ export default function ReservationForm({
             <section className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Servicios</h3>
-                <button
-                  type="button"
-                  onClick={addLine}
-                  disabled={!isLastLineComplete}
-                  className="inline-flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300"
-                >
-                  <Plus size={16} /> <span>Añadir</span>
-                </button>
+                {!isEditing && (
+                  <button
+                    type="button"
+                    onClick={addLine}
+                    disabled={!isLastLineComplete}
+                    className="inline-flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/50 dark:text-indigo-300"
+                  >
+                    <Plus size={16} /> <span>Añadir</span>
+                  </button>
+                )}
               </div>
 
               <div className="space-y-4">
                 {form.lines.map((line, index) => (
                   <div key={index} className="relative rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200/50 dark:bg-gray-800/50 dark:ring-gray-700/50">
-                    {form.lines.length > 1 && (
+                    {!isEditing && form.lines.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeLine(index)}
@@ -647,7 +636,7 @@ export default function ReservationForm({
                         getKey={(i) => i.SKU}
                         renderItem={(i) => (
                           <div className="flex flex-col">
-                            <span className="font-medium">{i.Servicio}</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{i.Servicio}</span>
                             <span className="text-xs text-zinc-500">${Number(i.Precio ?? 0).toLocaleString("es-CO")} • {i.duracion} min</span>
                           </div>
                         )}
@@ -719,12 +708,11 @@ export default function ReservationForm({
               </div>
             </section>
 
-            {/* Detalles Adicionales */}
             <section className="space-y-4 rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800/50 dark:ring-gray-700/50">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Detalles Adicionales</h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <label htmlFor="estado" className="text-sm font-medium text-gray-700 dark:text-gray-400">Estado de la Cita</label>
+                  <label htmlFor="estado" className="text-sm font-medium text-gray-700 dark:text-gray-400">Estado</label>
                   <div className="group relative">
                     <Tag className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" />
                     <select
@@ -775,10 +763,37 @@ export default function ReservationForm({
 
           {/* FOOTER */}
           <div className="sticky bottom-0 z-10 mt-auto border-t border-gray-200 bg-white/95 p-4 backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/95">
-            <div className="mb-4 flex items-center justify-between rounded-xl bg-indigo-50 p-4 dark:bg-indigo-900/30">
-              <span className="text-base font-semibold text-indigo-800 dark:text-indigo-200">Total Reserva</span>
-              <span className="text-2xl font-bold text-indigo-900 dark:text-white">${Number(totalEstimado).toLocaleString("es-CO")}</span>
+            <div className="mb-4 flex flex-col gap-4">
+                
+                {/* BOTÓN DE NOTIFICACIÓN (SÓLO EN EDICIÓN) */}
+                {isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setNotifyOnEdit(!notifyOnEdit)}
+                    className={`flex items-center justify-between gap-2 p-3 rounded-xl border transition-all ${
+                        notifyOnEdit 
+                        ? "bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300" 
+                        : "bg-gray-50 border-gray-200 text-gray-500 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-500"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                        {notifyOnEdit ? <Bell size={18} /> : <BellOff size={18} />}
+                        <span className="text-xs font-bold uppercase tracking-wider">
+                            {notifyOnEdit ? "Notificación Activa" : "Notificación Desactivada"}
+                        </span>
+                    </div>
+                    <div className={`w-10 h-5 rounded-full relative transition-colors ${notifyOnEdit ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${notifyOnEdit ? 'left-6' : 'left-1'}`} />
+                    </div>
+                  </button>
+                )}
+
+                <div className="flex items-center justify-between rounded-xl bg-indigo-50 p-4 dark:bg-indigo-900/30">
+                  <span className="text-base font-semibold text-indigo-800 dark:text-indigo-200">Total Reserva</span>
+                  <span className="text-2xl font-bold text-indigo-900 dark:text-white">${Number(totalEstimado).toLocaleString("es-CO")}</span>
+                </div>
             </div>
+
             <button
               type="submit"
               disabled={saving}
