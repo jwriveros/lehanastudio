@@ -33,6 +33,10 @@ export default function AgendaEventCard({
   onViewDetails?: (appt: CalendarAppointment) => void;
 }) {
   const { border, indicador } = getEstadoColores(appointment.raw?.estado);
+  
+  // Extraemos cliente y total
+  const cliente = appointment.raw?.cliente;
+  const total =  appointment.raw?.price || 0;
 
   const cardStyle = {
     ...style,
@@ -50,22 +54,37 @@ export default function AgendaEventCard({
       `}
       style={cardStyle}
     >
-      <div className="p-1.5 h-full flex flex-col overflow-hidden">
+      <div className="p-1.5 h-full flex flex-col overflow-hidden relative">
         
-        {/* SERVICIO */}
+        {/* NOMBRE DEL CLIENTE (Prioridad visual) */}
+        <div className="leading-tight mb-0.5">
+          <span className="block font-black text-[11px] text-white uppercase tracking-tight truncate">
+            {cliente || "Sin Nombre"}
+          </span>
+        </div>
+
+        {/* SERVICIO (Título original) */}
         <div className="leading-tight">
-          <span className="block font-medium text-[12px] text-white/90 line-clamp-2 Poppins sans-seriff uppercase tracking-tighter">
+          <span className="block font-medium text-[10px] text-white/90 line-clamp-1 uppercase tracking-tighter">
             {appointment.title}
           </span>
         </div>
 
-        {/* PIE: ESTADO SIMPLIFICADO */}
-        <div className="mt-auto flex items-center gap-1">
-          <div className={`h-1.5 w-1.5 rounded-full ${indicador} shrink-0 shadow-sm`} />
-          <span className="text-[12px] font-bold text-white/80 uppercase truncate">
-            {appointment.raw?.estado?.replace("Cita ", "")}
+        {/* PIE: ESTADO Y PRECIO */}
+        <div className="mt-auto flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1 truncate">
+            <div className={`h-1.5 w-1.5 rounded-full ${indicador} shrink-0 shadow-sm`} />
+            <span className="text-[9px] font-bold text-white/80 uppercase truncate">
+              {appointment.raw?.estado?.replace("Cita ", "")}
+            </span>
+          </div>
+          
+          {/* PRECIO (Añadido) */}
+          <span className="text-[9px] font-black text-white bg-black/20 px-1 rounded">
+            ${Number(total).toLocaleString("es-CO")}
           </span>
         </div>
+        
       </div>
     </div>
   );
