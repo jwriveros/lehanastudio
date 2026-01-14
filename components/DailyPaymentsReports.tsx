@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { 
   FileText, User as UserIcon, Loader2, X, 
-  Calendar, Scissors, Wallet, Info, Download, Maximize2, ArrowLeft, Camera, Filter, CalendarDays
+  Calendar, Scissors, Wallet, MessageCircle, Info, Download, Maximize2, ArrowLeft, Camera, Filter, CalendarDays
 } from "lucide-react";
-import html2canvas from "html2canvas";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 export default function DailyPaymentsReport() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,7 +15,7 @@ export default function DailyPaymentsReport() {
   const [loading, setLoading] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
   
-  // --- NUEVO ESTADO DE RANGO ---
+  // --- ESTADO DE RANGO Y DATOS ---
   const todayStr = new Date().toLocaleDateString('en-CA');
   const [dateRange, setDateRange] = useState({ start: todayStr, end: todayStr });
   const [selectedSpecialist, setSelectedSpecialist] = useState<string>("all");
@@ -64,10 +65,24 @@ export default function DailyPaymentsReport() {
 
     if (error) { setLoading(false); return; }
 
-    const { data: users } = await supabase.from("app_users").select("name, comision_base, excepciones_comision");
-    if (users) setSpecialistsList(users);
+    // Consulta segura de especialistas con fallback por si no existe la columna telefono
+    let usersData: any[] | null = null;
+    const { data: fullUsers, error: userErr } = await supabase
+      .from("app_users")
+      .select("name, comision_base, excepciones_comision, telefono");
 
-    const report = users?.map(sp => {
+    if (userErr) {
+      const { data: basicUsers } = await supabase
+        .from("app_users")
+        .select("name, comision_base, excepciones_comision");
+      usersData = basicUsers;
+    } else {
+      usersData = fullUsers;
+    }
+
+    if (usersData) setSpecialistsList(usersData);
+
+    const report = usersData?.map(sp => {
       if (selectedSpecialist !== "all" && selectedSpecialist !== sp.name) return null;
       const citasSp = appointments?.filter(app => app.especialista === sp.name) || [];
       if (citasSp.length === 0) return null;
@@ -81,6 +96,7 @@ export default function DailyPaymentsReport() {
 
       return {
         especialista: sp.name,
+        telefono: sp.telefono,
         totalVentas: detalles.reduce((acc, curr) => acc + curr.subtotal, 0),
         totalAPagar: detalles.reduce((acc, curr) => acc + curr.comisionEfectiva, 0),
         detalles
@@ -94,6 +110,81 @@ export default function DailyPaymentsReport() {
   useEffect(() => {
     if (isOpen) generateReport();
   }, [isOpen, generateReport]);
+
+  const handleWhatsAppShare = () => {
+    // Buscamos los datos de la especialista actual
+    const item = reportData.find(r => r.especialista === selectedSpecialist);
+    
+    // 🔥 CORRECCIÓN: Convertimos a String antes de usar replace para evitar el TypeError
+    const phone = String(item?.telefono || "").replace(/\D/g, ""); 
+    
+    if (!phone || phone === "") {
+      alert("No se encontró un número de teléfono válido para esta especialista.");
+      return;
+    }
+
+    const message = encodeURIComponent(
+      `*INFORME DE LIQUIDACIÓN - LEHANA STUDIO*\n\n` +
+      `👤 *Especialista:* ${selectedSpecialist}\n` +
+      `📅 *Periodo:* ${dateRange.start} al ${dateRange.end}\n` +
+      `💰 *Total a pagar:* $${item?.totalAPagar.toLocaleString("es-CO")}\n\n` +
+      `_Tu reporte PDF ha sido generado y descargado en administración._`
+    );
+
+    window.open(`https://wa.me/${phone}?text=${message}`, "_blank");
+  };
+
+  const exportPDF = async (shouldSendWhatsApp = false) => {
+    if (!reportRef.current) return;
+    setLoading(true);
+    try {
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 3,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false,
+        onclone: (clonedDoc) => {
+          const style = clonedDoc.createElement('style');
+          style.innerHTML = `
+            #printable-report, #printable-report * {
+              color: #18181b !important;
+              border-color: #e4e4e7 !important;
+              background-color: transparent !important;
+              box-shadow: none !important;
+              text-shadow: none !important;
+              color-scheme: light !important;
+            }
+            .bg-indigo-600 { background-color: #4f46e5 !important; color: #ffffff !important; }
+            .bg-zinc-50 { background-color: #f8f8f8 !important; }
+            .bg-white { background-color: #ffffff !important; }
+            .text-indigo-600 { color: #4f46e5 !important; }
+            .font-black, .font-bold { font-weight: 900 !important; }
+            * { font-family: sans-serif !important; }
+          `;
+          clonedDoc.head.appendChild(style);
+        }
+      });
+      
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      
+      if (shouldSendWhatsApp) {
+        // Llamamos a la función corregida
+        handleWhatsAppShare();
+      } else {
+        pdf.save(`Informe_Liquidacion_${selectedSpecialist}_${dateRange.start}.pdf`);
+      }
+    } catch (err) {
+      console.error("Error crítico PDF:", err);
+      alert("Hubo un problema al procesar el documento. Intenta usar 'Guardar JPG'.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const downloadImage = async () => {
     if (!reportRef.current) return;
@@ -139,10 +230,10 @@ export default function DailyPaymentsReport() {
   return (
     <>
       {/* VISTA RESUMEN (MODAL) */}
-      <div className="fixed inset-0 z-[999] flex items-center justify-center bg-zinc-950/80 backdrop-blur-md p-4">
+      <div className="fixed inset-0 z-[999] flex items-center justify-center bg-zinc-950/80 backdrop-blur-md p-4 text-zinc-900">
         <div className="bg-white dark:bg-zinc-950 shadow-2xl border dark:border-zinc-800 flex flex-col w-full max-w-xl h-[85vh] rounded-[2.5rem] overflow-hidden">
           <div className="px-6 py-5 border-b dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
-            <div className="flex items-center gap-3 font-semibold text-zinc-800 dark:text-zinc-100 uppercase tracking-tight">
+            <div className="flex items-center gap-3 font-semibold uppercase tracking-tight">
               <Wallet size={20} className="text-indigo-600" />
               <span>Cierre y Liquidación</span>
             </div>
@@ -152,29 +243,29 @@ export default function DailyPaymentsReport() {
           {/* SELECTORES DE RANGO */}
           <div className="p-4 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 space-y-3">
             <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
-               <button onClick={() => setQuickPeriod('hoy')} className="flex-1 py-2 text-[10px] font-black uppercase rounded-lg hover:bg-white dark:hover:bg-zinc-700 transition-all">Hoy</button>
-               <button onClick={() => setQuickPeriod('semana')} className="flex-1 py-2 text-[10px] font-black uppercase rounded-lg hover:bg-white dark:hover:bg-zinc-700 transition-all">Semana</button>
-               <button onClick={() => setQuickPeriod('mes')} className="flex-1 py-2 text-[10px] font-black uppercase rounded-lg hover:bg-white dark:hover:bg-zinc-700 transition-all">Mes</button>
+               <button onClick={() => setQuickPeriod('hoy')} className="flex-1 py-2 text-[10px] font-black uppercase rounded-lg hover:bg-white dark:hover:bg-zinc-700 transition-all text-zinc-900 dark:text-zinc-100">Hoy</button>
+               <button onClick={() => setQuickPeriod('semana')} className="flex-1 py-2 text-[10px] font-black uppercase rounded-lg hover:bg-white dark:hover:bg-zinc-700 transition-all text-zinc-900 dark:text-zinc-100">Semana</button>
+               <button onClick={() => setQuickPeriod('mes')} className="flex-1 py-2 text-[10px] font-black uppercase rounded-lg hover:bg-white dark:hover:bg-zinc-700 transition-all text-zinc-900 dark:text-zinc-100">Mes</button>
             </div>
             
             <div className="flex gap-3 items-center">
-              <div className="flex-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-xl">
+              <div className="flex-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-xl text-zinc-900 dark:text-zinc-100">
                 <span className="block text-[8px] font-black text-zinc-400 uppercase ml-1">Desde</span>
                 <input type="date" value={dateRange.start} onChange={(e) => setDateRange(p => ({...p, start: e.target.value}))} className="w-full bg-transparent text-xs font-bold border-none p-0 focus:ring-0" />
               </div>
-              <div className="flex-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-xl">
+              <div className="flex-1 bg-zinc-100 dark:bg-zinc-800 p-2 rounded-xl text-zinc-900 dark:text-zinc-100">
                 <span className="block text-[8px] font-black text-zinc-400 uppercase ml-1">Hasta</span>
                 <input type="date" value={dateRange.end} onChange={(e) => setDateRange(p => ({...p, end: e.target.value}))} className="w-full bg-transparent text-xs font-bold border-none p-0 focus:ring-0" />
               </div>
             </div>
 
-            <select value={selectedSpecialist} onChange={(e) => setSelectedSpecialist(e.target.value)} className="w-full bg-zinc-100 dark:bg-zinc-800 p-3 rounded-xl text-xs font-bold border-none outline-none">
+            <select value={selectedSpecialist} onChange={(e) => setSelectedSpecialist(e.target.value)} className="w-full bg-zinc-100 dark:bg-zinc-800 p-3 rounded-xl text-xs font-bold border-none outline-none text-zinc-900 dark:text-zinc-100">
               <option value="all">Todo el equipo</option>
               {specialistsList.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
             </select>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          <div className="flex-1 overflow-y-auto p-6 space-y-3 text-zinc-900 dark:text-zinc-100">
             {loading ? (
               <div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-600" /></div>
             ) : reportData.length === 0 ? (
@@ -184,7 +275,7 @@ export default function DailyPaymentsReport() {
             ) : reportData.map((item, idx) => (
               <div key={idx} className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-5 rounded-2xl flex justify-between items-center shadow-sm">
                 <div>
-                  <span className="text-sm font-bold text-zinc-800 dark:text-zinc-100 block">{item.especialista}</span>
+                  <span className="text-sm font-bold block">{item.especialista}</span>
                   <span className="text-xs text-indigo-600 font-bold uppercase">Pagar: ${item.totalAPagar.toLocaleString()}</span>
                 </div>
                 <button onClick={() => { setSelectedSpecialist(item.especialista); setIsAuditoriaOpen(true); }} className="p-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all">
@@ -202,16 +293,22 @@ export default function DailyPaymentsReport() {
 
       {/* HOJA DE AUDITORÍA */}
       {isAuditoriaOpen && (
-        <div className="fixed inset-0 z-[1000] bg-zinc-100 dark:bg-zinc-950 flex flex-col animate-in slide-in-from-right duration-500">
+        <div className="fixed inset-0 z-[1000] bg-zinc-100 dark:bg-zinc-950 flex flex-col animate-in slide-in-from-right duration-500 text-zinc-900">
           <header className="px-8 py-5 bg-white dark:bg-zinc-900 border-b dark:border-zinc-800 flex justify-between items-center">
             <button onClick={() => setIsAuditoriaOpen(false)} className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300 font-bold text-sm uppercase tracking-tight">
               <ArrowLeft size={20} /> Regresar
             </button>
-            <div className="flex gap-4">
-               <button onClick={downloadImage} className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/30 active:scale-95 transition-all">
-                <Camera size={18} /> Guardar JPG
+            <div className="flex gap-2">
+               <button onClick={downloadImage} title="Guardar JPG" className="p-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-xl active:scale-95 transition-all">
+                <Camera size={20} />
               </button>
-              <button onClick={() => setIsAuditoriaOpen(false)} className="p-2 text-zinc-400"><X size={24} /></button>
+              <button onClick={() => exportPDF(false)} className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 text-white rounded-xl text-xs font-bold active:scale-95 transition-all">
+                <Download size={18} /> PDF
+              </button>
+              <button onClick={() => exportPDF(true)} className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-green-500/30 active:scale-95 transition-all">
+                <MessageCircle size={18} /> WhatsApp
+              </button>
+              <button onClick={() => setIsAuditoriaOpen(false)} className="p-2 text-zinc-400 ml-2"><X size={24} /></button>
             </div>
           </header>
 
@@ -233,7 +330,7 @@ export default function DailyPaymentsReport() {
                 </div>
               </div>
 
-              {reportData.map((item, idx) => (
+              {reportData.filter(item => selectedSpecialist === "all" || item.especialista === selectedSpecialist).map((item, idx) => (
                 <div key={idx} className="space-y-12">
                   <div className="flex justify-between items-center bg-zinc-50 p-10 rounded-[2rem] border border-zinc-100">
                     <div>
@@ -265,6 +362,13 @@ export default function DailyPaymentsReport() {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-4 border-zinc-900 bg-zinc-50/50">
+                        <td className="py-8 px-4 font-black text-zinc-900 text-xl uppercase" colSpan={2}>Totales Liquidación</td>
+                        <td className="py-8 px-4 text-right font-bold text-zinc-900 text-xl tabular-nums">${item.totalVentas.toLocaleString()}</td>
+                        <td className="py-8 px-4 text-right font-black text-indigo-600 text-3xl tabular-nums">${item.totalAPagar.toLocaleString()}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               ))}
