@@ -6,7 +6,7 @@ export type AgendaAppointmentDB = {
   especialista: string;
   appointment_at: string;
   appointment_id: number | null;
-  appointment_at_local?: string;
+  appointment_at_local?: string | Date;
   estado: string;
   bg_color: string;
   price: string | null;
@@ -15,7 +15,8 @@ export type AgendaAppointmentDB = {
 
 export type DraftAppointmentRaw = Partial<AgendaAppointmentDB> & {
   especialista: string;
-  appointment_at_local: string;
+  // Cambiamos string por string | Date
+  appointment_at_local: string | Date; 
 };
 
 

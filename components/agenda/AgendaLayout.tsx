@@ -154,16 +154,29 @@ export default function AgendaLayout() {
     openReservationDrawer();
   };
 
-  const handleCreateFromSlot = ({ especialista, start }: { especialista: string; start: Date }) => {
-    setEditingAppointment({
-      id: "new",
-      title: "",
-      start,
-      end: new Date(start.getTime() + 60 * 60000),
-      raw: { especialista, appointment_at_local: start.toISOString() },
-    });
-    openReservationDrawer();
-  };
+  // components/agenda/AgendaLayout.tsx
+
+const handleCreateFromSlot = ({
+  especialista,
+  start,
+}: {
+  especialista: string;
+  start: Date;
+}) => {
+  setEditingAppointment({
+    id: "new",
+    title: "",
+    start,
+    end: new Date(start.getTime() + 60 * 60000),
+    raw: { 
+      especialista, 
+      // 🔥 CAMBIO CLAVE: Enviamos 'start' directamente (es un objeto Date)
+      // NO uses start.toISOString(), eso es lo que causa el desfase de 5 horas.
+      appointment_at_local: start 
+    },
+  });
+  openReservationDrawer();
+};
 
   const handleMarkAsPaid = () => {
     setSelectedAppointment(null);

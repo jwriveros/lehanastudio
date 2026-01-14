@@ -154,20 +154,26 @@ const EMPTY_FORM: FormState = {
 };
 
 /* =========================
-   HELPERS (HORA EXACTA)
+   HELPERS (CORRECCIÓN HORA)
 ========================= */
 function toDatetimeLocal(dateValue: any) {
   if (!dateValue) return "";
+
+  // Si es un objeto Date (viene del clic en slot vacío de la agenda)
   if (dateValue instanceof Date) {
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${dateValue.getFullYear()}-${pad(dateValue.getMonth() + 1)}-${pad(dateValue.getDate())}T${pad(dateValue.getHours())}:${pad(dateValue.getMinutes())}`;
   }
+
+  // Si es un string (viene de la base de datos)
   const dateString = String(dateValue);
   const match = dateString.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  
   if (match) {
     const [_, y, m, d, hh, mm] = match;
     return `${y}-${m}-${d}T${hh}:${mm}`;
   }
+
   return dateString.substring(0, 16).replace(" ", "T");
 }
 
@@ -185,12 +191,14 @@ export default function ReservationForm({
 }: ReservationFormProps) {
   const closeReservationDrawer = useUIStore((s) => s.closeReservationDrawer);
   const formRef = useRef<HTMLFormElement>(null);
-  const isEditing = !!appointmentData?.id && !isNaN(Number(appointmentData.id));
+  
+  // Una cita está en modo edición si tiene ID y el ID no es el marcador de "nuevo"
+  const isEditing = !!appointmentData?.id && appointmentData.id !== "new";
   
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [saveClient, setSaveClient] = useState(false);
-  const [notifyOnEdit, setNotifyOnEdit] = useState(true); // <--- NUEVO ESTADO PARA NOTIFICAR
+  const [notifyOnEdit, setNotifyOnEdit] = useState(true);
   const [specialists, setSpecialists] = useState<SpecialistItem[]>([]);
   const [loadingSpecialists, setLoadingSpecialists] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -223,18 +231,33 @@ export default function ReservationForm({
   }, []);
 
   /* =========================
-      PRECARGAR (CON GRUPOS)
+      PRECARGAR DATOS
   ========================= */
   useEffect(() => {
-    if (!appointmentData?.id) {
+    if (!appointmentData) {
       setForm(EMPTY_FORM);
-      setSaveClient(false); 
-      setNotifyOnEdit(true);
       return;
     }
 
+    const raw = appointmentData.raw ?? {};
+
+    // CASO: Clic en slot vacío (Cita Nueva)
+    if (appointmentData.id === "new") {
+      setForm({
+        ...EMPTY_FORM,
+        lines: [{
+          ...EMPTY_LINE,
+          especialista: raw.especialista ?? "",
+          appointment_at: toDatetimeLocal(raw.appointment_at_local ?? appointmentData.start)
+        }]
+      });
+      setNotifyOnEdit(true);
+      setSaveClient(false);
+      return;
+    }
+
+    // CASO: Edición de cita existente
     const loadData = async () => {
-        const raw = appointmentData.raw ?? {};
         const groupId = raw.appointment_id;
         let linesData: ServiceLine[] = [];
 
@@ -285,6 +308,9 @@ export default function ReservationForm({
     setSaveClient(false);
   }, [appointmentData]);
 
+  /* =========================
+      HELPERS FORMULARIO
+  ========================= */
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
@@ -335,6 +361,9 @@ export default function ReservationForm({
     return null;
   };
 
+  /* =========================
+      ENVÍO DE DATOS
+  ========================= */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const err = validate();
@@ -380,7 +409,6 @@ export default function ReservationForm({
 
         await Promise.all(updatePromises);
 
-        // SOLO NOTIFICAMOS SI EL BOTÓN ESTÁ ACTIVADO
         if (notifyOnEdit) {
             try {
               const l = lines[0];
@@ -389,15 +417,15 @@ export default function ReservationForm({
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  action: "EDITED",
-                  customerName: form.cliente.trim(),
-                  customerPhone: fullPhone,
+                  appointmentId: appointmentData.id,
+                  cliente: form.cliente.trim(),
+                  celular: cleanPhone,
+                  indicativo: form.indicativo,
+                  sede: form.sede,
                   servicio: l.servicio,
                   especialista: l.especialista,
-                  fecha: format(dateObj, "PPPP", { locale: es }), 
-                  hora: format(dateObj, "p", { locale: es }),
-                  sede: form.sede,
-                  appointmentId: appointmentData.id,
+                  duration: l.duracion,
+                  appointment_at: localDateTimeToUTC(l.appointment_at),
                   estado: form.estado
                 }),
               });
@@ -411,6 +439,7 @@ export default function ReservationForm({
         return;
       }
 
+      // CREACIÓN NUEVA
       const payload = {
         action: "CREATE",
         cliente: form.cliente.trim(),

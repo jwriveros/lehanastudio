@@ -7,8 +7,6 @@ import { randomUUID } from "crypto";
 ========================= */
 function toUTCTimestamp(localDateTime: string) {
   if (!localDateTime) return null;
-  // Simplemente tomamos el valor del front (que ya viene con 'Z') 
-  // y lo devolvemos como ISO puro
   return new Date(localDateTime).toISOString();
 }
 
@@ -42,7 +40,6 @@ export async function POST(req: Request) {
     }
 
     const peopleCount = Number(cantidad || 1);
-    // Este UUID agrupará a todos los servicios de esta reserva
     const appointmentGroupId = randomUUID();
     const normalizedCelular = String(celular).replace(/\D/g, "");
 
@@ -73,10 +70,8 @@ export async function POST(req: Request) {
        2️⃣ CONSTRUIR FILAS (ROWS)
     ========================= */
     const rows: any[] = [];
-
     for (let personIndex = 0; personIndex < peopleCount; personIndex++) {
       const isPrimary = personIndex === 0;
-
       for (const s of items) {
         rows.push({
           cliente: isPrimary ? cliente : `Acompañante de ${cliente}`,
@@ -90,8 +85,6 @@ export async function POST(req: Request) {
           indicativo: isPrimary ? indicativo : null,
           is_primary_client: isPrimary,
           primary_client_name: cliente,
-          // ✅ CORRECCIÓN: Se cambia 'appointment_group_id' por 'appointment_id'
-          // que es el nombre real en tu tabla 'appointments'
           appointment_id: appointmentGroupId, 
           estado: "Nueva reserva creada",
         });
@@ -128,30 +121,37 @@ export async function POST(req: Request) {
     );
 
     /* =========================
-       5️⃣ NOTIFICAR A N8N
+       5️⃣ NOTIFICAR A N8N (ENVÍO ÚNICO)
     ========================= */
     if (process.env.N8N_WEBHOOK_URL && inserted && inserted.length > 0) {
-      for (const row of inserted) {
-        const cleanIndicativo = String(indicativo || "57").replace(/\D/g, "");
-        const fullPhone = `+${cleanIndicativo}${normalizedCelular}`;
-        
-        await fetch(process.env.N8N_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "CREATE",
-            customerName: row.cliente,
-            customerPhone: fullPhone,
-            sede: row.sede,
-            servicio: row.servicio,
-            especialista: row.especialista,
-            price: row.price,
-            appointment_at: row.appointment_at,
-            // ✅ CORRECCIÓN: Usamos el campo correcto retornado por la DB
-            appointmentGroupId: row.appointment_id 
-          }),
-        });
-      }
+      // Tomamos el primer servicio del cliente principal como referencia
+      const firstRow = inserted[0];
+      const cleanIndicativo = String(indicativo || "57").replace(/\D/g, "");
+      const fullPhone = `+${cleanIndicativo}${normalizedCelular}`;
+
+      // Si hay más de un servicio, creamos un texto descriptivo
+      const displayService = items.length > 1 
+        ? `${firstRow.servicio} (+${items.length - 1} servicios adicionales)` 
+        : firstRow.servicio;
+
+      await fetch(process.env.N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "CREATE",
+          customerName: cliente,
+          customerPhone: fullPhone,
+          sede: firstRow.sede,
+          servicio: displayService,
+          especialista: firstRow.especialista,
+          price: total, // Enviamos el total de la reserva
+          appointment_at: firstRow.appointment_at, // Hora de inicio del primer servicio
+          appointmentGroupId: firstRow.appointment_id,
+          totalServices: items.length,
+          // Nota para el bot/mensaje:
+          mensaje_nota: `A partir de esta hora (${firstRow.appointment_at}) empezarán todos tus servicios.`
+        }),
+      });
     }
 
     return NextResponse.json({
