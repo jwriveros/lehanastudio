@@ -111,7 +111,7 @@ const fetchThreads = useCallback(async () => {
     supabase
       .from("chat_sessions")
       .select("*")
-      .in("status", ["agent_active", "pending_agent", "bot_active"])
+      .in("status", ["agent_active", "pending_agent", "bot_active", "new"])
       .order("updated_at", { ascending: false }),
     supabase
       .from("booking_requests")
@@ -419,7 +419,7 @@ useEffect(() => {
 
     if (effectiveTab === "reservations") {
       // Reservas: Únicamente si tiene status OPEN en la tabla booking_requests
-      return t.isBookingOpen;
+      return (t.status === "bot_active" || t.status === "new" );
     }
 
     if (effectiveTab === "abandoned") {

@@ -27,8 +27,8 @@ const END_HOUR = 22;
 const SLOT_MINUTES = 30;
 const SLOT_HEIGHT = 52; 
 const HEADER_HEIGHT = 64; 
-const VISUAL_GAP = 0;
-const SPECIALIST_HEADER_HEIGHT = 32;
+const VISUAL_GAP = 2;
+const SPECIALIST_HEADER_HEIGHT = 8
 const SPECIALISTS = ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote"];
 const SPECIALIST_TITLES = ["L", "N", "Y"];
 

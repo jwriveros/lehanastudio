@@ -630,7 +630,6 @@ export default function ReservationForm({
             <section className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Servicios</h3>
-                {!isEditing && (
                   <button
                     type="button"
                     onClick={addLine}
@@ -639,13 +638,12 @@ export default function ReservationForm({
                   >
                     <Plus size={16} /> <span>Añadir</span>
                   </button>
-                )}
               </div>
 
               <div className="space-y-4">
                 {form.lines.map((line, index) => (
                   <div key={index} className="relative rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200/50 dark:bg-gray-800/50 dark:ring-gray-700/50">
-                    {!isEditing && form.lines.length > 1 && (
+                    {form.lines.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeLine(index)}
