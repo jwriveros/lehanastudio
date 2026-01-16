@@ -1,6 +1,7 @@
 "use client";
 
 import { DashboardCards, ProgressPanel, SurveysPanel } from "@/components";
+import ExpensesManager from "@/components/ExpensesManager";
 import DailyPaymentsReport from "@/components/DailyPaymentsReports"; // Asegúrate de que la ruta sea correcta
 import { LayoutDashboard, Zap, PieChart } from "lucide-react";
 
@@ -35,6 +36,9 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 mb-4 px-1">
                <PieChart size={16} className="text-indigo-500" />
                <span className="text-[10px] font-black uppercase italic tracking-widest text-zinc-500">Cierre de Caja</span>
+            </div>
+            <div className="flex items-center gap-2 mb-4 px-1">
+               <ExpensesManager  />
             </div>
             <DailyPaymentsReport />
           </div>
