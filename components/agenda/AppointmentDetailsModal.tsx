@@ -11,7 +11,7 @@ import {
   Clock,
   ClipboardList,
   DollarSign,
-  Undo2, // Icono para anular
+  Undo2,
 } from "lucide-react";
 import FichaTecnicaModal from "../FichaTecnicaModal";
 import type { CalendarAppointment } from "./types";
@@ -20,9 +20,10 @@ import { es } from "date-fns/locale";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-/**
- * Devuelve las clases de Tailwind CSS para un estado de cita específico.
- */
+/* ==========================================================================
+   HELPERS FUERA DEL COMPONENTE (Para evitar pérdida de foco)
+   ========================================================================== */
+
 const getStatusStyles = (status: string | undefined): string => {
   const defaultStyles = "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
   if (!status) return defaultStyles;
@@ -36,6 +37,32 @@ const getStatusStyles = (status: string | undefined): string => {
 
   return statusMap[status.toLowerCase()] || defaultStyles;
 };
+
+const DetailItem = ({
+  icon,
+  label,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+}) => (
+  <div className="flex items-start gap-4">
+    <div className="mt-1 flex-shrink-0 text-zinc-500 dark:text-zinc-400">
+      {icon}
+    </div>
+    <div>
+      <dt className="text-sm text-zinc-500 dark:text-zinc-400">{label}</dt>
+      <dd className="font-semibold text-zinc-800 dark:text-zinc-200">
+        {children}
+      </dd>
+    </div>
+  </div>
+);
+
+/* ==========================================================================
+   COMPONENTE PRINCIPAL
+   ========================================================================== */
 
 export default function AppointmentDetailsModal({
   appointment,
@@ -53,7 +80,6 @@ export default function AppointmentDetailsModal({
   onMarkAsPaid?: (appointmentId: string) => void;
 }) {
   const [associatedServices, setAssociatedServices] = useState<any[]>([]);
-  const [loadingGroup, setLoadingGroup] = useState(false);
   const [isEditingPrices, setIsEditingPrices] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFicha, setShowFicha] = useState(false);
@@ -73,32 +99,34 @@ export default function AppointmentDetailsModal({
     }
     fetchGroup();
   }, [appointment]);
-  const updatePriceLocal = (id: number, newPrice: number) => {
-    setAssociatedServices(prev => prev.map(s => s.id === id ? { ...s, price: newPrice } : s));
+
+  const updatePriceLocal = (id: number, val: string) => {
+    setAssociatedServices(prev => 
+      prev.map(s => s.id === id ? { ...s, price: val } : s)
+    );
   };
+
   const currentTotal = associatedServices.reduce((acc, s) => acc + Number(s.price || 0), 0);
-  // Dentro de AppointmentDetailsModal.tsx
+
   const notifyN8N = async (action: "EDITED" | "CANCELLED") => {
     try {
-      // Normalizamos el celular para el webhook
       const rawPhone = String((appointment.raw as any).celular || "").replace(/\D/g, "");
       const rawIndicativo = String((appointment.raw as any).indicativo || "57").replace(/\D/g, "");
-      
-      // 2. Creamos el número completo formateado
       const fullPhone = `+${rawIndicativo}${rawPhone}`;
 
       await fetch("/api/bookings/notify-update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action, // "EDITED" o "CANCELLED"
+          action,
           appointmentId: appointment.id,
           customerName: appointment.raw.cliente,
-          customerPhone: fullPhone, // Envía el número internacional real
+          customerPhone: fullPhone,
           servicio: appointment.title,
           especialista: appointment.raw.especialista,
           fecha: format(appointment.start, "PPP", { locale: es }),
-          hora: format(appointment.start, "p", { locale: es }),
+          // Cambio aplicado aquí para la notificación
+          hora: format(appointment.start, "h:mm aa", { locale: es }),
           indicativo: (appointment.raw as any).indicativo || "+57"
         }),
       });
@@ -106,46 +134,45 @@ export default function AppointmentDetailsModal({
       console.error(`Error notificando ${action}:`, error);
     }
   };
+
   const handleCancelAction = async () => {
-  if (!appointment?.id) return;
-  if (!confirm("¿Deseas cancelar esta cita? El cliente recibirá un mensaje.")) return;
+    if (!appointment?.id) return;
+    if (!confirm("¿Deseas cancelar esta cita? El cliente recibirá un mensaje.")) return;
 
-  setIsSubmitting(true);
-  try {
-    const response = await fetch("/api/bookings/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appointmentId: appointment.id }),
-    });
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/bookings/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointmentId: appointment.id }),
+      });
 
-    if (!response.ok) throw new Error("Error al cancelar");
-    await notifyN8N("CANCELLED");
+      if (!response.ok) throw new Error("Error al cancelar");
+      await notifyN8N("CANCELLED");
 
-    onCancel?.(appointment); // Refresca el calendario
-    onClose();
-  } catch (error) {
-    alert("No se pudo cancelar la cita.");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      onCancel?.(appointment);
+      onClose();
+    } catch (error) {
+      alert("No se pudo cancelar la cita.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleTogglePayment = async () => {
     if (isPaid) {
-      // Si ya está pagado, anular pago directamente
       setIsSubmitting(true);
       await fetch("/api/bookings/unpay", { method: "POST", body: JSON.stringify({ appointmentId: appointment.id }) });
       onMarkAsPaid?.(appointment.id);
+      setIsSubmitting(false);
       return;
     }
 
-    // Si NO está pagado y NO estamos editando precios, entramos en modo edición
     if (!isEditingPrices) {
       setIsEditingPrices(true);
       return;
     }
 
-    // Si ya estamos en modo edición, confirmamos y enviamos los nuevos precios
     setIsSubmitting(true);
     try {
       const response = await fetch("/api/bookings/mark-as-paid", {
@@ -153,7 +180,7 @@ export default function AppointmentDetailsModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           appointmentId: appointment.id,
-          serviceUpdates: associatedServices.map(s => ({ id: s.id, price: s.price })) // <--- ENVIAMOS LOS PRECIOS
+          serviceUpdates: associatedServices.map(s => ({ id: s.id, price: Number(s.price) }))
         }),
       });
 
@@ -166,32 +193,9 @@ export default function AppointmentDetailsModal({
       setIsSubmitting(false);
     }
   };
-  
-
-  const DetailItem = ({
-    icon,
-    label,
-    children,
-  }: {
-    icon: React.ReactNode;
-    label: string;
-    children: React.ReactNode;
-  }) => (
-    <div className="flex items-start gap-4">
-      <div className="mt-1 flex-shrink-0 text-zinc-500 dark:text-zinc-400">
-        {icon}
-      </div>
-      <div>
-        <dt className="text-sm text-zinc-500 dark:text-zinc-400">{label}</dt>
-        <dd className="font-semibold text-zinc-800 dark:text-zinc-200">
-          {children}
-        </dd>
-      </div>
-    </div>
-  );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:border dark:border-zinc-800 dark:bg-zinc-900">
         {/* HEADER */}
         <div className="mb-6 flex items-start justify-between">
@@ -221,52 +225,54 @@ export default function AppointmentDetailsModal({
               </button>
             </div>
           </DetailItem>
+
           <DetailItem icon={<DollarSign size={18} />} label="Servicios y Precios">
-        <div className="space-y-2 mt-2">
-          {associatedServices.map((s) => (
-            <div key={s.id} className="flex items-center justify-between gap-4 bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800">
-              <span className="text-xs font-bold text-zinc-600 dark:text-zinc-400 truncate flex-1">{s.servicio}</span>
-              {isEditingPrices ? (
-                <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-28">
-                  <span className="text-[10px] font-bold mr-1">$</span>
-                  <input 
-                    type="number"
-                    value={s.price}
-                    onChange={(e) => updatePriceLocal(s.id, Number(e.target.value))}
-                    className="w-full bg-transparent text-xs font-black outline-none"
-                  />
+            <div className="space-y-2 mt-2">
+              {associatedServices.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-4 bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800">
+                  <span className="text-xs font-bold text-zinc-600 dark:text-zinc-400 truncate flex-1">{s.servicio}</span>
+                  {isEditingPrices ? (
+                    <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-28">
+                      <span className="text-[10px] font-bold mr-1 text-zinc-400">$</span>
+                      <input 
+                        type="text" 
+                        inputMode="numeric"
+                        value={s.price}
+                        onChange={(e) => updatePriceLocal(s.id, e.target.value)}
+                        className="w-full bg-transparent text-xs font-black outline-none text-zinc-800 dark:text-zinc-100"
+                        autoFocus={associatedServices[0].id === s.id}
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-sm font-black text-indigo-600">${Number(s.price).toLocaleString()}</span>
+                  )}
                 </div>
-              ) : (
-                <span className="text-sm font-black text-indigo-600">${Number(s.price).toLocaleString()}</span>
-              )}
+              ))}
+              
+              <div className="flex justify-between items-center pt-2 border-t border-dashed dark:border-zinc-700">
+                <span className="text-[10px] font-black uppercase text-zinc-400">Total a pagar</span>
+                <span className="text-xl font-black text-emerald-600">${currentTotal.toLocaleString()}</span>
+              </div>
             </div>
-          ))}
-          
-          {/* TOTAL ACUMULADO */}
-          <div className="flex justify-between items-center pt-2 border-t border-dashed">
-            <span className="text-[10px] font-black uppercase text-zinc-400">Total a pagar</span>
-            <span className="text-xl font-black text-emerald-600">${currentTotal.toLocaleString()}</span>
-          </div>
-        </div>
-      </DetailItem>
-          <DetailItem icon={<User size={18} />} label="Especialista">
+          </DetailItem>
+
+          <DetailItem icon={<Scissors size={18} />} label="Especialista">
             {appointment.raw.especialista}
           </DetailItem>
+
           <DetailItem icon={<Tag size={18} />} label="Estado">
-            <span
-              className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${getStatusStyles(
-                appointment.raw.estado
-              )}`}
-            >
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${getStatusStyles(appointment.raw.estado)}`}>
               {appointment.raw.estado}
             </span>
           </DetailItem>
+
           <DetailItem icon={<Calendar size={18} />} label="Fecha">
             {format(appointment.start, "PPP", { locale: es })}
           </DetailItem>
+
           <DetailItem icon={<Clock size={18} />} label="Hora">
-            {format(appointment.start, "p", { locale: es })} –{" "}
-            {format(appointment.end, "p", { locale: es })}
+            {/* Cambio aplicado aquí para la visualización del Modal */}
+            {format(appointment.start, "h:mm aa", { locale: es })} – {format(appointment.end, "h:mm aa", { locale: es })}
           </DetailItem>
         </dl>
 
@@ -279,38 +285,30 @@ export default function AppointmentDetailsModal({
           >
             <Trash2 size={16} />
           </button>
+
           <div className="flex gap-3">
             <button
               onClick={handleCancelAction}
-              // Se deshabilita si ya está enviando, o si ya está pagada, o si ya está cancelada
               disabled={isSubmitting || isPaid || isCancelled}
               className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 isCancelled 
-                  ? "bg-red-50 text-red-400 border border-red-100" // Estilo "Ya cancelado"
+                  ? "bg-red-50 text-red-400 border border-red-100" 
                   : "text-zinc-800 hover:bg-zinc-100/60 dark:text-zinc-200 dark:hover:bg-zinc-800/30"
               }`}
             >
               <Ban size={15} />
-              {isSubmitting ? "Cancelando..." : isCancelled ? "Cancelada" : "Cancelar"}
+              {isSubmitting ? "..." : isCancelled ? "Cancelada" : "Cancelar"}
             </button>
 
-            {/* BOTÓN DE PAGO / ANULACIÓN DINÁMICO */}
             <button
               onClick={handleTogglePayment}
               disabled={isSubmitting}
               className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                isPaid 
-                  ? "bg-red-500 hover:bg-red-600" // Rojo si ya está pagado
-                  : "bg-green-500 hover:bg-green-600" // Verde si está pendiente
+                isPaid ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
               }`}
             >
               {isPaid ? <Undo2 size={15} /> : <DollarSign size={15} />}
-              {isSubmitting 
-                ? "Procesando..." 
-                : isPaid 
-                  ? "Anular Pago" 
-                  : "Marcar Pago"
-              }
+              {isSubmitting ? "..." : isPaid ? "Anular Pago" : isEditingPrices ? "Confirmar" : "Marcar Pago"}
             </button>
 
             <button
