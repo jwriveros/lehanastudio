@@ -3,12 +3,14 @@ import React, { useEffect, useState, useCallback } from "react";
 import ReservationForm from "./ReservationForm";
 import ReservationDetails from "./ReservationDetails";
 import { X, CalendarPlus } from "lucide-react";
+
 export interface ReservationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   appointmentData?: any | null;
   onSuccess?: () => void;
 }
+
 const ReservationDrawer = ({
   isOpen,
   onClose,
@@ -16,8 +18,9 @@ const ReservationDrawer = ({
   onSuccess,
 }: ReservationDrawerProps) => {
   const [viewMode, setViewMode] = useState<"view" | "edit">("edit");
+
   /* =========================
-     DEFINIR MODO
+      DEFINIR MODO
   ========================= */
   useEffect(() => {
     if (!appointmentData) {
@@ -35,11 +38,13 @@ const ReservationDrawer = ({
   const handleEdit = useCallback(() => {
     setViewMode("edit");
   }, []);
+
   const title = appointmentData?.id
     ? viewMode === "edit"
       ? "Editar reserva"
       : "Detalles de la reserva"
     : "Nueva reserva";
+
   return (
     <>
       {/* Overlay */}
@@ -48,7 +53,8 @@ const ReservationDrawer = ({
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
-      />,
+      />
+      
       {/* Drawer */}
       <div
         className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-2xl transform flex-col bg-gray-50 shadow-xl transition-transform duration-300 ease-in-out dark:bg-gray-900 ${
@@ -74,6 +80,7 @@ const ReservationDrawer = ({
             <X size={20} />
           </button>
         </header>
+
         {/* CONTENT */}
         <div className="flex-1 overflow-y-auto">
           {viewMode === "edit" ? (
@@ -89,6 +96,7 @@ const ReservationDrawer = ({
               <ReservationDetails
                 appointmentData={appointmentData}
                 onEdit={handleEdit}
+                onSuccess={onSuccess} // <--- ESTA ES LA LÍNEA QUE FALTABA
               />
             </div>
           )}
@@ -97,4 +105,5 @@ const ReservationDrawer = ({
     </>
   );
 };
+
 export default React.memo(ReservationDrawer);

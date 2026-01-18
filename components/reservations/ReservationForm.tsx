@@ -76,7 +76,7 @@ interface ReservationFormProps {
 }
 
 /* =========================
-   CONSTANTES (LISTA COMPLETA)
+   CONSTANTES (LISTA COMPLETA - INTACTA)
 ========================= */
 const COUNTRIES = [
   { code: "+57", flag: "🇨🇴", name: "Colombia" },
@@ -154,34 +154,48 @@ const EMPTY_FORM: FormState = {
 };
 
 /* =========================
-   HELPERS (CORRECCIÓN HORA)
+   HELPERS (CORRECCIÓN HORA LITERAL)
+========================= */
+/* =========================
+   HELPERS (CORRECCIÓN HORA LITERAL)
 ========================= */
 function toDatetimeLocal(dateValue: any) {
   if (!dateValue) return "";
 
-  // Si es un objeto Date (viene del clic en slot vacío de la agenda)
+  let date: Date;
+
+  // Caso 1: Ya es un objeto Date
   if (dateValue instanceof Date) {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${dateValue.getFullYear()}-${pad(dateValue.getMonth() + 1)}-${pad(dateValue.getDate())}T${pad(dateValue.getHours())}:${pad(dateValue.getMinutes())}`;
+    date = dateValue;
+  } else {
+    const dateString = String(dateValue);
+
+    // Caso 2: El string tiene 'Z' o '+'. Es una fecha con zona horaria (UTC).
+    // IMPORTANTE: Al crear un new Date(), el navegador convierte 19:00Z a 14:00 Local automáticamente.
+    if (dateString.includes("Z") || dateString.includes("+")) {
+      date = new Date(dateString);
+    } 
+    else {
+      // Caso 3: String plano sin zona horaria (usamos tu Regex literal)
+      const match = dateString.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+      if (match) {
+        const [_, y, m, d, hh, mm] = match;
+        return `${y}-${m}-${d}T${hh}:${mm}`;
+      }
+      return dateString.substring(0, 16).replace(" ", "T");
+    }
   }
 
-  // Si es un string (viene de la base de datos)
-  const dateString = String(dateValue);
-  const match = dateString.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-  
-  if (match) {
-    const [_, y, m, d, hh, mm] = match;
-    return `${y}-${m}-${d}T${hh}:${mm}`;
-  }
-
-  return dateString.substring(0, 16).replace(" ", "T");
+  // Formateamos el objeto Date a formato local (YYYY-MM-DDTHH:mm)
+  // Usamos métodos locales (getFullYear, getHours) para ver la hora de Colombia
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function localDateTimeToUTC(localDateTime: string) {
   if (!localDateTime) return "";
   return `${localDateTime}:00Z`;
 }
-
 /* =========================
    COMPONENTE PRINCIPAL
 ========================= */
@@ -192,24 +206,19 @@ export default function ReservationForm({
   const closeReservationDrawer = useUIStore((s) => s.closeReservationDrawer);
   const formRef = useRef<HTMLFormElement>(null);
   
-  // Una cita está en modo edición si tiene ID y el ID no es el marcador de "nuevo"
   const isEditing = !!appointmentData?.id && appointmentData.id !== "new";
   
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [saveClient, setSaveClient] = useState(false);
-  const [notifyOnEdit, setNotifyOnEdit] = useState(false);
+  const [notifyOnEdit, setNotifyOnEdit] = useState(false); // DESACTIVADO POR DEFECTO
   const [specialists, setSpecialists] = useState<SpecialistItem[]>([]);
   const [loadingSpecialists, setLoadingSpecialists] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [activeTab, setActiveTab] = useState<'reservas' | 'fichas'>('fichas');
-
-  // SOLUCIÓN: Estado para rastrear servicios eliminados de la DB
   const [deletedLineIds, setDeletedLineIds] = useState<number[]>([]);
 
-  /* =========================
-      CARGAR ESPECIALISTAS
-  ========================= */
+  /* CARGAR ESPECIALISTAS */
   useEffect(() => {
     let mounted = true;
     const run = async () => {
@@ -233,9 +242,7 @@ export default function ReservationForm({
     return () => { mounted = false; };
   }, []);
 
-  /* =========================
-      PRECARGAR DATOS
-  ========================= */
+  /* PRECARGAR DATOS */
   useEffect(() => {
     if (!appointmentData) {
       setForm(EMPTY_FORM);
@@ -253,8 +260,7 @@ export default function ReservationForm({
           appointment_at: toDatetimeLocal(raw.appointment_at_local ?? appointmentData.start)
         }]
       });
-      setNotifyOnEdit(true);
-      setSaveClient(false);
+      setNotifyOnEdit(false);
       return;
     }
 
@@ -270,6 +276,7 @@ export default function ReservationForm({
                 .order("appointment_at", { ascending: true });
             
             if (data && data.length > 0) {
+              console.log("4. Datos crudos de Supabase:", data.map(item => item.appointment_at));
                 linesData = data.map(l => ({
                     id: l.id,
                     servicio: l.servicio,
@@ -303,16 +310,15 @@ export default function ReservationForm({
             estado: raw.estado ?? "Nueva reserva creada",
             lines: linesData
         });
+        setNotifyOnEdit(false);
     };
 
     loadData();
     setSaveClient(false);
-    setDeletedLineIds([]); // Reiniciar al cargar nueva cita
+    setDeletedLineIds([]); 
   }, [appointmentData]);
 
-  /* =========================
-      HELPERS FORMULARIO
-  ========================= */
+  /* HELPERS FORMULARIO */
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
@@ -344,11 +350,9 @@ export default function ReservationForm({
   const removeLine = (index: number) => {
     setForm((prev) => {
       const lineToRemove = prev.lines[index];
-      // SOLUCIÓN: Si la línea tiene ID, marcar para eliminar de la DB al guardar
       if (lineToRemove.id) {
-        setDeletedLineIds((prevIds: number[]) => [...prevIds, lineToRemove.id!]);
+        setDeletedLineIds((prevIds) => [...prevIds, lineToRemove.id!]);
       }
-      
       return prev.lines.length <= 1 
         ? prev 
         : { ...prev, lines: prev.lines.filter((_, i) => i !== index) };
@@ -360,25 +364,10 @@ export default function ReservationForm({
     return sum * (Number(form.cantidad) || 1);
   }, [form.lines, form.cantidad]);
 
-  const validate = () => {
-    if (!form.cliente.trim()) return "Debes seleccionar o escribir un cliente.";
-    if (!form.celular.trim()) return "Debes ingresar el celular.";
-    const hasAnyService = form.lines.some((l) => l.servicio.trim());
-    if (!hasAnyService) return "Debes agregar al menos un servicio.";
-    const invalid = form.lines.some(
-      (l) => l.servicio.trim() && (!l.especialista.trim() || !l.appointment_at)
-    );
-    if (invalid) return "Cada servicio debe tener especialista y fecha/hora.";
-    return null;
-  };
-
-  /* =========================
-      ENVÍO DE DATOS
-  ========================= */
+  /* ENVÍO DE DATOS */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const err = validate();
-    if (err) { alert(err); return; }
+    if (!form.cliente.trim() || !form.celular.trim()) { alert("Faltan datos obligatorios"); return; }
     setSaving(true);
     try {
       const lines = form.lines.filter((l) => l.servicio.trim());
@@ -394,25 +383,20 @@ export default function ReservationForm({
       }
 
       if (isEditing) {
-        // SOLUCIÓN: Eliminar servicios de la DB que fueron quitados del formulario
         if (deletedLineIds.length > 0) {
-          const { error: delError } = await supabase
-            .from("appointments")
-            .delete()
-            .in("id", deletedLineIds);
-          if (delError) throw delError;
+          await supabase.from("appointments").delete().in("id", deletedLineIds);
         }
 
         const updatePromises = lines.map((l) => {
           const updates = {
             cliente: form.cliente.trim(),
-            celular: cleanPhone,             
+            celular: cleanPhone,             
             indicativo: form.indicativo,
             sede: form.sede,
             servicio: l.servicio,
             especialista: l.especialista,
             duration: l.duracion,
-            price: Number(l.precio), // SOLUCIÓN: Asegurar persistencia del precio
+            price: Number(l.precio), // GUARDAR PRECIO MANUAL
             appointment_at: localDateTimeToUTC(l.appointment_at),
             estado: form.estado,
           };
@@ -444,8 +428,8 @@ export default function ReservationForm({
                   servicio: l.servicio,
                   especialista: l.especialista,
                   duration: l.duracion,
-                  price: l.precio, // SOLUCIÓN: Enviar precio en notificación
-                  total: totalEstimado, // SOLUCIÓN: Enviar total en notificación
+                  price: l.precio, // PRECIO MANUAL ENVIADO
+                  total: totalEstimado, 
                   appointment_at: localDateTimeToUTC(l.appointment_at),
                   estado: form.estado
                 }),
@@ -460,7 +444,6 @@ export default function ReservationForm({
         return;
       }
 
-      // CREACIÓN NUEVA
       const payload = {
         action: "CREATE",
         cliente: form.cliente.trim(),
@@ -540,7 +523,7 @@ export default function ReservationForm({
         </div>
       )}
 
-      {/* PANEL DERECHO: FORMULARIO DE RESERVA */}
+      {/* PANEL DERECHO: FORMULARIO */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         
         {form.celular && (
@@ -745,7 +728,7 @@ export default function ReservationForm({
                               type="number"
                               value={Number(line.precio || 0)}
                               onChange={(e) => updateLine(index, { precio: Number(e.target.value) })}
-                              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
+                              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white font-bold"
                             />
                           </div>
                         </div>
@@ -809,11 +792,9 @@ export default function ReservationForm({
             </section>
           </div>
 
-          {/* FOOTER */}
           <div className="sticky bottom-0 z-10 mt-auto border-t border-gray-200 bg-white/95 p-4 backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/95">
             <div className="mb-4 flex flex-col gap-4">
                 
-                {/* BOTÓN DE NOTIFICACIÓN (SÓLO EN EDICIÓN) */}
                 {isEditing && (
                   <button
                     type="button"
@@ -826,9 +807,7 @@ export default function ReservationForm({
                   >
                     <div className="flex items-center gap-2">
                         {notifyOnEdit ? <Bell size={18} /> : <BellOff size={18} />}
-                        <span className="text-xs font-bold uppercase tracking-wider">
-                            {notifyOnEdit ? "Notificación Activa" : "Notificación Desactivada"}
-                        </span>
+                        <span className="text-xs font-bold uppercase tracking-wider">{notifyOnEdit ? "Notificación Activa" : "Notificación Desactivada"}</span>
                     </div>
                     <div className={`w-10 h-5 rounded-full relative transition-colors ${notifyOnEdit ? 'bg-indigo-600' : 'bg-gray-300'}`}>
                         <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${notifyOnEdit ? 'left-6' : 'left-1'}`} />

@@ -15,7 +15,7 @@ import {
   DollarSign,
   Ban,
   Undo2,
-  ArrowLeft, // Importado para el botón de volver
+  ArrowLeft,
 } from "lucide-react";
 
 interface ReservationDetailsProps {
@@ -90,7 +90,6 @@ export default function ReservationDetails({
     }
   };
 
-  // ... (handleCancelAction y handleDelete se mantienen igual)
   const handleCancelAction = async () => {
     if (!confirm("¿Deseas cancelar esta cita?")) return;
     setIsSubmitting(true);
@@ -110,20 +109,38 @@ export default function ReservationDetails({
     }
   };
 
+  // --- FUNCIÓN ELIMINAR CORREGIDA ---
   const handleDelete = async () => {
-    if (!confirm("¿Eliminar permanentemente esta reserva?")) return;
-    setIsSubmitting(true);
-    const groupId = data.appointment_id;
-    const { error } = await supabase
-      .from("appointments")
-      .delete()
-      .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointmentData.id}`);
+    if (!confirm("⚠️ ¿Eliminar permanentemente esta reserva? Esta acción no se puede deshacer.")) return;
     
-    if (!error) {
-      onSuccess?.();
-      closeReservationDrawer();
+    setIsSubmitting(true);
+    try {
+      const groupId = data.appointment_id;
+      
+      // Creamos la consulta base
+      let query = supabase.from("appointments").delete();
+      
+      if (groupId) {
+        // Si hay un ID de grupo, borramos todos los servicios de esa reserva
+        query = query.eq("appointment_id", groupId);
+      } else {
+        // Si no hay grupo, borramos solo este registro por ID
+        query = query.eq("id", appointmentData.id);
+      }
+
+      const { error } = await query;
+
+      if (error) throw error;
+
+      // Si todo sale bien
+      onSuccess?.(); // Refresca la agenda principal
+      closeReservationDrawer(); // Cierra el drawer
+    } catch (error: any) {
+      console.error("Error al eliminar:", error);
+      alert("No se pudo eliminar la reserva: " + (error.message || "Error de conexión"));
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (
@@ -207,7 +224,6 @@ export default function ReservationDetails({
       <div className="mt-auto pt-6">
         <div className="flex flex-col gap-3">
           <div className="flex gap-2">
-            {/* BOTÓN VOLVER: Solo aparece si estamos en modo edición de precios (Cobrar) */}
             {isEditingPrices && !isPaid && (
               <button
                 type="button"
@@ -248,10 +264,11 @@ export default function ReservationDetails({
             >
               <Ban size={16} /> Cancelar Cita
             </button>
+            
             <button
               onClick={handleDelete}
               disabled={isSubmitting}
-              className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+              className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
             >
               <Trash2 size={20} />
             </button>
