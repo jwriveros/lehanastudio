@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useUIStore } from "@/lib/uiStore";
 import { format } from "date-fns";
@@ -29,6 +30,7 @@ export default function ReservationDetails({
   onEdit,
   onSuccess,
 }: ReservationDetailsProps) {
+  const router = useRouter();
   const closeReservationDrawer = useUIStore((s) => s.closeReservationDrawer);
   const [associatedServices, setAssociatedServices] = useState<any[]>([]);
   const [isEditingPrices, setIsEditingPrices] = useState(false);
@@ -134,6 +136,7 @@ export default function ReservationDetails({
 
       // Si todo sale bien
       onSuccess?.(); // Refresca la agenda principal
+      router.refresh();
       closeReservationDrawer(); // Cierra el drawer
     } catch (error: any) {
       console.error("Error al eliminar:", error);
