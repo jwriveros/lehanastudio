@@ -4,11 +4,15 @@ import { supabaseAdmin } from "@/lib/supabaseClient";
 export async function POST(request: Request) {
     try {
         const payload = await request.json();
-        const { appointmentId } = payload; 
+        // 1. Extraemos el ID y el arreglo de actualizaciones de precios
+        const { appointmentId, serviceUpdates } = payload; 
 
-        if (!supabaseAdmin) {
+        // ASIGNACIÓN LOCAL PARA TS NARROWING
+        const adminClient = supabaseAdmin;
+
+        if (!adminClient) {
             return NextResponse.json({
-                error: "Error de Configuración: La clave SUPABASE_SERVICE_ROLE_KEY no está configurada o es inválida."
+                error: "Error de Configuración: La clave SUPABASE_SERVICE_ROLE_KEY no está configurada."
             }, { status: 500 });
         }
 
@@ -16,54 +20,54 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Falta 'appointmentId' en el payload." }, { status: 400 });
         }
 
-        // 1. Buscamos la cita para verificar si pertenece a un grupo
-        const { data: current, error: fetchError } = await supabaseAdmin
-            .from("appointments")
-            .select("appointment_id, cliente, celular, servicio")
-            .eq("id", appointmentId)
-            .single();
+        // 2. Si vienen actualizaciones de precios, las procesamos una por una usando adminClient
+        if (serviceUpdates && Array.isArray(serviceUpdates)) {
+            const updatePromises = serviceUpdates.map(item => 
+                adminClient
+                    .from("appointments")
+                    .update({ 
+                        price: Number(item.price), 
+                        estado: "Cita pagada",
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq("id", item.id)
+            );
+            
+            const results = await Promise.all(updatePromises);
+            const errors = results.filter(r => r.error);
+            
+            if (errors.length > 0) {
+                console.error("Errores al actualizar precios:", errors);
+                return NextResponse.json({ error: "Error al actualizar algunos precios." }, { status: 500 });
+            }
+        } else {
+            // Lógica de respaldo: Si no hay lista de precios, buscamos la cita para el grupo
+            const { data: current } = await adminClient
+                .from("appointments")
+                .select("appointment_id")
+                .eq("id", appointmentId)
+                .single();
 
-        if (fetchError || !current) {
-            return NextResponse.json({
-                error: "No se encontró la cita con el ID proporcionado.",
-                details: fetchError?.message,
-            }, { status: 404 });
+            const groupId = current?.appointment_id;
+
+            await adminClient
+                .from("appointments")
+                .update({ estado: "Cita pagada", updated_at: new Date().toISOString() })
+                .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointmentId}`);
         }
 
-        const groupId = current.appointment_id;
-
-        // 2. Definimos los datos de actualización
-        const updateData = {
-            estado: "Cita pagada", 
-            updated_at: new Date().toISOString()
-        };
-
-        // 3. Ejecutar la actualización (Grupo o Individual)
-        // Si hay groupId usamos ese filtro, si no, usamos el id individual (compatibilidad con filas viejas)
-        const { error: updateError, data: updatedRows } = await supabaseAdmin
+        // 3. Obtenemos las filas actualizadas para la notificación
+        const { data: updatedRows } = await adminClient
             .from("appointments")
-            .update(updateData)
-            .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointmentId}`)
-            .select();
+            .select("*")
+            .eq("id", appointmentId);
 
-        if (updateError) {
-            console.error("DB Error al marcar como pagada:", updateError);
-            return NextResponse.json({
-                error: "Error en la base de datos al actualizar.",
-                details: updateError.message,
-            }, { status: 500 });
-        }
-
-        // 4. Notificar a n8n para disparar la encuesta de WhatsApp
+        // 4. Notificar a n8n
         if (process.env.N8N_WEBHOOK_URL && updatedRows && updatedRows.length > 0) {
             try {
-                // Usamos los datos de la primera fila actualizada para la notificación
                 const mainAppt = updatedRows[0];
                 const rawPhone = String(mainAppt.celular || "").replace(/\D/g, "");
                 const normalizedPhone = rawPhone.startsWith("57") ? `+${rawPhone}` : `+57${rawPhone}`;
-
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); 
 
                 await fetch(process.env.N8N_WEBHOOK_URL, {
                     method: "POST",
@@ -76,18 +80,13 @@ export async function POST(request: Request) {
                         servicio: mainAppt.servicio,
                         groupId: mainAppt.appointment_id
                     }),
-                    signal: controller.signal
                 });
-                clearTimeout(timeoutId);
             } catch (webhookError) {
                 console.error("⚠️ Webhook n8n falló, pero el pago se registró:", webhookError);
             }
         }
 
-        return NextResponse.json({ 
-            success: true, 
-            updatedCount: updatedRows?.length || 0 
-        });
+        return NextResponse.json({ success: true });
 
     } catch (e: any) {
         console.error("API Processing Error:", e);

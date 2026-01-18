@@ -43,13 +43,23 @@ export default function ReservationDetails({
   useEffect(() => {
     async function fetchGroup() {
       if (!appointmentData?.id) return;
+      
       const groupId = data.appointment_id;
-      const { data: list } = await supabase
-        .from("appointments")
-        .select("*")
-        .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointmentData.id}`)
-        .order("id", { ascending: true });
-      if (list) setAssociatedServices(list);
+      let query = supabase.from("appointments").select("*");
+      
+      if (groupId) {
+        query = query.eq("appointment_id", groupId);
+      } else {
+        query = query.eq("id", appointmentData.id);
+      }
+
+      const { data: list, error } = await query.order("id", { ascending: true });
+      
+      if (error) {
+        console.error("Error al cargar servicios asociados:", error);
+      } else if (list) {
+        setAssociatedServices(list);
+      }
     }
     fetchGroup();
   }, [appointmentData, data.appointment_id]);
@@ -59,12 +69,20 @@ export default function ReservationDetails({
   const handleTogglePayment = async () => {
     if (isPaid) {
       setIsSubmitting(true);
-      await fetch("/api/bookings/unpay", { 
-        method: "POST", 
-        body: JSON.stringify({ appointmentId: appointmentData.id }) 
-      });
-      onSuccess?.();
-      closeReservationDrawer();
+      try {
+        await fetch("/api/bookings/unpay", { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ appointmentId: appointmentData.id }) 
+        });
+        onSuccess?.();
+        router.refresh();
+        closeReservationDrawer();
+      } catch (err) {
+        alert("Error al anular el pago");
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
 
@@ -75,7 +93,7 @@ export default function ReservationDetails({
 
     setIsSubmitting(true);
     try {
-      await fetch("/api/bookings/mark-as-paid", {
+      const res = await fetch("/api/bookings/mark-as-paid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -83,10 +101,14 @@ export default function ReservationDetails({
           serviceUpdates: associatedServices.map(s => ({ id: s.id, price: Number(s.price) }))
         }),
       });
+      
+      if (!res.ok) throw new Error();
+      
       onSuccess?.();
+      router.refresh();
       closeReservationDrawer();
     } catch (error) {
-      alert("Error en el pago");
+      alert("Error al registrar el pago");
     } finally {
       setIsSubmitting(false);
     }
@@ -103,6 +125,7 @@ export default function ReservationDetails({
       });
       if (!res.ok) throw new Error();
       onSuccess?.();
+      router.refresh();
       closeReservationDrawer();
     } catch (error) {
       alert("Error al cancelar");
@@ -111,36 +134,23 @@ export default function ReservationDetails({
     }
   };
 
-  // --- FUNCIÓN ELIMINAR CORREGIDA ---
   const handleDelete = async () => {
     if (!confirm("⚠️ ¿Eliminar permanentemente esta reserva? Esta acción no se puede deshacer.")) return;
-    
     setIsSubmitting(true);
     try {
       const groupId = data.appointment_id;
-      
-      // Creamos la consulta base
       let query = supabase.from("appointments").delete();
-      
-      if (groupId) {
-        // Si hay un ID de grupo, borramos todos los servicios de esa reserva
-        query = query.eq("appointment_id", groupId);
-      } else {
-        // Si no hay grupo, borramos solo este registro por ID
-        query = query.eq("id", appointmentData.id);
-      }
+      if (groupId) query = query.eq("appointment_id", groupId);
+      else query = query.eq("id", appointmentData.id);
 
       const { error } = await query;
-
       if (error) throw error;
 
-      // Si todo sale bien
-      onSuccess?.(); // Refresca la agenda principal
+      onSuccess?.();
       router.refresh();
-      closeReservationDrawer(); // Cierra el drawer
+      closeReservationDrawer();
     } catch (error: any) {
-      console.error("Error al eliminar:", error);
-      alert("No se pudo eliminar la reserva: " + (error.message || "Error de conexión"));
+      alert("Error al eliminar: " + error.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -202,28 +212,32 @@ export default function ReservationDetails({
                 </div>
               </div>
               {isEditingPrices ? (
-                <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-24 shrink-0">
+                <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-28 shrink-0">
                   <span className="text-[10px] font-bold mr-1 text-zinc-400">$</span>
                   <input 
                     type="number" 
-                    value={s.price}
-                    onChange={(e) => setAssociatedServices(prev => prev.map(item => item.id === s.id ? {...item, price: e.target.value} : item))}
+                    value={s.price || 0}
+                    onChange={(e) => setAssociatedServices(prev => 
+                      prev.map(item => item.id === s.id ? {...item, price: e.target.value} : item)
+                    )}
                     className="w-full bg-transparent text-xs font-black outline-none text-zinc-800 dark:text-zinc-100"
                   />
                 </div>
               ) : (
-                <span className="text-sm font-black text-indigo-600 shrink-0">${Number(s.price).toLocaleString()}</span>
+                <span className="text-sm font-black text-indigo-600 shrink-0">
+                  ${Number(s.price || 0).toLocaleString("es-CO")}
+                </span>
               )}
             </div>
           ))}
           <div className="pt-3 border-t border-dashed flex justify-between items-center">
             <span className="text-xs font-black uppercase text-zinc-500">Total a pagar</span>
-            <span className="text-xl font-black text-emerald-600">${currentTotal.toLocaleString()}</span>
+            <span className="text-xl font-black text-emerald-600">${currentTotal.toLocaleString("es-CO")}</span>
           </div>
         </div>
       </div>
 
-      {/* ACCIONES DEL PIE */}
+      {/* ACCIONES DEL PIE RESTAURADAS */}
       <div className="mt-auto pt-6">
         <div className="flex flex-col gap-3">
           <div className="flex gap-2">
@@ -232,7 +246,6 @@ export default function ReservationDetails({
                 type="button"
                 onClick={() => setIsEditingPrices(false)}
                 className="px-4 py-3 bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 rounded-xl hover:bg-zinc-200 transition-all shadow-sm active:scale-[0.95]"
-                title="Volver"
               >
                 <ArrowLeft size={20} />
               </button>
@@ -240,10 +253,10 @@ export default function ReservationDetails({
 
             <button
               onClick={handleTogglePayment}
-              disabled={isSubmitting}
+              disabled={isSubmitting || associatedServices.length === 0}
               className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white transition-all shadow-md active:scale-[0.98] ${
                 isPaid ? "bg-red-500 hover:bg-red-600" : "bg-emerald-500 hover:bg-emerald-600"
-              }`}
+              } disabled:opacity-50`}
             >
               {isPaid ? <Undo2 size={18} /> : <DollarSign size={18} />}
               {isPaid ? "Anular Pago" : isEditingPrices ? "Confirmar Pago" : "Cobrar Cita"}
@@ -263,7 +276,7 @@ export default function ReservationDetails({
             <button
               onClick={handleCancelAction}
               disabled={isSubmitting || isPaid || isCancelled}
-              className="flex-1 flex items-center justify-center gap-2 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-bold text-zinc-600 dark:text-zinc-400 disabled:opacity-50"
+              className="flex-1 flex items-center justify-center gap-2 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-bold text-zinc-600 dark:text-zinc-400 disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-zinc-800"
             >
               <Ban size={16} /> Cancelar Cita
             </button>
@@ -272,6 +285,7 @@ export default function ReservationDetails({
               onClick={handleDelete}
               disabled={isSubmitting}
               className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              title="Eliminar reserva"
             >
               <Trash2 size={20} />
             </button>
