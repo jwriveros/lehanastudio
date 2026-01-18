@@ -24,10 +24,14 @@ const ReservationDrawer = ({
       setViewMode("edit");
       return;
     }
-    if (appointmentData?.id) {
-      setViewMode("edit"); // abrir directo en edición
+    // Si es una cita nueva ("new") ir a edit, si ya existe ir a view (lectura)
+    if (appointmentData?.id && appointmentData.id !== "new") {
+      setViewMode("view"); 
+    } else {
+      setViewMode("edit");
     }
   }, [appointmentData, isOpen]);
+  
   const handleEdit = useCallback(() => {
     setViewMode("edit");
   }, []);

@@ -198,11 +198,14 @@ export default function ReservationForm({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [saveClient, setSaveClient] = useState(false);
-  const [notifyOnEdit, setNotifyOnEdit] = useState(true);
+  const [notifyOnEdit, setNotifyOnEdit] = useState(false);
   const [specialists, setSpecialists] = useState<SpecialistItem[]>([]);
   const [loadingSpecialists, setLoadingSpecialists] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [activeTab, setActiveTab] = useState<'reservas' | 'fichas'>('fichas');
+
+  // SOLUCIÓN: Estado para rastrear servicios eliminados de la DB
+  const [deletedLineIds, setDeletedLineIds] = useState<number[]>([]);
 
   /* =========================
       CARGAR ESPECIALISTAS
@@ -241,7 +244,6 @@ export default function ReservationForm({
 
     const raw = appointmentData.raw ?? {};
 
-    // CASO: Clic en slot vacío (Cita Nueva)
     if (appointmentData.id === "new") {
       setForm({
         ...EMPTY_FORM,
@@ -256,7 +258,6 @@ export default function ReservationForm({
       return;
     }
 
-    // CASO: Edición de cita existente
     const loadData = async () => {
         const groupId = raw.appointment_id;
         let linesData: ServiceLine[] = [];
@@ -306,6 +307,7 @@ export default function ReservationForm({
 
     loadData();
     setSaveClient(false);
+    setDeletedLineIds([]); // Reiniciar al cargar nueva cita
   }, [appointmentData]);
 
   /* =========================
@@ -339,10 +341,19 @@ export default function ReservationForm({
     });
   };
 
-  const removeLine = (index: number) =>
-    setForm((prev) =>
-      prev.lines.length <= 1 ? prev : { ...prev, lines: prev.lines.filter((_, i) => i !== index) }
-    );
+  const removeLine = (index: number) => {
+    setForm((prev) => {
+      const lineToRemove = prev.lines[index];
+      // SOLUCIÓN: Si la línea tiene ID, marcar para eliminar de la DB al guardar
+      if (lineToRemove.id) {
+        setDeletedLineIds((prevIds: number[]) => [...prevIds, lineToRemove.id!]);
+      }
+      
+      return prev.lines.length <= 1 
+        ? prev 
+        : { ...prev, lines: prev.lines.filter((_, i) => i !== index) };
+    });
+  };
 
   const totalEstimado = useMemo(() => {
     const sum = form.lines.reduce((acc, l) => acc + Number(l.precio || 0), 0);
@@ -383,6 +394,15 @@ export default function ReservationForm({
       }
 
       if (isEditing) {
+        // SOLUCIÓN: Eliminar servicios de la DB que fueron quitados del formulario
+        if (deletedLineIds.length > 0) {
+          const { error: delError } = await supabase
+            .from("appointments")
+            .delete()
+            .in("id", deletedLineIds);
+          if (delError) throw delError;
+        }
+
         const updatePromises = lines.map((l) => {
           const updates = {
             cliente: form.cliente.trim(),
@@ -392,7 +412,7 @@ export default function ReservationForm({
             servicio: l.servicio,
             especialista: l.especialista,
             duration: l.duracion,
-            price: l.precio,
+            price: Number(l.precio), // SOLUCIÓN: Asegurar persistencia del precio
             appointment_at: localDateTimeToUTC(l.appointment_at),
             estado: form.estado,
           };
@@ -412,7 +432,6 @@ export default function ReservationForm({
         if (notifyOnEdit) {
             try {
               const l = lines[0];
-              const dateObj = new Date(l.appointment_at);
               await fetch("/api/bookings/notify-update", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -425,6 +444,8 @@ export default function ReservationForm({
                   servicio: l.servicio,
                   especialista: l.especialista,
                   duration: l.duracion,
+                  price: l.precio, // SOLUCIÓN: Enviar precio en notificación
+                  total: totalEstimado, // SOLUCIÓN: Enviar total en notificación
                   appointment_at: localDateTimeToUTC(l.appointment_at),
                   estado: form.estado
                 }),

@@ -11,7 +11,7 @@ import AgendaSidebar from "./AgendaSidebar";
 import WeeklyAgendaGrid from "./WeeklyAgendaGrid";
 import MonthlyAgendaGrid from "./MonthlyAgendaGrid";
 import DailyAgendaGrid from "./DailyAgendaGrid";
-import AppointmentDetailsModal from "./AppointmentDetailsModal";
+// Se eliminó AppointmentDetailsModal ya que ahora usaremos el Drawer para todo
 import ReservationDrawer from "@/components/reservations/ReservationDrawer";
 import { useUIStore } from "@/lib/uiStore";
 import { CalendarAppointment, AgendaAppointmentDB } from "./types";
@@ -68,7 +68,7 @@ export default function AgendaLayout() {
   const [specialistFilter, setSpecialistFilter] = useState<string[]>([]);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   
-  const [selectedAppointment, setSelectedAppointment] = useState<CalendarAppointment | null>(null);
+  // Se eliminó el estado selectedAppointment
   const isReservationDrawerOpen = useUIStore((state) => state.isReservationDrawerOpen);
   const closeReservationDrawer = useUIStore((state) => state.closeReservationDrawer);
   const openReservationDrawer = useUIStore((state) => state.openReservationDrawer);
@@ -118,76 +118,39 @@ export default function AgendaLayout() {
   }, [fetchAppointments]);
 
   /* =========================
-      HANDLERS (Agrupados)
+      HANDLERS
   ========================= */
-  const handleCancelAppointment = async (appointment: CalendarAppointment) => {
-    if (!confirm("¿Deseas cancelar esta reserva? (Se cancelarán todos los servicios asociados)")) return;
-    const groupId = (appointment.raw as any).appointment_id;
-
-    const { error } = await supabase
-      .from("appointments")
-      .update({ estado: "Cita cancelada" })
-      .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointment.id}`);
-
-    if (error) { alert("Error al cancelar"); return; }
-    setSelectedAppointment(null);
-    fetchAppointments();
-  };
-
-  const handleDeleteAppointment = async (appointment: CalendarAppointment) => {
-    if (!confirm("⚠️ ¿Eliminar permanentemente toda la reserva?")) return;
-    const groupId = (appointment.raw as any).appointment_id;
-
-    const { error } = await supabase
-      .from("appointments")
-      .delete()
-      .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointment.id}`);
-
-    if (error) { alert("Error al eliminar"); return; }
-    setSelectedAppointment(null);
-    fetchAppointments();
-  };
-
-  const handleEditAppointment = (appointment: CalendarAppointment) => {
-    setSelectedAppointment(null);
+  
+  // Este es el nuevo handler que abre el drawer directamente al hacer clic en una reserva
+  const handleViewAppointment = (appointment: CalendarAppointment) => {
     setEditingAppointment(appointment);
     openReservationDrawer();
   };
 
-  // components/agenda/AgendaLayout.tsx
-
-const handleCreateFromSlot = ({
-  especialista,
-  start,
-}: {
-  especialista: string;
-  start: Date;
-}) => {
-  setEditingAppointment({
-    id: "new",
-    title: "",
+  const handleCreateFromSlot = ({
+    especialista,
     start,
-    end: new Date(start.getTime() + 60 * 60000),
-    raw: { 
-      especialista, 
-      // 🔥 CAMBIO CLAVE: Enviamos 'start' directamente (es un objeto Date)
-      // NO uses start.toISOString(), eso es lo que causa el desfase de 5 horas.
-      appointment_at_local: start 
-    },
-  });
-  openReservationDrawer();
-};
-
-  const handleMarkAsPaid = () => {
-    setSelectedAppointment(null);
-    fetchAppointments();
+  }: {
+    especialista: string;
+    start: Date;
+  }) => {
+    setEditingAppointment({
+      id: "new",
+      title: "",
+      start,
+      end: new Date(start.getTime() + 60 * 60000),
+      raw: { 
+        especialista, 
+        appointment_at_local: start 
+      },
+    });
+    openReservationDrawer();
   };
 
   /* =========================
       MAP CALENDAR (Cálculo de Totales)
   ========================= */
   const calendarAppointments = useMemo(() => {
-    // Calcular totales por grupo para mostrar en las tarjetas
     const groupTotals: Record<string, number> = {};
     appointments.forEach(a => {
       if (a.appointment_id) {
@@ -206,7 +169,6 @@ const handleCreateFromSlot = ({
         const start = parseLocalDate(a.appointment_at);
         const end = new Date(start.getTime() + Number(a.duration || 60) * 60000);
         
-        // El total es el del grupo si existe, si no, el precio individual
         const totalCalculado = a.appointment_id ? groupTotals[a.appointment_id] : Number(a.price || 0);
 
         return {
@@ -253,26 +215,27 @@ const handleCreateFromSlot = ({
           ) : (
             <div className="h-full w-full">
               {viewMode === "day" ? (
-                <DailyAgendaGrid appointments={calendarAppointments} currentDate={currentDate} onViewDetails={setSelectedAppointment} onCreateFromSlot={handleCreateFromSlot} />
+                <DailyAgendaGrid 
+                  appointments={calendarAppointments} 
+                  currentDate={currentDate} 
+                  onViewDetails={handleViewAppointment} // Redirigido al Drawer
+                  onCreateFromSlot={handleCreateFromSlot} 
+                />
               ) : viewMode === "month" ? (
                 <MonthlyAgendaGrid appointments={calendarAppointments} currentDate={currentDate} />
               ) : (
-                <WeeklyAgendaGrid appointments={calendarAppointments} currentDate={currentDate} onViewDetails={setSelectedAppointment} onCreateFromSlot={handleCreateFromSlot} />
+                <WeeklyAgendaGrid 
+                  appointments={calendarAppointments} 
+                  currentDate={currentDate} 
+                  onViewDetails={handleViewAppointment} // Redirigido al Drawer
+                  onCreateFromSlot={handleCreateFromSlot} 
+                />
               )}
             </div>
           )
         }
       />
-      {selectedAppointment && (
-        <AppointmentDetailsModal
-          appointment={selectedAppointment}
-          onClose={() => setSelectedAppointment(null)}
-          onCancel={handleCancelAppointment}
-          onDelete={handleDeleteAppointment}
-          onEdit={handleEditAppointment}
-          onMarkAsPaid={handleMarkAsPaid}
-        />
-      )}
+
       <ReservationDrawer
         isOpen={isReservationDrawerOpen}
         onClose={() => { closeReservationDrawer(); setEditingAppointment(null); }}
