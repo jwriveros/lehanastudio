@@ -162,34 +162,26 @@ const EMPTY_FORM: FormState = {
 function toDatetimeLocal(dateValue: any) {
   if (!dateValue) return "";
 
-  let date: Date;
-
-  // Caso 1: Ya es un objeto Date
+  // 1. Si es un objeto Date (viene de un clic en un espacio vacío de la agenda)
+  // Aquí usamos los métodos locales porque la agenda ya nos da la hora local del clic.
   if (dateValue instanceof Date) {
-    date = dateValue;
-  } else {
-    const dateString = String(dateValue);
-
-    // Caso 2: El string tiene 'Z' o '+'. Es una fecha con zona horaria (UTC).
-    // IMPORTANTE: Al crear un new Date(), el navegador convierte 19:00Z a 14:00 Local automáticamente.
-    if (dateString.includes("Z") || dateString.includes("+")) {
-      date = new Date(dateString);
-    } 
-    else {
-      // Caso 3: String plano sin zona horaria (usamos tu Regex literal)
-      const match = dateString.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-      if (match) {
-        const [_, y, m, d, hh, mm] = match;
-        return `${y}-${m}-${d}T${hh}:${mm}`;
-      }
-      return dateString.substring(0, 16).replace(" ", "T");
-    }
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${dateValue.getFullYear()}-${pad(dateValue.getMonth() + 1)}-${pad(dateValue.getDate())}T${pad(dateValue.getHours())}:${pad(dateValue.getMinutes())}`;
   }
 
-  // Formateamos el objeto Date a formato local (YYYY-MM-DDTHH:mm)
-  // Usamos métodos locales (getFullYear, getHours) para ver la hora de Colombia
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  // 2. Si es un string (Viene de Supabase como '2026-01-18T19:00:00.000Z')
+  // Usamos Regex para extraer los números literalmente y descartar el resto.
+  const dateString = String(dateValue);
+  const match = dateString.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  
+  if (match) {
+    const [_, y, m, d, hh, mm] = match;
+    // Retornamos solo los números. El input datetime-local verá '19:00' sin importar la 'Z'.
+    return `${y}-${m}-${d}T${hh}:${mm}`;
+  }
+
+  // Fallback simple: tomar los primeros 16 caracteres (YYYY-MM-DDTHH:mm)
+  return dateString.substring(0, 16).replace(" ", "T");
 }
 
 function localDateTimeToUTC(localDateTime: string) {
@@ -397,7 +389,7 @@ export default function ReservationForm({
             especialista: l.especialista,
             duration: l.duracion,
             price: Number(l.precio), // GUARDAR PRECIO MANUAL
-            appointment_at: localDateTimeToUTC(l.appointment_at),
+            appointment_at: l.appointment_at,
             estado: form.estado,
           };
 
