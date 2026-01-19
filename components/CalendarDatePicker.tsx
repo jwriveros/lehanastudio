@@ -63,8 +63,10 @@ export default function CalendarDatePicker({ selectedDate, onDateChange }: DateP
                 day_today: "text-indigo-600 font-black ring-1 ring-indigo-600/30 rounded-xl",
               }}
               components={{
-                IconLeft: () => <ChevronLeft size={18} />,
-                IconRight: () => <ChevronRight size={18} />,
+                Chevron: ({ orientation, ...props }) => {
+                  const Icon = orientation === 'left' ? ChevronLeft : ChevronRight;
+                  return <Icon className="h-4 w-4" {...props} />;
+                }
               }}
             />
           </div>
