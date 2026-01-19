@@ -91,7 +91,7 @@ export default function DailyPaymentsReport() {
         const porcentaje = sp.excepciones_comision?.[cita.servicio] ?? sp.comision_base ?? 50;
         const valorCita = Number(cita.price) || 0;
         const gananciaSp = (valorCita * porcentaje) / 100;
-        return { cliente: cita.cliente, servicio: cita.servicio, subtotal: valorCita, comisionEfectiva: gananciaSp, porcentaje };
+        return { fecha: cita.appointment_at, cliente: cita.cliente, servicio: cita.servicio, subtotal: valorCita, comisionEfectiva: gananciaSp, porcentaje };
       });
 
       return {
@@ -346,6 +346,7 @@ export default function DailyPaymentsReport() {
                   <table className="w-full text-left text-sm mt-10">
                     <thead>
                       <tr className="border-b-2 border-zinc-100 text-zinc-400 font-bold text-[9px] uppercase tracking-[0.2em]">
+                        <th className="py-5 px-4">Fecha</th>
                         <th className="py-5 px-4">Servicio</th>
                         <th className="py-5 px-4">Cliente</th>
                         <th className="py-5 px-4 text-right">Precio</th>
@@ -355,6 +356,9 @@ export default function DailyPaymentsReport() {
                     <tbody className="divide-y divide-zinc-50">
                       {item.detalles.map((det: any, dIdx: number) => (
                         <tr key={dIdx}>
+                          <td className="py-6 px-4 text-zinc-500 font-medium">
+                            {det.fecha ? new Date(det.fecha).toLocaleDateString('es-CO') : '--'}
+                          </td>
                           <td className="py-6 px-4 font-bold text-zinc-800 text-base">{det.servicio}</td>
                           <td className="py-6 px-4 text-zinc-500 font-medium">{det.cliente}</td>
                           <td className="py-6 px-4 text-right text-zinc-400 font-medium tracking-tight">${det.subtotal.toLocaleString()}</td>
@@ -364,7 +368,7 @@ export default function DailyPaymentsReport() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t-4 border-zinc-900 bg-zinc-50/50">
-                        <td className="py-8 px-4 font-black text-zinc-900 text-xl uppercase" colSpan={2}>Totales Liquidación</td>
+                        <td className="py-8 px-4 font-black text-zinc-900 text-xl uppercase" colSpan={3}>Totales Liquidación</td>
                         <td className="py-8 px-4 text-right font-bold text-zinc-900 text-xl tabular-nums">${item.totalVentas.toLocaleString()}</td>
                         <td className="py-8 px-4 text-right font-black text-indigo-600 text-3xl tabular-nums">${item.totalAPagar.toLocaleString()}</td>
                       </tr>

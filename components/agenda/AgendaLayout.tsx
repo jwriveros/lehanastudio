@@ -1,7 +1,7 @@
 "use client";
 
 import { useAgendaCollapse } from "@/components/layout/AgendaCollapseContext";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 import AgendaShell from "./AgendaShell";
@@ -63,7 +63,8 @@ export default function AgendaLayout() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(normalizeLocalDate(new Date()));
-  
+
+  const calendarRef = useRef<any>(null);  
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [specialistFilter, setSpecialistFilter] = useState<string[]>([]);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
@@ -80,6 +81,17 @@ export default function AgendaLayout() {
     register(toggleSidebar);
     return () => register(null);
   }, [register]);
+
+  const handleDateChange = (date: Date) => {
+  // 1. Actualizamos el estado local para que el Header cambie el texto
+  setCurrentDate(date);
+
+  // 2. Si usas FullCalendar, le decimos que salte a esa fecha
+  if (calendarRef.current) {
+    const calendarApi = calendarRef.current.getApi();
+    calendarApi.gotoDate(date);
+  }
+};
 
   /* =========================
       FETCH (Con price y appointment_id)
@@ -206,6 +218,7 @@ export default function AgendaLayout() {
             setSpecialistFilter={setSpecialistFilter}
             serviceFilter={serviceFilter}
             setServiceFilter={setServiceFilter}
+            onDateChange={handleDateChange}
           />
         }
         sidebar={<AgendaSidebar collapsed={sidebarCollapsed} />}
