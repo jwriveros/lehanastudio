@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         const { error } = await supabaseAdmin 
             .from("chat_sessions")
             .update({
-                status: "resolved",
+                status: "new",
                 updated_at: new Date().toISOString()
             })
             // Mantenemos el OR clause para manejar inconsistencias de formato (+57 vs 57)
