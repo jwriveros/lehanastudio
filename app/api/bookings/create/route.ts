@@ -82,6 +82,7 @@ export async function POST(req: Request) {
           celular: isPrimary ? normalizedCelular : null,
           sede,
           cantidad: peopleCount,
+          price: s.price ?? 0,
           indicativo: isPrimary ? indicativo : null,
           is_primary_client: isPrimary,
           primary_client_name: cliente,
