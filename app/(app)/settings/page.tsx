@@ -114,19 +114,35 @@ export default function SettingsPage() {
   };
 
   const handleSaveOverride = async () => {
-    if (!selectedSpecId || !date) return;
-    setLoading(true);
-    const { error } = await supabase
-      .from("specialist_overrides")
-      .insert([{ specialist_id: selectedSpecId, date, type, start_time: startTime, end_time: endTime }]);
-    
-    if (!error) {
-      alert("Disponibilidad especial guardada");
-      setDate(getTodayStr());
-      reloadOverrides();
-    }
-    setLoading(false);
-  };
+  if (!selectedSpecId || !date) return;
+  
+  // 1. Buscamos el nombre de la especialista seleccionada
+  const specName = session?.role === "ADMIN" 
+    ? specialists.find(s => s.id === selectedSpecId)?.name 
+    : session?.name;
+
+  setLoading(true);
+  const { error } = await supabase
+    .from("specialist_overrides")
+    .insert([{ 
+      specialist_id: selectedSpecId, 
+      especialista: specName, // <-- Asegúrate de que el nombre de la columna sea exactamente este
+      date, 
+      type, 
+      start_time: startTime, 
+      end_time: endTime 
+    }]);
+  
+  if (!error) {
+    alert("Disponibilidad especial guardada correctamente");
+    setDate(getTodayStr());
+    reloadOverrides();
+  } else {
+    console.error("Error al guardar:", error);
+    alert("Error al guardar: " + error.message);
+  }
+  setLoading(false);
+};
 
   const deleteOverride = async (id: number) => {
     await supabase.from("specialist_overrides").delete().eq("id", id);
