@@ -56,6 +56,7 @@ type ServiceLine = {
   id?: number; 
   servicio: string;
   precio: number;
+  abono?: number;
   duracion: string;
   especialista: string;
   appointment_at: string;
@@ -139,6 +140,7 @@ const COUNTRIES = [
 const EMPTY_LINE: ServiceLine = {
   servicio: "",
   precio: 0,
+  abono: 0,
   duracion: "60",
   especialista: "",
   appointment_at: "",
@@ -214,7 +216,7 @@ export default function ReservationForm({
   useEffect(() => {
     let mounted = true;
     const run = async () => {
-      setLoadingSpecialists(true);
+      setLoadingSpecialists(true);  
       try {
         const { data, error } = await supabase
           .from("app_users")
@@ -268,11 +270,16 @@ export default function ReservationForm({
                 .order("appointment_at", { ascending: true });
             
             if (data && data.length > 0) {
-              console.log("4. Datos crudos de Supabase:", data.map(item => item.appointment_at));
+              console.log("2. DATO EDITAR (INDIVIDUAL):", {
+                id: data[0].id, // Cambiado de data.id a data[0].id
+                appointment_at_BD: data[0].appointment_at,
+                iso_string: new Date(data[0].appointment_at).toISOString()
+            });
                 linesData = data.map(l => ({
                     id: l.id,
                     servicio: l.servicio,
                     precio: Number(l.price || 0),
+                    abono: Number(l.abono || 0),
                     duracion: String(l.duration || "60"),
                     especialista: l.especialista,
                     appointment_at: toDatetimeLocal(l.appointment_at)
@@ -288,7 +295,7 @@ export default function ReservationForm({
                 duracion: String(raw.duration ?? "60"),
                 especialista: raw.especialista ?? "",
                 appointment_at: toDatetimeLocal(
-                    raw.appointment_at_local ?? raw.appointment_at ?? appointmentData.start
+                    raw.appointment_at ?? raw.appointment_at_local ?? appointmentData.start
                 ),
             }];
         }
@@ -389,7 +396,8 @@ export default function ReservationForm({
             especialista: l.especialista,
             duration: l.duracion,
             price: Number(l.precio), // GUARDAR PRECIO MANUAL
-            appointment_at: l.appointment_at,
+            abono: Number(l.abono),
+            appointment_at: localDateTimeToUTC(l.appointment_at),
             estado: form.estado,
           };
 
@@ -724,6 +732,19 @@ export default function ReservationForm({
                             />
                           </div>
                         </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Abono</label>
+                          <div className="group relative">
+                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-emerald-400" />
+                            <input
+                              type="number"
+                              value={Number(line.abono || 0)}
+                              onChange={(e) => updateLine(index, { abono: Number(e.target.value) })}
+                              className="w-full rounded-md border border-emerald-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-emerald-500 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-white font-bold"
+                              placeholder="¿Hizo abono?"
+                            />
+                          </div>
+                        </div>                       
                       </div>
                     </div>
                   </div>
