@@ -78,7 +78,8 @@ export async function POST(request: Request) {
                         customerName: mainAppt.cliente,
                         customerPhone: normalizedPhone,
                         servicio: mainAppt.servicio,
-                        groupId: mainAppt.appointment_id
+                        groupId: mainAppt.appointment_id,
+                        appointment_at: mainAppt.appointment_at,
                     }),
                 });
             } catch (webhookError) {
