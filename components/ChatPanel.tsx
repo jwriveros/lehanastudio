@@ -445,7 +445,7 @@ useEffect(() => {
                   tab === t ? "bg-indigo-600 text-white shadow-sm" : "border border-gray-200 bg-white text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                 }`}
               >
-                {t === "active" ? "Activos" : t === "reservations" ? "Reservas" : "Finalizados"}
+                {t === "active" ? "Por atender" : t === "reservations" ? "Bot" : "Resueltos"}
               </button>
             ))}
           </div>
