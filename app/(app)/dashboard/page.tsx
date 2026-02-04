@@ -9,6 +9,7 @@ import {
   LayoutDashboard, Zap, PieChart, Calendar, 
   TrendingUp, Target, Activity, Users, AlertCircle, X, UserCheck, Phone, Trophy, UserPlus, Download, UserMinus
 } from "lucide-react";
+import VentasReport from "@/components/VentasReport";
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -168,6 +169,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </header>
+      <section className="grid grid-cols-1 gap-6">
+        <VentasReport />
+      </section>
 
       {/* KPI CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
