@@ -54,23 +54,25 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
   const [fotos, setFotos] = useState<FotoFicha[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  
+  const [editingFichaId, setEditingFichaId] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
 
-  // --- FUNCIÓN PARA FORMATEAR HORA 12H SIN CONVERSIÓN DE TIMEZONE ---
+  useEffect(() => {
+    setIsClient(true);
+    loadData();
+  }, [celular]);
+
   const formatTime12h = (dateStr: string) => {
     if (!dateStr) return "--:--";
     try {
-      // Extraemos la parte del tiempo del string "YYYY-MM-DD HH:MM:SS..."
-      // Dividimos por espacio o por la 'T' si existe
       const timePart = dateStr.includes(' ') ? dateStr.split(' ')[1] : dateStr.split('T')[1];
       if (!timePart) return "--:--";
-
       const [hours, minutes] = timePart.split(':');
       let h = parseInt(hours);
       const ampm = h >= 12 ? 'PM' : 'AM';
-      
       h = h % 12;
-      h = h ? h : 12; // Si es 0, poner 12
-      
+      h = h ? h : 12;
       return `${h}:${minutes} ${ampm}`;
     } catch (e) {
       return "--:--";
@@ -79,7 +81,7 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
 
   const formatDateShort = (dateStr: string) => {
     if (!dateStr) return "";
-    const datePart = dateStr.split(/[ T]/)[0]; // Extrae YYYY-MM-DD
+    const datePart = dateStr.split(/[ T]/)[0];
     const [year, month, day] = datePart.split('-');
     const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
     return `${day} ${months[parseInt(month) - 1]}`;
@@ -110,9 +112,18 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, [celular]);
+  const handleDeleteFicha = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // Evita que se abra el editor al hacer clic en borrar
+    if (!confirm("¿Estás seguro de que deseas eliminar esta ficha técnica?")) return;
+    
+    try {
+      const { error } = await supabase.from('fichas_tecnicas').delete().eq('id', id);
+      if (error) throw error;
+      setHistorialFichas(prev => prev.filter(f => f.id !== id));
+    } catch (err: any) {
+      alert("Error al eliminar: " + err.message);
+    }
+  };
 
   const handleCapturePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -131,23 +142,22 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
   const handleSave = async () => {
     if (!job.trim()) return alert("Por favor indica el trabajo realizado.");
     setLoading(true);
+    
     try {
       const fotosFinales = [];
       for (const foto of fotos) {
         if (foto.file) {
           const fileExt = foto.file.name.split('.').pop();
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-          const path = `${celular}/${fileName}`;
-
+          const fileName = `${celular}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
           const { error: uploadError } = await supabase.storage
             .from('fichas-clientes')
-            .upload(path, foto.file);
+            .upload(fileName, foto.file);
 
           if (uploadError) throw uploadError;
 
           const { data: urlData } = supabase.storage
             .from('fichas-clientes')
-            .getPublicUrl(path);
+            .getPublicUrl(fileName);
 
           fotosFinales.push({ 
             url: urlData.publicUrl, 
@@ -159,15 +169,23 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
         }
       }
 
-      const { error } = await supabase.from('fichas_tecnicas').insert({
-        celular: Number(celular),
-        job,
-        observaciones,
-        fotos: fotosFinales
-      });
+      if (editingFichaId) {
+        const { error } = await supabase
+          .from('fichas_tecnicas')
+          .update({ job, observaciones, fotos: fotosFinales })
+          .eq('id', editingFichaId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('fichas_tecnicas').insert({
+          celular: Number(celular),
+          job,
+          observaciones,
+          fotos: fotosFinales
+        });
+        if (error) throw error;
+      }
 
-      if (error) throw error;
-      alert("✅ Ficha técnica guardada correctamente.");
+      setEditingFichaId(null);
       setView('list');
       loadData();
     } catch (err: any) {
@@ -183,16 +201,16 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
     </div>
   );
 
-  /* VISTA DE LISTADO */
   if (view === 'list') {
     return (
       <div className="space-y-4">
+        {/* SOLO DOS BOTONES DE NAVEGACIÓN */}
         <div className="flex p-1 bg-gray-100 dark:bg-zinc-800 rounded-xl">
           <button 
             onClick={() => setTab('fichas')}
             className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${tab === 'fichas' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600' : 'text-gray-500'}`}
           >
-            <ClipboardList size={14} /> FICHA TÉCNICA
+            <ClipboardList size={14} /> FICHAS TÉCNICAS
           </button>
           <button 
             onClick={() => setTab('citas')}
@@ -205,7 +223,7 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
         {tab === 'fichas' && (
           <div className="space-y-3">
             <button 
-              onClick={() => { setJob(""); setObservaciones(""); setFotos([]); setView('edit'); }} 
+              onClick={() => { setEditingFichaId(null); setJob(""); setObservaciones(""); setFotos([]); setView('edit'); }} 
               className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md hover:bg-indigo-700 transition-all"
             >
               <Plus size={20} /> CREAR NUEVA FICHA
@@ -213,20 +231,28 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
             
             {historialFichas.length === 0 ? (
               <div className="text-center py-10 border-2 border-dashed border-gray-200 dark:border-zinc-800 rounded-2xl">
-                <p className="text-gray-500 text-sm">No hay fichas técnicas para este cliente.</p>
+                <p className="text-gray-500 text-sm">No hay fichas técnicas registradas.</p>
               </div>
             ) : (
               historialFichas.map(f => (
                 <div 
                   key={f.id} 
-                  onClick={() => { setJob(f.job); setObservaciones(f.observaciones); setFotos(f.fotos); setView('edit'); }} 
-                  className="p-4 border border-gray-100 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 shadow-sm cursor-pointer hover:border-indigo-500 transition-all group"
+                  onClick={() => { setEditingFichaId(f.id); setJob(f.job); setObservaciones(f.observaciones); setFotos(f.fotos); setView('edit'); }} 
+                  className="p-4 border border-gray-100 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-900 shadow-sm cursor-pointer hover:border-indigo-500 transition-all group relative"
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline">{f.job}</h4>
-                    <span className="text-[10px] bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded text-gray-500">
-                      {formatDateShort(f.created_at)}
-                    </span>
+                    <h4 className="font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline pr-8">{f.job}</h4>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded text-gray-500">
+                          {isClient && formatDateShort(f.created_at)}
+                        </span>
+                        <button 
+                          onClick={(e) => handleDeleteFicha(e, f.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                    </div>
                   </div>
                   <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">"{f.observaciones}"</p>
                 </div>
@@ -235,12 +261,11 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
           </div>
         )}
 
-        {/* CONTENIDO PESTAÑA HISTORIAL CITAS CORREGIDO */}
         {tab === 'citas' && (
           <div className="space-y-2">
             {historialCitas.length === 0 ? (
               <div className="text-center py-10 border-2 border-dashed border-gray-200 dark:border-zinc-800 rounded-2xl">
-                <p className="text-gray-500 text-sm">Este cliente no tiene citas registradas.</p>
+                <p className="text-gray-500 text-sm">No hay citas registradas.</p>
               </div>
             ) : (
               historialCitas.map(c => (
@@ -249,11 +274,11 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
                     <p className="text-xs font-bold dark:text-white uppercase truncate pr-4">{c.servicio}</p>
                     <div className="flex items-center gap-3 mt-1">
                       <p className="text-[10px] text-zinc-500 font-medium bg-white dark:bg-zinc-800 px-2 py-0.5 rounded border border-gray-100 dark:border-zinc-700">
-                        {formatDateShort(c.appointment_at)}
+                        {isClient && formatDateShort(c.appointment_at)}
                       </p>
                       <div className="flex items-center gap-1 text-[10px] text-indigo-500 font-bold">
                         <Clock size={12} />
-                        {formatTime12h(c.appointment_at)}
+                        {isClient && formatTime12h(c.appointment_at)}
                       </div>
                     </div>
                     <p className="text-[9px] text-gray-400 mt-1">Especialista: <span className="text-zinc-600 dark:text-zinc-300 font-medium">{c.especialista}</span></p>
@@ -270,11 +295,10 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
     );
   }
 
-  /* VISTA DE EDICIÓN / CREACIÓN */
   return (
     <div className="space-y-6 animate-in slide-in-from-right duration-300">
       <button 
-        onClick={() => setView('list')} 
+        onClick={() => { setEditingFichaId(null); setView('list'); }} 
         className="flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-indigo-600 transition-colors"
       >
         <ChevronLeft size={16} /> VOLVER AL LISTADO
@@ -334,7 +358,7 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
         disabled={loading || !job} 
         className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 disabled:opacity-50"
       >
-        {loading ? <Loader2 className="animate-spin" /> : <><Save size={20} /> GUARDAR FICHA TÉCNICA</>}
+        {loading ? <Loader2 className="animate-spin" /> : <><Save size={20} /> {editingFichaId ? 'ACTUALIZAR' : 'GUARDAR'} FICHA TÉCNICA</>}
       </button>
     </div>
   );

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import ModalCliente from "./ModalCliente";
 import ModalEspecialista from "./ModalEspecialista";
-import { Search, Plus, Trash2, Edit3 } from "lucide-react";
+import { Search, Plus, Trash2, Edit3, ChevronDown } from "lucide-react";
 
 type TabKey = "clients" | "services" | "specialists";
 
@@ -35,7 +35,11 @@ export default function BusinessPage() {
   const [services, setServices] = useState<any[]>([]);
   const [specialists, setSpecialists] = useState<any[]>([]);
   
-  const [mode, setMode] = useState<"create" | "edit">("create");
+  // PAGINACIÓN
+  const [clientsLimit, setClientsLimit] = useState(100);
+  const [hasMoreClients, setHasMoreClients] = useState(true);
+
+  const [mode, setMode] = useState<"create" | "edit" | "view">("create");
   const [specialistForm, setSpecialistForm] = useState<any>({});
   const [clientForm, setClientForm] = useState<ClientePayload>({
     celular: "", nombre: "", tipo: "Cliente", estado: "Activo", indicador: "+57"
@@ -43,16 +47,30 @@ export default function BusinessPage() {
 
   const loadData = async () => {
     setLoading(true);
-    const { data: cData } = await supabase.from("clients").select("*").limit(100);
-    if (cData) setClients(cData);
+    // Cargamos todos los datos (quitamos el limit anterior o lo manejamos dinámico)
+    const { data: cData } = await supabase
+      .from("clients")
+      .select("*")
+      .order("nombre", { ascending: true })
+      .limit(clientsLimit);
+
+    if (cData) {
+      setClients(cData);
+      setHasMoreClients(cData.length === clientsLimit);
+    }
+
     const { data: sData } = await supabase.from("services").select("*");
     if (sData) setServices(sData);
+
     const { data: uData } = await supabase.from("app_users").select("id, name, email, color, comision_base, excepciones_comision, password");
     if (uData) setSpecialists(uData);
+    
     setLoading(false);
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { 
+    loadData(); 
+  }, [clientsLimit]);
 
   // LÓGICA DE CLIENTES
   const handleCreateCliente = async (data: ClientePayload) => {
@@ -87,9 +105,9 @@ export default function BusinessPage() {
     return specialists.filter(s => (s.name || "").toLowerCase().includes(t));
   }, [search, activeTab, clients, services, specialists]);
 
-  const openEdit = (tab: TabKey, item: any) => {
-  setMode("edit");
-  if (tab === "clients") {
+  // FUNCIÓN MEJORADA PARA ABRIR EL MODAL SEGÚN EL MODO
+  const openClientModal = (item: any, selectedMode: "edit" | "view") => {
+    setMode(selectedMode);
     setClientForm({
       celular: item.celular || "",
       nombre: item.nombre || "",
@@ -105,11 +123,7 @@ export default function BusinessPage() {
       municipio: item.municipio || "",
     });
     setModalClienteOpen(true);
-  } else if (tab === "specialists") {
-    setSpecialistForm(item);
-    setModalEspecialistaOpen(true);
-  }
-};
+  };
 
   return (
     <main className="p-4 lg:p-6 max-w-6xl mx-auto space-y-6 animate-in fade-in duration-500 min-h-screen text-zinc-900 dark:text-zinc-100">
@@ -172,10 +186,17 @@ export default function BusinessPage() {
               </tr>
             </thead>
             <tbody className="divide-y dark:divide-zinc-800 text-sm">
-              {loading ? (
+              {loading && filteredRows.length === 0 ? (
                 <tr><td colSpan={4} className="p-10 text-center text-xs text-zinc-400 italic">Sincronizando...</td></tr>
               ) : filteredRows.map((item, idx) => (
-                <tr key={idx} className="group hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-all">
+                <tr 
+                  key={idx} 
+                  className="group hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-all cursor-pointer"
+                  onClick={() => {
+                    if (activeTab === "clients") openClientModal(item, "view");
+                    else if (activeTab === "specialists") { setMode("edit"); setSpecialistForm(item); setModalEspecialistaOpen(true); }
+                  }}
+                >
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
                       {activeTab === "specialists" && <div className="h-6 w-6 rounded-md" style={{ backgroundColor: item.color }} />}
@@ -189,14 +210,25 @@ export default function BusinessPage() {
                     {activeTab === "services" ? `${item.duracion} min` : (item.direccion || item.email || "—")}
                   </td>
                   <td className="px-6 py-3">
-                    <span className="px-3 py-1 rounded-lg text-[9px] font-bold bg-zinc-100 dark:bg-zinc-800">
+                    <span className="px-3 py-1 rounded-lg text-[9px] font-bold bg-zinc-100 dark:bg-zinc-800 uppercase tracking-tighter">
                       {activeTab === "specialists" ? `${item.comision_base || 50}%` : (item.Precio ? `$${item.Precio}` : (item.tipo || item.category))}
                     </span>
                   </td>
                   <td className="px-6 py-3 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                      <button onClick={() => openEdit(activeTab, item)} className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"><Edit3 size={14} /></button>
-                      <button className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg"><Trash2 size={14} /></button>
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          if (activeTab === "clients") openClientModal(item, "edit");
+                          else { setMode("edit"); setSpecialistForm(item); setModalEspecialistaOpen(true); }
+                        }} 
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button onClick={(e) => e.stopPropagation()} className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg">
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -204,6 +236,17 @@ export default function BusinessPage() {
             </tbody>
           </table>
         </div>
+
+        {activeTab === "clients" && hasMoreClients && (
+          <div className="p-4 border-t dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/20 flex justify-center">
+            <button 
+              onClick={() => setClientsLimit(prev => prev + 100)}
+              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 transition-all"
+            >
+              <ChevronDown size={14} /> Cargar más clientes
+            </button>
+          </div>
+        )}
       </section>
 
       <ModalCliente 

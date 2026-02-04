@@ -501,14 +501,7 @@ export default function ReservationForm({
                 onClick={() => setActiveTab('fichas')}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'fichas' ? 'bg-white shadow-sm text-indigo-600 dark:bg-zinc-700 dark:text-indigo-400' : 'text-gray-500'}`}
               >
-                <ClipboardList size={16} /> Ficha Técnica
-              </button>
-              <button 
-                type="button"
-                onClick={() => setActiveTab('reservas')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'reservas' ? 'bg-white shadow-sm text-indigo-600 dark:bg-zinc-700 dark:text-indigo-400' : 'text-gray-500'}`}
-              >
-                <History size={16} /> Historial
+                <ClipboardList size={16} /> Información del Cliente
               </button>
             </div>
           </div>
@@ -517,7 +510,7 @@ export default function ReservationForm({
             {activeTab === 'fichas' ? (
               <FichaTecnicaEditor celular={form.celular} />
             ) : (
-              <div className="text-center py-10 text-gray-500 text-sm">Próximamente: Historial de citas</div>
+              <div className="text-center py-10 text-gray-500 text-sm">Historial de citas</div>
             )}
           </div>
         </div>

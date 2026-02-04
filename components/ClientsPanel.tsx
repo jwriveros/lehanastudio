@@ -1,4 +1,7 @@
 "use client";
+import React, { useState, useMemo } from "react";
+import ModalCliente from "@/app/(app)/business/ModalCliente";
+import { Search, Filter, ChevronRight, User } from "lucide-react";
 
 /* ======================
    TYPES
@@ -35,116 +38,137 @@ interface ClientsPanelProps {
   surveys?: Survey[];
 }
 
-/* ======================
-   COMPONENT
-====================== */
 export default function ClientsPanel({
-  clients,
-  appointments,
-  surveys,
+  clients = [],
+  appointments = [],
+  surveys = [],
 }: ClientsPanelProps) {
-  // ⛑️ Fallbacks seguros
-  const safeClients: Client[] = clients ?? [];
-  const safeAppointments: Appointment[] = appointments ?? [];
-  const safeSurveys: Survey[] = surveys ?? [];
+  // --- ESTADOS ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [limit, setLimit] = useState(12); 
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+
+  // --- LÓGICA DE FILTRO ---
+  const filteredClients = useMemo(() => {
+    return clients.filter((c) => {
+      const search = searchTerm.toLowerCase();
+      return (
+        (c.Nombre || "").toLowerCase().includes(search) ||
+        (c.Celular || "").includes(search) ||
+        (c.numberc || "").includes(search)
+      );
+    });
+  }, [clients, searchTerm]);
+
+  const visibleClients = filteredClients.slice(0, limit);
 
   return (
-    <section id="clients" className="space-y-4">
-      <div className="flex items-center justify-between">
+    <section id="clients" className="space-y-6">
+      {/* HEADER Y BUSCADOR */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+          <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-white uppercase italic">
             Clientes
           </h2>
           <p className="text-sm text-zinc-500">
-            Búsqueda por nombre, celular, numberc o servicio más usado
+            Haz clic en un cliente para ver sus fichas técnicas e historial.
           </p>
         </div>
 
-        <div className="flex gap-2 text-sm">
-          <input
-            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-900"
-            placeholder="Buscar por nombre o celular"
-          />
-          <button className="rounded-xl border border-zinc-200 px-3 py-2 text-zinc-600">
-            Filtrar
-          </button>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setLimit(12); // Resetear límite al buscar
+              }}
+              className="w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-zinc-800 dark:bg-zinc-900"
+              placeholder="Buscar por nombre o celular..."
+            />
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {safeClients.length === 0 && (
-          <div className="text-sm text-zinc-400">
-            No hay clientes registrados.
+      {/* GRID DE CLIENTES */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {visibleClients.length === 0 ? (
+          <div className="col-span-full py-20 text-center text-zinc-400 border-2 border-dashed border-zinc-100 dark:border-zinc-800 rounded-3xl font-bold italic">
+            No se encontraron clientes con "{searchTerm}"
           </div>
-        )}
-
-        {safeClients.map((client) => (
-          <article
-            key={client.numberc}
-            className="rounded-2xl border border-zinc-100 bg-white/90 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-                  {client.Nombre}
-                </div>
-                <p className="text-sm text-zinc-500">
-                  {client.Celular} · #{client.numberc}
-                </p>
-              </div>
-              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs text-indigo-700 dark:bg-indigo-900/30">
-                {client.Tipo}
-              </span>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-zinc-600 dark:text-zinc-300">
-              <div>Dirección: {client.Direccion}</div>
-              <div>Cumpleaños: {client.Cumpleaños}</div>
-              <div>
-                Último msg:{" "}
-                {new Date(client.lastIncomingAt).toLocaleString()}
-              </div>
-              <div>Notas: {client.notes}</div>
-            </div>
-
-            <div className="mt-3 space-y-2 text-sm">
-              <div className="font-semibold text-zinc-800 dark:text-zinc-100">
-                Historial de citas
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {safeAppointments
-                  .filter((a) => a.cliente === client.Nombre)
-                  .map((appt) => (
-                    <span
-                      key={appt.id}
-                      className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-                    >
-                      {appt.servicio} · {appt.estado}
-                    </span>
-                  ))}
-              </div>
-            </div>
-
-            <div className="mt-3 space-y-2 text-sm">
-              <div className="font-semibold text-zinc-800 dark:text-zinc-100">
-                Encuestas
-              </div>
-
-              {safeSurveys
-                .filter((survey) => survey.cliente === client.Nombre)
-                .map((survey) => (
-                  <div
-                    key={survey.id}
-                    className="rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-                  >
-                    {survey.servicio}: {survey.score}/10 ·{" "}
-                    {survey.comentario}
+        ) : (
+          visibleClients.map((client) => (
+            <article
+              key={client.numberc}
+              onClick={() => setSelectedClient(client)}
+              className="group cursor-pointer rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm transition-all hover:border-indigo-500 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-400 group-hover:text-indigo-500 transition-colors">
+                    <User size={20} />
                   </div>
-                ))}
-            </div>
-          </article>
-        ))}
+                  <div>
+                    <h3 className="text-lg font-black uppercase tracking-tighter text-zinc-900 dark:text-white group-hover:text-indigo-600 transition-colors">
+                      {client.Nombre}
+                    </h3>
+                    <p className="text-xs font-bold text-zinc-400">
+                      {client.Celular}
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase text-indigo-700 dark:bg-indigo-900/30">
+                  {client.Tipo || 'CLIENTE'}
+                </span>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between text-xs font-bold text-zinc-500 italic uppercase tracking-widest">
+                <span>Ver Fichas / Citas</span>
+                <ChevronRight size={16} className="text-zinc-300 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </article>
+          ))
+        )}
       </div>
+
+      {/* BOTÓN CARGAR MÁS */}
+      {filteredClients.length > limit && (
+        <div className="flex justify-center pt-4">
+          <button
+            onClick={() => setLimit(prev => prev + 12)}
+            className="rounded-full bg-zinc-900 px-8 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-transform active:scale-95 dark:bg-white dark:text-zinc-900 shadow-xl"
+          >
+            Cargar más clientes ({filteredClients.length - limit})
+          </button>
+        </div>
+      )}
+
+      {/* MODAL DEL CLIENTE - CONFIGURADO PARA VER FICHAS */}
+      {selectedClient && (
+        <ModalCliente 
+          isOpen={!!selectedClient} 
+          onClose={() => setSelectedClient(null)} 
+          mode="view" // Usamos 'view' para que el modal sepa que es solo consulta
+          formData={{
+            nombre: selectedClient.Nombre,
+            celular: selectedClient.Celular,
+            tipo: selectedClient.Tipo || "Cliente",
+            estado: "Activo",
+            indicador: "+57",
+            direccion: selectedClient.Direccion || "",
+            cumpleanos: selectedClient.Cumpleaños || "",
+            // Los campos opcionales para evitar el error de TS
+            municipio: "",
+            identificacion: "",
+            correo_electronico: "",
+            genero: "",
+            departamento: ""
+          }}
+          onCreate={async () => {}} 
+          onUpdate={async () => {}} 
+        />
+      )}
     </section>
   );
 }

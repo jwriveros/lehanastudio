@@ -1,19 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, User, MapPin, Save, Mail, Fingerprint } from "lucide-react";
+import { X, Save, ClipboardList, History, User, MapPin } from "lucide-react";
 import { ClientePayload } from "./page";
+import FichaTecnicaEditor from "@/components/reservations/FichaTecnicaEditor";
 
 type ModalClienteProps = {
   isOpen: boolean;
   onClose: () => void;
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "view";
   formData: ClientePayload;
   onCreate: (data: ClientePayload) => void | Promise<void>;
   onUpdate: (data: ClientePayload) => void | Promise<void>;
 };
 
-// Lista de países con banderas emoji e indicativos
 const COUNTRIES = [
   { code: "+57", flag: "🇨🇴", name: "Colombia" },
   { code: "+1", flag: "🇺🇸", name: "Estados Unidos" },
@@ -80,7 +80,7 @@ export default function ModalCliente({
   onCreate,
   onUpdate,
 }: ModalClienteProps) {
-  const [activeTab, setActiveTab] = useState<"personal" | "ubicacion">("personal");
+  const [activeTab, setActiveTab] = useState<"personal" | "ubicacion" | "ficha">("personal");
   const [form, setForm] = useState<ClientePayload>(formData);
 
   useEffect(() => {
@@ -91,7 +91,7 @@ export default function ModalCliente({
         celular: formData.celular || "",
         tipo: formData.tipo || "Cliente",
         estado: formData.estado || "Activo",
-        indicador: formData.indicador || "+57", // Colombia por defecto
+        indicador: formData.indicador || "+57",
         correo_electronico: formData.correo_electronico || "",
         identificacion: formData.identificacion || "",
         genero: formData.genero || "",
@@ -100,9 +100,15 @@ export default function ModalCliente({
         departamento: formData.departamento || "",
         municipio: formData.municipio || "",
       });
-      setActiveTab("personal");
+      
+      // Si el modo es 'view', abrimos directamente la ficha técnica
+      if (mode === "view") {
+        setActiveTab("ficha");
+      } else {
+        setActiveTab("personal");
+      }
     }
-  }, [formData, isOpen]);
+  }, [formData, isOpen, mode]);
 
   if (!isOpen) return null;
 
@@ -126,7 +132,7 @@ export default function ModalCliente({
         {/* HEADER */}
         <div className="px-5 py-4 border-b dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-800/50">
           <h2 className="text-sm font-bold uppercase italic tracking-tight">
-            {mode === "create" ? "Nuevo Cliente" : "Editar Cliente"}
+            {mode === "create" ? "Nuevo Cliente" : (mode === "view" ? "Expediente Cliente" : "Editar Cliente")}
           </h2>
           <button onClick={onClose} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
             <X size={16} />
@@ -135,17 +141,34 @@ export default function ModalCliente({
 
         {/* TABS */}
         <div className="flex border-b dark:border-zinc-800">
-          <button onClick={() => setActiveTab("personal")} className={`flex-1 py-3 text-[10px] font-bold uppercase transition-all ${activeTab === "personal" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}>
+          <button 
+            onClick={() => setActiveTab("personal")} 
+            className={`flex-1 py-3 text-[10px] font-black uppercase transition-all ${activeTab === "personal" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}
+          >
             Información
           </button>
-          <button onClick={() => setActiveTab("ubicacion")} className={`flex-1 py-3 text-[10px] font-bold uppercase transition-all ${activeTab === "ubicacion" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}>
+          
+          {/* Mostramos pestaña de Ficha Técnica si el cliente ya existe */}
+          {form.celular && (
+            <button 
+              onClick={() => setActiveTab("ficha")} 
+              className={`flex-1 py-3 text-[10px] font-black uppercase transition-all ${activeTab === "ficha" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}
+            >
+              Ficha / Citas
+            </button>
+          )}
+
+          <button 
+            onClick={() => setActiveTab("ubicacion")} 
+            className={`flex-1 py-3 text-[10px] font-black uppercase transition-all ${activeTab === "ubicacion" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}
+          >
             Ubicación
           </button>
         </div>
 
         {/* CONTENIDO */}
-        <div className="p-5 space-y-4 max-h-[55vh] overflow-y-auto">
-          {activeTab === "personal" ? (
+        <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+          {activeTab === "personal" && (
             <div className="space-y-3 animate-in fade-in duration-200">
               <div>
                 <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Nombre Completo *</label>
@@ -159,7 +182,6 @@ export default function ModalCliente({
               <div>
                 <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Celular *</label>
                 <div className="flex gap-2">
-                  {/* SELECTOR DE PAÍS CON BANDERA */}
                   <div className="relative w-28">
                     <select 
                       className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl text-sm font-bold border border-transparent focus:border-indigo-500 outline-none appearance-none"
@@ -202,7 +224,15 @@ export default function ModalCliente({
                 </div>
               </div>
             </div>
-          ) : (
+          )}
+
+          {activeTab === "ficha" && form.celular && (
+            <div className="animate-in slide-in-from-bottom-2 duration-300">
+              <FichaTecnicaEditor celular={form.celular} />
+            </div>
+          )}
+
+          {activeTab === "ubicacion" && (
             <div className="space-y-3 animate-in slide-in-from-right duration-200">
               <div>
                 <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Dirección</label>
@@ -222,13 +252,15 @@ export default function ModalCliente({
           )}
         </div>
 
-        {/* FOOTER */}
-        <div className="p-4 border-t dark:border-zinc-800 flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all">Cancelar</button>
-          <button onClick={handleSubmit} className="flex-[1.5] py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2">
-            <Save size={14} /> {mode === "create" ? "Registrar" : "Actualizar"}
-          </button>
-        </div>
+        {/* FOOTER: Solo se muestra si no estamos en la pestaña de Ficha Técnica */}
+        {activeTab !== "ficha" && (
+          <div className="p-4 border-t dark:border-zinc-800 flex gap-2">
+            <button onClick={onClose} className="flex-1 py-2.5 text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all">Cancelar</button>
+            <button onClick={handleSubmit} className="flex-[1.5] py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2">
+              <Save size={14} /> {mode === "create" ? "Registrar" : "Actualizar"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
