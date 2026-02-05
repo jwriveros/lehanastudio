@@ -39,6 +39,7 @@ export default function AppSidebar() {
     { icon: MessageSquare, href: "/support", label: "Soporte", roles: ['ADMIN'] },
     { icon: BriefcaseBusiness, href: "/business", label: "Negocio", roles: ['ADMIN'] },
     { icon: BarChart, href: "/dashboard", label: "Dashboard", roles: ['ADMIN'] },
+    { icon: DollarSign, href: "/finanzas", label: "Finanzas", roles: ['ADMIN'] },
     { icon: Settings, href: "/settings", label: "Ajustes", roles: ['ADMIN'] },
   ];
 

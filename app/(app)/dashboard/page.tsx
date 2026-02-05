@@ -211,11 +211,6 @@ export default function DashboardPage() {
                   ))}
               </div>
           </div>
-          
-          <div className="p-5 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-[2rem] shadow-sm">
-             <ExpensesManager />
-             <div className="mt-2"><DailyPaymentsReport /></div>
-          </div>
         </aside>
 
         <div className="lg:col-span-8 space-y-6">

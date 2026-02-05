@@ -223,7 +223,7 @@ export default function DailyPaymentsReport() {
 
   if (!isOpen) return (
     <button onClick={() => setIsOpen(true)} className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl shadow-md text-sm">
-      <FileText size={18} /> Informe de Liquidación
+      <FileText size={18} /> Liquidación
     </button>
   );
 
