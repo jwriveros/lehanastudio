@@ -18,9 +18,10 @@ export default function FinanzasPage() {
   const [isAdding, setIsAdding] = useState(false); 
   const [showFixedManager, setShowFixedManager] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [totalVentas, setTotalVentas] = useState(0);
+  const [totalVentasCalculado, setTotalVentasCalculado] = useState(0);
   const [chartData, setChartData] = useState<any[]>([]);
 
+  // DATEPICKER GLOBAL
   const [dateRange, setDateRange] = useState({
     from: new Date(new Date().setDate(1)).toISOString().split('T')[0],
     to: new Date().toISOString().split('T')[0]
@@ -31,12 +32,21 @@ export default function FinanzasPage() {
     especialista: "", metodo_pago: "Efectivo", valor: "", es_fijo: false, dia_pago: "1"
   });
 
-  // --- LÓGICA DE AUTOMATIZACIÓN CORREGIDA ---
+  // Función auxiliar para calcular ingresos con la regla 100% Leslie / 50% Otros
+  const calcularIngresosLehana = (citas: any[]) => {
+    return citas.reduce((acc, cita) => {
+      const valorBase = Number(cita.price) || 0;
+      // Regla: Leslie 100%, los demás 50%
+      const comision = cita.especialista === "Leslie Gutierrez" ? 1 : 0.5;
+      return acc + (valorBase * comision);
+    }, 0);
+  };
+
   const syncRecurringExpenses = async () => {
     const hoy = new Date();
     const diaActual = hoy.getDate();
-    const mesReferencia = hoy.toISOString().slice(0, 7); // "2026-02"
-    const fechaControl = `${mesReferencia}-01`; // "2026-02-01" para evitar error de tipo date
+    const mesReferencia = hoy.toISOString().slice(0, 7);
+    const fechaControl = `${mesReferencia}-01`;
 
     const { data: plantillas } = await supabase
       .from("recurring_expenses")
@@ -73,16 +83,18 @@ export default function FinanzasPage() {
       const { data: users } = await supabase.from("app_users").select("name").order("name");
       if (users) setSpecialists(users);
 
+      // Cargar Ventas del periodo seleccionado
       const { data: ventas } = await supabase
         .from("appointments")
-        .select("precio_final")
+        .select("price, especialista")
         .gte("appointment_at", `${dateRange.from}T00:00:00Z`)
         .lte("appointment_at", `${dateRange.to}T23:59:59Z`)
-        .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA"]);
+        .in("estado", ["Cita pagada"]);
       
-      const vTotal = ventas?.reduce((acc, curr) => acc + (Number(curr.precio_final) || 0), 0) || 0;
-      setTotalVentas(vTotal);
+      const vTotal = calcularIngresosLehana(ventas || []);
+      setTotalVentasCalculado(vTotal);
 
+      // Cargar Gastos del periodo seleccionado
       const { data: exp } = await supabase
         .from("expenses")
         .select("*")
@@ -116,7 +128,7 @@ export default function FinanzasPage() {
     }
 
     const historicalData = await Promise.all(months.map(async (m) => {
-      const { data: v } = await supabase.from("appointments").select("precio_final")
+      const { data: v } = await supabase.from("appointments").select("price, especialista")
         .gte("appointment_at", m.start).lte("appointment_at", m.end)
         .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA"]);
       const { data: g } = await supabase.from("expenses").select("valor")
@@ -124,7 +136,7 @@ export default function FinanzasPage() {
 
       return {
         name: m.label,
-        Ingresos: v?.reduce((acc, curr) => acc + (Number(curr.precio_final) || 0), 0) || 0,
+        Ingresos: calcularIngresosLehana(v || []),
         Gastos: g?.reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0) || 0,
       };
     }));
@@ -155,9 +167,7 @@ export default function FinanzasPage() {
       if (expError) throw expError;
 
       if (form.es_fijo) {
-        // CORRECCIÓN: Guardamos una fecha completa YYYY-MM-DD en last_created_month
         const fechaParaControl = `${new Date().toISOString().slice(0, 7)}-01`;
-
         await supabase.from("recurring_expenses").insert([{
           concepto: form.concepto,
           valor: Number(form.valor),
@@ -196,7 +206,7 @@ export default function FinanzasPage() {
       {/* HEADER INTEGRADO */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b dark:border-zinc-800 pb-6">
         <div>
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter leading-none text-zinc-900 dark:text-white">Estado Financiero</h1>
+          <h1 className="text-4xl font-black uppercase italic tracking-tighter leading-none">Finanzas Studio</h1>
           <div className="flex items-center gap-2 mt-2">
              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest italic">Balance de Lehana Studio</span>
@@ -206,9 +216,9 @@ export default function FinanzasPage() {
         <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5 rounded-2xl border dark:border-zinc-700 shadow-inner">
               <Calendar size={16} className="text-amber-500" />
-              <input type="date" value={dateRange.from} onChange={(e) => setDateRange({...dateRange, from: e.target.value})} className="bg-transparent text-[11px] font-black uppercase outline-none text-zinc-900 dark:text-zinc-100" />
+              <input type="date" value={dateRange.from} onChange={(e) => setDateRange({...dateRange, from: e.target.value})} className="bg-transparent text-[11px] font-black uppercase outline-none" />
               <span className="text-zinc-400 font-black">/</span>
-              <input type="date" value={dateRange.to} onChange={(e) => setDateRange({...dateRange, to: e.target.value})} className="bg-transparent text-[11px] font-black uppercase outline-none text-zinc-900 dark:text-zinc-100" />
+              <input type="date" value={dateRange.to} onChange={(e) => setDateRange({...dateRange, to: e.target.value})} className="bg-transparent text-[11px] font-black uppercase outline-none" />
               <button onClick={() => setRefreshKey(k => k + 1)} className="ml-2 p-1 hover:rotate-180 transition-all text-zinc-400"><RefreshCcw size={14}/></button>
             </div>
             <button onClick={() => setIsAdding(true)} className="bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 px-6 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-all shadow-xl">
@@ -217,19 +227,25 @@ export default function FinanzasPage() {
         </div>
       </header>
 
-      {/* TARJETAS DINÁMICAS */}
+      {/* TARJETAS DINÁMICAS (CON LA NUEVA REGLA DE CÁLCULO) */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[2.5rem] border dark:border-zinc-800 shadow-sm relative overflow-hidden group text-zinc-900 dark:text-zinc-100">
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[2.5rem] border dark:border-zinc-800 shadow-sm relative overflow-hidden group">
           <div className="flex justify-between items-start"><div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-2xl"><TrendingUp size={24} /></div><ArrowUpRight className="text-emerald-500" size={14} /></div>
-          <div className="mt-4"><span className="text-[10px] font-black uppercase tracking-widest">Ingresos</span><p className="text-3xl font-black italic mt-1">${totalVentas.toLocaleString()}</p></div>
+          <div className="mt-4"><span className="text-[10px] font-black uppercase tracking-widest">Ingresos Periodo</span><p className="text-3xl font-black italic mt-1">${totalVentasCalculado.toLocaleString()}</p></div>
         </div>
-        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[2.5rem] border dark:border-zinc-800 shadow-sm relative overflow-hidden group text-zinc-900 dark:text-zinc-100">
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-[2.5rem] border dark:border-zinc-800 shadow-sm relative overflow-hidden group">
           <div className="flex justify-between items-start"><div className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-500 rounded-2xl"><TrendingDown size={24} /></div><ArrowDownRight className="text-rose-500" size={14} /></div>
-          <div className="mt-4"><span className="text-[10px] font-black uppercase tracking-widest">Egresos</span><p className="text-3xl font-black italic mt-1">${totalGastosPeriodo.toLocaleString()}</p></div>
+          <div className="mt-4"><span className="text-[10px] font-black uppercase tracking-widest">Gastos Periodo</span><p className="text-3xl font-black italic mt-1">${totalGastosPeriodo.toLocaleString()}</p></div>
         </div>
         <div className="bg-zinc-900 dark:bg-white p-6 rounded-[2.5rem] shadow-2xl text-white dark:text-zinc-900">
-          <div className="flex justify-between items-start"><div className="p-3 bg-zinc-800 dark:bg-zinc-100 rounded-2xl inline-block"><Wallet size={24} /></div><span className="bg-indigo-500 text-white text-[8px] px-2 py-1 rounded-full font-black uppercase italic">Utilidad Neta</span></div>
-          <div className="mt-4"><span className="text-[10px] font-black opacity-60 uppercase tracking-widest">Balance Final</span><p className="text-3xl font-black italic tracking-tighter mt-1">${(totalVentas - totalGastosPeriodo).toLocaleString()}</p></div>
+          <div className="flex justify-between items-start">
+            <div className="p-3 bg-zinc-800 dark:bg-zinc-100 rounded-2xl inline-block"><Wallet size={24} /></div>
+            <span className="bg-indigo-500 text-white text-[8px] px-2 py-1 rounded-full font-black uppercase italic tracking-tighter">Utilidad Neta</span>
+          </div>
+          <div className="mt-4">
+            <span className="text-[10px] font-black opacity-60 uppercase tracking-widest">Balance Final</span>
+            <p className="text-3xl font-black italic tracking-tighter mt-1">${(totalVentasCalculado - totalGastosPeriodo).toLocaleString()}</p>
+          </div>
         </div>
       </section>
 
@@ -237,7 +253,7 @@ export default function FinanzasPage() {
       <section className="bg-white dark:bg-zinc-900 p-8 rounded-[3rem] border dark:border-zinc-800 shadow-sm">
         <div className="flex items-center gap-3 mb-8">
             <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-xl"><BarChart3 size={20}/></div>
-            <h2 className="text-sm font-black uppercase tracking-[0.2em] italic text-zinc-900 dark:text-zinc-100">Rendimiento Histórico</h2>
+            <h2 className="text-sm font-black uppercase tracking-[0.2em] italic">Rendimiento Histórico</h2>
         </div>
         <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -280,14 +296,14 @@ export default function FinanzasPage() {
               expenses.map((exp) => (
                 <div key={exp.id} className="bg-zinc-50 dark:bg-zinc-800/40 border border-transparent hover:border-amber-200 p-5 rounded-3xl flex justify-between items-center group transition-all">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-white dark:bg-zinc-900 text-zinc-400 group-hover:text-emerald-500 rounded-2xl shadow-sm"><Receipt size={20} /></div>
+                    <div className="p-3 bg-white dark:bg-zinc-900 text-zinc-400 group-hover:text-emerald-500 rounded-2xl shadow-sm transition-colors"><Receipt size={20} /></div>
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-black uppercase block leading-tight">{exp.concepto}</span>
-                        {exp.generado_auto && <span className="text-[7px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded uppercase">Auto</span>}
+                        {exp.generado_auto && <span className="text-[7px] font-black bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded uppercase tracking-tighter">Auto</span>}
                       </div>
                       <div className="flex items-center gap-2 mt-1 text-[9px] font-bold text-zinc-400 uppercase">
-                        <span className="italic">{exp.fecha}</span> • <span>{exp.metodo_pago}</span> {exp.especialista && <span className="text-indigo-500">@{exp.especialista}</span>}
+                        <span className="italic">{exp.fecha}</span> • <span>{exp.metodo_pago}</span> {exp.especialista && <span className="text-indigo-500 italic">@{exp.especialista}</span>}
                       </div>
                     </div>
                   </div>
@@ -302,11 +318,11 @@ export default function FinanzasPage() {
         </div>
       </div>
 
-      {/* MODAL FLOTANTE */}
+      {/* MODAL FLOTANTE DE REGISTRO */}
       {isAdding && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-[2.5rem] shadow-2xl border dark:border-zinc-800 animate-in zoom-in-95 duration-200 overflow-hidden text-zinc-900 dark:text-zinc-100">
-            <div className="px-8 py-6 border-b dark:border-zinc-800 flex justify-between items-center">
+            <div className="px-8 py-6 border-b dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-800/50">
               <h2 className="text-sm font-black uppercase tracking-widest italic text-indigo-600">Nuevo Gasto</h2>
               <button onClick={() => setIsAdding(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500"><X size={20}/></button>
             </div>
@@ -319,7 +335,7 @@ export default function FinanzasPage() {
               <div className="flex items-center gap-3 p-4 bg-zinc-50 dark:bg-zinc-800 rounded-2xl border dark:border-zinc-700">
                 <input type="checkbox" checked={form.es_fijo} onChange={e => setForm({...form, es_fijo: e.target.checked})} className="w-5 h-5 rounded border-zinc-300 text-indigo-600" />
                 <span className="text-[11px] font-black uppercase">¿Automatizar mensualmente?</span>
-                {form.es_fijo && <input type="number" min="1" max="31" value={form.dia_pago} onChange={e => setForm({...form, dia_pago: e.target.value})} className="w-14 p-2 rounded-xl text-center font-black text-indigo-600 bg-white" />}
+                {form.es_fijo && <input type="number" min="1" max="31" value={form.dia_pago} onChange={e => setForm({...form, dia_pago: e.target.value})} className="w-14 p-2 rounded-xl text-center font-black text-indigo-600 bg-white ring-1 ring-indigo-200" />}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <input type="date" value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})} className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded-2xl text-[10px] font-bold outline-none" />
@@ -334,7 +350,7 @@ export default function FinanzasPage() {
                   <option value="Caja Menor">Caja Menor</option>
                 </select>
               </div>
-              <button type="submit" disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
+              <button type="submit" disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/20">
                 {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />} Confirmar Registro
               </button>
             </form>
