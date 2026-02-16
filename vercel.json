@@ -9,5 +9,12 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/w/:number",
+      "destination": "https://wa.me/:number",
+      "permanent": true
+    }
   ]
 }
