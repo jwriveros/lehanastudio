@@ -12,6 +12,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 // Importamos el componente de liquidaciones
 import DailyPaymentsReports from "@/components/DailyPaymentsReports";
+import ComparativeReports from "@/components/ComparativeReports";
 
 export default function FinanzasPage() {
   const [loading, setLoading] = useState(false);
@@ -249,6 +250,9 @@ export default function FinanzasPage() {
             <p className="text-3xl font-black italic tracking-tighter mt-1">${(totalVentas - totalGastosPeriodo).toLocaleString()}</p>
           </div>
         </div>
+      </section>
+      <section className="w-full">
+        <ComparativeReports />
       </section>
 
       {/* GRÁFICO 5 MESES */}
