@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { SettingsPanel } from "@/components"; //
-import { useSessionStore } from "@/lib/sessionStore"; //
-import { supabase } from "@/lib/supabaseClient"; //
+import { SettingsPanel } from "@/components"; 
+import { useSessionStore } from "@/lib/sessionStore"; 
+import { supabase } from "@/lib/supabaseClient"; 
 import { Calendar, Plus, Trash2, Check, X, Clock, User, Save, Settings } from "lucide-react";
 
 const DIAS_SEMANA = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"];
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { logout, session } = useSessionStore(); //
+  const { logout, session } = useSessionStore();
 
   const getTodayStr = () => {
     const now = new Date();
@@ -25,13 +25,14 @@ export default function SettingsPage() {
   const [specialists, setSpecialists] = useState<any[]>([]);
   const [baseSchedule, setBaseSchedule] = useState<any>(null);
   const [date, setDate] = useState(getTodayStr());
+  const [endDate, setEndDate] = useState(""); // NUEVO: Estado para fecha fin
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("18:00");
   const [type, setType] = useState<"available" | "blocked">("blocked");
   const [overrides, setOverrides] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 1. Inicialización de Sesión y Especialistas
+  // Inicialización...
   useEffect(() => {
     const init = async () => {
       if (session?.role === "ADMIN") {
@@ -49,22 +50,12 @@ export default function SettingsPage() {
     init();
   }, [session]);
 
-  // 2. Carga de Datos al cambiar Especialista
   useEffect(() => {
     const loadData = async () => {
       if (!selectedSpecId) return;
-
-      const { data: user } = await supabase
-        .from("app_users")
-        .select("horario_semanal")
-        .eq("id", selectedSpecId)
-        .single();
-      
-      const parsed = typeof user?.horario_semanal === 'string' 
-        ? JSON.parse(user.horario_semanal) 
-        : user?.horario_semanal;
+      const { data: user } = await supabase.from("app_users").select("horario_semanal").eq("id", selectedSpecId).single();
+      const parsed = typeof user?.horario_semanal === 'string' ? JSON.parse(user.horario_semanal) : user?.horario_semanal;
       setBaseSchedule(parsed || {});
-
       reloadOverrides();
     };
     loadData();
@@ -80,22 +71,11 @@ export default function SettingsPage() {
     setOverrides(data || []);
   };
 
-  // --- LÓGICA DE EDICIÓN DE HORARIO ---
   const updateBaseDay = (dia: string, field: string, value: string) => {
     setBaseSchedule((prev: any) => {
       const currentDay = prev?.[dia] || { inicio: "09:00", fin: "18:00", estado: "cerrado" };
-      
-      // Si abrimos el día, forzamos que tenga horas
       if (field === "estado" && value === "abierto") {
-        return {
-          ...prev,
-          [dia]: {
-            ...currentDay,
-            estado: "abierto",
-            inicio: currentDay.inicio || "09:00",
-            fin: currentDay.fin || "18:00"
-          }
-        };
+        return { ...prev, [dia]: { ...currentDay, estado: "abierto", inicio: currentDay.inicio || "09:00", fin: currentDay.fin || "18:00" } };
       }
       return { ...prev, [dia]: { ...currentDay, [field]: value } };
     });
@@ -103,46 +83,55 @@ export default function SettingsPage() {
 
   const saveBaseSchedule = async () => {
     setLoading(true);
-    const { error } = await supabase
-      .from("app_users")
-      .update({ horario_semanal: JSON.stringify(baseSchedule) })
-      .eq("id", selectedSpecId);
-    
+    const { error } = await supabase.from("app_users").update({ horario_semanal: JSON.stringify(baseSchedule) }).eq("id", selectedSpecId);
     if (!error) alert("¡Horario base actualizado!");
     else alert("Error: " + error.message);
     setLoading(false);
   };
 
+  // --- LÓGICA DE GUARDADO MEJORADA PARA INTERVALOS ---
   const handleSaveOverride = async () => {
-  if (!selectedSpecId || !date) return;
-  
-  // 1. Buscamos el nombre de la especialista seleccionada
-  const specName = session?.role === "ADMIN" 
-    ? specialists.find(s => s.id === selectedSpecId)?.name 
-    : session?.name;
+    if (!selectedSpecId || !date) return;
+    
+    const specName = session?.role === "ADMIN" 
+      ? specialists.find(s => s.id === selectedSpecId)?.name 
+      : session?.name;
 
-  setLoading(true);
-  const { error } = await supabase
-    .from("specialist_overrides")
-    .insert([{ 
-      specialist_id: selectedSpecId, 
-      especialista: specName, // <-- Asegúrate de que el nombre de la columna sea exactamente este
-      date, 
-      type, 
-      start_time: startTime, 
-      end_time: endTime 
-    }]);
-  
-  if (!error) {
-    alert("Disponibilidad especial guardada correctamente");
-    setDate(getTodayStr());
-    reloadOverrides();
-  } else {
-    console.error("Error al guardar:", error);
-    alert("Error al guardar: " + error.message);
-  }
-  setLoading(false);
-};
+    setLoading(true);
+
+    // 1. Generar lista de fechas
+    const datesToInsert = [date];
+    if (endDate && endDate > date) {
+      let current = new Date(date + 'T00:00:00');
+      let end = new Date(endDate + 'T00:00:00');
+      while (current < end) {
+        current.setDate(current.getDate() + 1);
+        datesToInsert.push(current.toISOString().split('T')[0]);
+      }
+    }
+
+    // 2. Preparar filas para inserción masiva
+    const rows = datesToInsert.map(d => ({
+      specialist_id: selectedSpecId,
+      especialista: specName,
+      date: d,
+      type,
+      start_time: startTime,
+      end_time: endTime
+    }));
+
+    const { error } = await supabase.from("specialist_overrides").insert(rows);
+    
+    if (!error) {
+      alert(datesToInsert.length > 1 ? `Se han guardado ${datesToInsert.length} días correctamente` : "Disponibilidad guardada");
+      setDate(getTodayStr());
+      setEndDate("");
+      reloadOverrides();
+    } else {
+      alert("Error: " + error.message);
+    }
+    setLoading(false);
+  };
 
   const deleteOverride = async (id: number) => {
     await supabase.from("specialist_overrides").delete().eq("id", id);
@@ -151,25 +140,20 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto p-4 pb-24">
-
-      {/* SECCIÓN 1: SELECTOR DE ESPECIALISTA (ADMIN) */}
+      {/* SELECTOR ESPECIALISTA */}
       {session?.role === "ADMIN" && (
         <section className="bg-white dark:bg-zinc-900 p-6 rounded-[2rem] border dark:border-zinc-800 shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-3">
             <User className="text-indigo-600" />
             <h3 className="font-black uppercase text-xs tracking-tight">Gestionando a:</h3>
           </div>
-          <select 
-            value={selectedSpecId} 
-            onChange={(e) => setSelectedSpecId(e.target.value)}
-            className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 rounded-xl text-xs font-bold outline-none ring-1 ring-zinc-200 dark:ring-zinc-700"
-          >
+          <select value={selectedSpecId} onChange={(e) => setSelectedSpecId(e.target.value)} className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 rounded-xl text-xs font-bold outline-none ring-1 ring-zinc-200 dark:ring-zinc-700">
             {specialists.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </section>
       )}
 
-      {/* SECCIÓN 2: HORARIO BASE SEMANAL */}
+      {/* HORARIO BASE... (se mantiene igual) */}
       <section className="bg-white dark:bg-zinc-900 p-6 rounded-[2.5rem] border dark:border-zinc-800 shadow-sm space-y-6">
         <div className="flex items-center justify-between border-b dark:border-zinc-800 pb-4">
           <h3 className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
@@ -179,31 +163,25 @@ export default function SettingsPage() {
             <Save size={14} /> {loading ? "GUARDANDO..." : "GUARDAR HORARIO"}
           </button>
         </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {DIAS_SEMANA.map(dia => (
             <div key={dia} className="flex flex-col gap-3 p-5 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border dark:border-zinc-800">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase text-zinc-400 tracking-wider">{dia}</span>
-                <select 
-                  value={baseSchedule?.[dia]?.estado || "cerrado"}
-                  onChange={(e) => updateBaseDay(dia, "estado", e.target.value)}
-                  className={`text-[9px] font-black uppercase px-3 py-1 rounded-full ${baseSchedule?.[dia]?.estado === 'abierto' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}
-                >
+                <select value={baseSchedule?.[dia]?.estado || "cerrado"} onChange={(e) => updateBaseDay(dia, "estado", e.target.value)} className={`text-[9px] font-black uppercase px-3 py-1 rounded-full ${baseSchedule?.[dia]?.estado === 'abierto' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                   <option value="abierto">Abierto</option>
                   <option value="cerrado">Cerrado</option>
                 </select>
               </div>
-              
               {baseSchedule?.[dia]?.estado === "abierto" && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-[8px] font-black text-zinc-400 ml-1 uppercase">Apertura</label>
-                    <input type="time" value={baseSchedule?.[dia]?.inicio || "09:00"} onChange={(e) => updateBaseDay(dia, "inicio", e.target.value)} className="w-full bg-white dark:bg-zinc-900 p-2.5 rounded-xl text-xs font-bold border dark:border-zinc-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                    <input type="time" value={baseSchedule?.[dia]?.inicio || "09:00"} onChange={(e) => updateBaseDay(dia, "inicio", e.target.value)} className="w-full bg-white dark:bg-zinc-900 p-2.5 rounded-xl text-xs font-bold border dark:border-zinc-800 outline-none" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[8px] font-black text-zinc-400 ml-1 uppercase">Cierre</label>
-                    <input type="time" value={baseSchedule?.[dia]?.fin || "18:00"} onChange={(e) => updateBaseDay(dia, "fin", e.target.value)} className="w-full bg-white dark:bg-zinc-900 p-2.5 rounded-xl text-xs font-bold border dark:border-zinc-800 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                    <input type="time" value={baseSchedule?.[dia]?.fin || "18:00"} onChange={(e) => updateBaseDay(dia, "fin", e.target.value)} className="w-full bg-white dark:bg-zinc-900 p-2.5 rounded-xl text-xs font-bold border dark:border-zinc-800 outline-none" />
                   </div>
                 </div>
               )}
@@ -212,15 +190,19 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* SECCIÓN 3: DISPONIBILIDAD ESPECIAL */}
+      {/* DISPONIBILIDAD ESPECIAL CON INTERVALOS */}
       <section className="bg-white dark:bg-zinc-900 p-6 rounded-[2.5rem] border dark:border-zinc-800 shadow-sm space-y-6">
         <h3 className="text-lg font-black uppercase tracking-tight flex items-center gap-2 border-b dark:border-zinc-800 pb-4">
-          <Calendar className="text-indigo-600" /> Días Especiales (Vacaciones / Extras)
+          <Calendar className="text-indigo-600" /> Días Especiales / Vacaciones
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-2xl border dark:border-zinc-800">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-2xl border dark:border-zinc-800">
             <div className="space-y-1">
-              <label className="text-[8px] font-black text-zinc-400 ml-1 uppercase">Fecha</label>
+              <label className="text-[8px] font-black text-zinc-400 ml-1 uppercase">Inicio</label>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full bg-white dark:bg-zinc-900 p-2.5 rounded-xl text-xs font-bold border dark:border-zinc-800" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[8px] font-black text-zinc-400 ml-1 uppercase">Fin (Opcional)</label>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white dark:bg-zinc-900 p-2.5 rounded-xl text-xs font-bold border dark:border-zinc-800" />
             </div>
             <div className="space-y-1">
               <label className="text-[8px] font-black text-zinc-400 ml-1 uppercase">Desde</label>
@@ -233,12 +215,12 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <label className="text-[8px] font-black text-zinc-400 ml-1 uppercase">Tipo</label>
               <select value={type} onChange={(e) => setType(e.target.value as any)} className="w-full bg-white dark:bg-zinc-900 p-2.5 rounded-xl text-xs font-bold border dark:border-zinc-800">
-                <option value="blocked">Bloquear (Ausencia)</option>
-                <option value="available">Habilitar (Extra)</option>
+                <option value="blocked">Ausencia</option>
+                <option value="available">Extra</option>
               </select>
             </div>
-            <button onClick={handleSaveOverride} className="py-3 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
-              <Plus size={16} /> AÑADIR
+            <button onClick={handleSaveOverride} disabled={loading} className="py-3 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
+              <Plus size={16} /> {loading ? "..." : "AÑADIR"}
             </button>
           </div>
 
@@ -263,7 +245,6 @@ export default function SettingsPage() {
             ))}
           </div>
       </section>
-
     </div>
   );
 }
