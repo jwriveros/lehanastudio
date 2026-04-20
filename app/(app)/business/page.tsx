@@ -8,6 +8,21 @@ import { Search, Plus, Trash2, Edit3, ChevronLeft, ChevronRight, Loader2, X, Use
 
 type TabKey = "clients" | "services" | "specialists";
 
+export type ClientePayload = {
+  celular: string;
+  nombre: string;
+  tipo: string;
+  direccion?: string;
+  cumpleanos?: string;
+  identificacion?: string;
+  correo_electronico?: string;
+  estado: string;
+  genero?: string;
+  indicador: string;
+  departamento?: string;
+  municipio?: string;
+};
+
 export default function BusinessPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("clients");
   const [search, setSearch] = useState("");
