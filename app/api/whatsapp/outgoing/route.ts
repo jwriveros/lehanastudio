@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 // URL completa de tu Webhook Saliente en n8n. 
 // ¡DEBES REEMPLAZAR ESTE VALOR con la URL activa de tu Webhook de n8n!
-const N8N_OUTGOING_WEBHOOK_URL = "https://n8n.srv1151368.hstgr.cloud/webhook/crm-outgoing"; 
+const N8N_OUTGOING_WEBHOOK_URL = "https://n8n.lehanastudio.com/webhook/crm-outgoing"; 
 
 export async function POST(request: Request) {
   const payload = await request.json();
