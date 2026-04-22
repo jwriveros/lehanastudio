@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     // 3. NOTIFICAR A n8n
-    const webhookUrl = process.env.local;
+    const webhookUrl = process.env.N8N_WEBHOOK_URL;
     if (webhookUrl && updatedAppointment) {
       
       // Normalización de teléfono

@@ -243,6 +243,8 @@ export default function ReservationForm({
       return;
     }
 
+  
+
     const raw = appointmentData.raw ?? {};
 
     if (appointmentData.id === "new") {
@@ -414,29 +416,30 @@ export default function ReservationForm({
         await Promise.all(updatePromises);
 
         if (notifyOnEdit) {
-            try {
-              const l = lines[0];
-              await fetch("/api/bookings/notify-update", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  appointmentId: appointmentData.id,
-                  cliente: form.cliente.trim(),
-                  celular: cleanPhone,
-                  indicativo: form.indicativo,
-                  sede: form.sede,
-                  servicio: l.servicio,
-                  especialista: l.especialista,
-                  duration: l.duracion,
-                  price: l.precio, // PRECIO MANUAL ENVIADO
-                  total: totalEstimado, 
-                  appointment_at: localDateTimeToUTC(l.appointment_at),
-                  estado: form.estado
-                }),
-              });
-            } catch (webhookErr) {
-              console.error("Error enviando notificación:", webhookErr);
-            }
+          try {
+            const l = lines[0];
+            await fetch("/api/bookings/notify-update", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "EDITED", // <--- ESTO ES LO QUE FALTA
+                appointmentId: appointmentData.id,
+                cliente: form.cliente.trim(),
+                celular: cleanPhone,
+                indicativo: form.indicativo,
+                sede: form.sede,
+                servicio: l.servicio,
+                especialista: l.especialista,
+                duration: l.duracion,
+                price: l.precio,
+                total: totalEstimado, 
+                appointment_at: localDateTimeToUTC(l.appointment_at),
+                estado: form.estado
+              }),
+            });
+          } catch (webhookErr) {
+            console.error("Error enviando notificación:", webhookErr);
+          }
         }
 
         onSuccess?.();
