@@ -1,7 +1,9 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useSessionStore } from "@/lib/sessionStore";
+import { useUIStore } from "@/lib/uiStore"; // 🚩 Importamos el almacén del Drawer
+import ReservationDrawer from "@/components/reservations/ReservationDrawer"; // 🚩 Importamos el contenedor de detalles
 import { 
   DollarSign, Loader2, Calendar as CalendarIcon,
   ChevronLeft, ChevronRight, CalendarDays,
@@ -15,8 +17,13 @@ export default function MisInformes() {
   const [appointments, setAppointments] = useState<any[]>([]);
   
   const todayStr = new Date().toLocaleDateString('en-CA');
-  // Ahora el estado inicial permite rangos
   const [dateRange, setDateRange] = useState({ start: todayStr, end: todayStr });
+
+  // 🚩 ESTADOS GLOBALES Y LOCALES PARA MANEJAR LA APERTURA DEL DRAWER
+  const isReservationDrawerOpen = useUIStore((state) => state.isReservationDrawerOpen);
+  const closeReservationDrawer = useUIStore((state) => state.closeReservationDrawer);
+  const openReservationDrawer = useUIStore((state) => state.openReservationDrawer);
+  const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
 
   // --- LÓGICA DE PERIODOS RÁPIDOS ---
   const setQuickPeriod = (period: 'hoy' | 'semana' | 'mes') => {
@@ -31,7 +38,7 @@ export default function MisInformes() {
     }
 
     if (period === 'semana') {
-      const day = now.getDay(); // 0 es domingo
+      const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Ajuste a Lunes
       start = new Date(now.setDate(diff));
       end = new Date(start);
@@ -62,6 +69,69 @@ export default function MisInformes() {
     return `${h}:${minutes} ${ampm}`;
   };
 
+  // --- PARSE DE FECHA PARA EL CALENDARIO ---
+  const parseLocalDate = (dateString: string) => {
+    const [date, time = "00:00:00"] = dateString.split("T");
+    const [y, m, d] = date.split("-").map(Number);
+    const [hh, mm, ss] = time.split(":").map(Number);
+    return new Date(y, m - 1, d, hh, mm, ss || 0);
+  };
+
+  // --- CONTROLADOR DEL CLIC EN LA FILA ---
+  const handleRowClick = (cita: any) => {
+    const start = parseLocalDate(cita.appointment_at);
+    const duration = Number(cita.duration || 60);
+    const end = new Date(start.getTime() + duration * 60000);
+
+    // Mapeamos la cita al formato exacto 'CalendarAppointment' que devoran el Drawer y Details
+    setSelectedAppointment({
+      id: String(cita.id),
+      title: cita.servicio,
+      start,
+      end,
+      bg_color: cita.bg_color,
+      raw: { 
+        ...cita, 
+        appointment_at_local: start.toISOString()
+      },
+    });
+    openReservationDrawer();
+  };
+
+  // --- MAPEO DINÁMICO DE ESTADOS (COLORES Y TEXTOS) ---
+  const getStatusStyles = (estadoStr: string) => {
+    const normalize = estadoStr?.toLowerCase().trim();
+    
+    if (normalize === 'cita pagada') {
+      return {
+        label: "Pagada",
+        classes: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200/40"
+      };
+    }
+    if (normalize === 'cita confirmada') {
+      return {
+        label: "Confirmada",
+        classes: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200/40"
+      };
+    }
+    if (normalize === 'nueva reserva creada') {
+      return {
+        label: "Nueva Reserva",
+        classes: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200/40"
+      };
+    }
+    if (normalize === 'cita cancelada') {
+      return {
+        label: "Cancelada",
+        classes: "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 border border-red-200/40"
+      };
+    }
+    return {
+      label: estadoStr,
+      classes: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+    };
+  };
+
   const fetchData = useCallback(async () => {
     if (!session) return;
     setLoading(true);
@@ -70,10 +140,10 @@ export default function MisInformes() {
         .from('appointments')
         .select('*')
         .eq('especialista', session.name)
-        .or('estado.eq.Cita pagada,estado.eq.Cita confirmada,estado.eq.Nueva reserva creada')
+        .or('estado.eq.Cita pagada,estado.eq.Cita confirmada,estado.eq.Nueva reserva creada,estado.eq.Cita cancelada')
         .gte('appointment_at', `${dateRange.start} 00:00:00`)
         .lte('appointment_at', `${dateRange.end} 23:59:59`)
-        .order('appointment_at', { ascending: false });
+        .order('appointment_at', { ascending: true });
 
       if (citas) {
         const comisionFactor = (session.comision_base || 40) / 100;
@@ -81,12 +151,15 @@ export default function MisInformes() {
         const currentToday = new Date().toLocaleDateString('en-CA');
 
         citas.forEach(cita => {
-          if (cita.estado === 'Cita pagada') {
+          const estadoNorm = cita.estado?.toLowerCase().trim();
+          if (estadoNorm === 'cita pagada') {
             const val = (parseFloat(cita.price) || 0) * comisionFactor;
             totalP += val;
             if (cita.appointment_at?.startsWith(currentToday)) totalH += val;
           }
-          if (cita.estado === 'Cita confirmada') countConf++;
+          if (estadoNorm === 'cita confirmada' || estadoNorm === 'nueva reserva creada') {
+            countConf++;
+          }
         });
 
         setStats({ totalPeriodo: totalP, hoy: totalH, totalCitas: citas.length, confirmadas: countConf });
@@ -107,16 +180,14 @@ export default function MisInformes() {
           </p>
         </div>
 
-        {/* SELECTORES DE FECHA AVANZADOS */}
+        {/* SELECTORES DE FECHA */}
         <div className="flex flex-col md:flex-row items-start md:items-center gap-3">
-          {/* Botones rápidos */}
           <div className="flex bg-white dark:bg-zinc-900 rounded-2xl p-1 shadow-sm border border-zinc-200 dark:border-zinc-800">
             <button onClick={() => setQuickPeriod('hoy')} className="px-4 py-2 text-[10px] font-black uppercase hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl transition-all">Hoy</button>
             <button onClick={() => setQuickPeriod('semana')} className="px-4 py-2 text-[10px] font-black uppercase hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl transition-all">Semana</button>
             <button onClick={() => setQuickPeriod('mes')} className="px-4 py-2 text-[10px] font-black uppercase hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-xl transition-all border-l dark:border-zinc-800">Mes</button>
           </div>
 
-          {/* Rango personalizado */}
           <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 px-4 py-2 rounded-2xl shadow-sm border border-zinc-200 dark:border-zinc-800">
             <div className="flex items-center gap-2">
               <span className="text-[9px] font-black text-zinc-400 uppercase">Desde</span>
@@ -170,44 +241,60 @@ export default function MisInformes() {
                 </tr>
               </thead>
               <tbody className="divide-y dark:divide-zinc-800/50">
-                {appointments.map((cita) => (
-                  <tr key={cita.id} className="group hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all duration-200">
-                    <td className="px-8 py-5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex flex-col items-center justify-center font-black">
-                          <span className="text-[10px] text-zinc-800 dark:text-zinc-200">{cita.appointment_at.split(/[- T]/)[2]}</span>
-                          <span className="text-[7px] uppercase text-zinc-400">{new Date(cita.appointment_at.replace(' ', 'T')).toLocaleString('default', { month: 'short' })}</span>
+                {appointments.map((cita) => {
+                  const badge = getStatusStyles(cita.estado);
+                  const esPagada = cita.estado?.toLowerCase().trim() === 'cita pagada';
+
+                  return (
+                    // 🚩 AGREGADO: cursor-pointer y onClick para abrir los detalles y activar las lógicas del localStorage de forma nativa
+                    <tr 
+                      key={cita.id} 
+                      onClick={() => handleRowClick(cita)}
+                      className="group cursor-pointer hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all duration-200"
+                    >
+                      <td className="px-8 py-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex flex-col items-center justify-center font-black">
+                            <span className="text-[10px] text-zinc-800 dark:text-zinc-200">{cita.appointment_at.split(/[- T]/)[2]}</span>
+                            <span className="text-[7px] uppercase text-zinc-400">{new Date(cita.appointment_at.replace(' ', 'T')).toLocaleString('default', { month: 'short' })}</span>
+                          </div>
+                          <span className="text-xs font-bold text-zinc-500 flex items-center gap-1">
+                            <Clock size={12}/> {formatTimeSafe(cita.appointment_at)} 
+                          </span>
                         </div>
-                        <span className="text-xs font-bold text-zinc-500 flex items-center gap-1">
-                          <Clock size={12}/> {formatTimeSafe(cita.appointment_at)} 
+                      </td>
+                      <td className="px-8 py-5">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-black text-zinc-800 dark:text-zinc-200 uppercase">{cita.cliente}</span>
+                          <span className="text-[10px] text-zinc-400 font-medium">{cita.servicio}</span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-5 text-center">
+                        <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${badge.classes}`}>
+                          {badge.label}
                         </span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-black text-zinc-800 dark:text-zinc-200 uppercase">{cita.cliente}</span>
-                        <span className="text-[10px] text-zinc-400 font-medium">{cita.servicio}</span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-5 text-center">
-                      <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
-                        cita.estado === 'Cita pagada' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800'
-                      }`}>
-                        {cita.estado}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5 text-right font-black">
-                      <span className={cita.estado === 'Cita pagada' ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-300 dark:text-zinc-700'}>
-                        {cita.estado === 'Cita pagada' ? `+$${(Number(cita.price) * ((session?.comision_base || 40) / 100)).toLocaleString()}` : '$0'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-8 py-5 text-right font-black">
+                        <span className={esPagada ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-300 dark:text-zinc-700'}>
+                          {esPagada ? `+$${(Number(cita.price) * ((session?.comision_base || 40) / 100)).toLocaleString()}` : '$0'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
         </div>
       </div>
+
+      {/* 🚩 CONTENEDOR LATERAL INTELIGENTE CONECTADO */}
+      <ReservationDrawer
+        isOpen={isReservationDrawerOpen}
+        onClose={() => { closeReservationDrawer(); setSelectedAppointment(null); }}
+        appointmentData={selectedAppointment}
+        onSuccess={fetchData} // Recarga los reportes automáticamente al mutar una cita
+      />
     </div>
   );
 }
