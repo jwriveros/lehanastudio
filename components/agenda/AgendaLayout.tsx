@@ -11,13 +11,12 @@ import AgendaSidebar from "./AgendaSidebar";
 import WeeklyAgendaGrid from "./WeeklyAgendaGrid";
 import MonthlyAgendaGrid from "./MonthlyAgendaGrid";
 import DailyAgendaGrid from "./DailyAgendaGrid";
-// Se eliminó AppointmentDetailsModal ya que ahora usaremos el Drawer para todo
 import ReservationDrawer from "@/components/reservations/ReservationDrawer";
 import { useUIStore } from "@/lib/uiStore";
 import { CalendarAppointment, AgendaAppointmentDB } from "./types";
 
 /* =========================
-    FECHAS (Tu lógica original intacta)
+    FECHAS (Lógicas auxiliares)
 ========================= */
 function parseLocalDate(dateString: string) {
   const [date, time = "00:00:00"] = dateString.split("T");
@@ -54,7 +53,7 @@ function toLocalDateTimeString(d: Date) {
 }
 
 /* =========================
-    COMPONENTE
+    COMPONENTE PRINCIPAL
 ========================= */
 export default function AgendaLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -69,11 +68,13 @@ export default function AgendaLayout() {
   const [specialistFilter, setSpecialistFilter] = useState<string[]>([]);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
   
-  // Se eliminó el estado selectedAppointment
   const isReservationDrawerOpen = useUIStore((state) => state.isReservationDrawerOpen);
   const closeReservationDrawer = useUIStore((state) => state.closeReservationDrawer);
   const openReservationDrawer = useUIStore((state) => state.openReservationDrawer);
   const [editingAppointment, setEditingAppointment] = useState<CalendarAppointment | null>(null);
+
+  // ESTADO LOCAL PROPIO PARA LOS PERMISOS DE CREACIÓN DE LA GRILLA
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
   const toggleSidebar = () => setSidebarCollapsed((v) => !v);
 
@@ -82,19 +83,59 @@ export default function AgendaLayout() {
     return () => register(null);
   }, [register]);
 
-  const handleDateChange = (date: Date) => {
-  // 1. Actualizamos el estado local para que el Header cambie el texto
-  setCurrentDate(date);
+  /* SCANNER DE SEGURIDAD DIRECTO DEL LOCALSTORAGE */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-  // 2. Si usas FullCalendar, le decimos que salte a esa fecha
-  if (calendarRef.current) {
-    const calendarApi = calendarRef.current.getApi();
-    calendarApi.gotoDate(date);
-  }
-};
+    const verificarPermisosAgenda = () => {
+      const emailObjetivo = "lesliegutierrezpmu@gmail.com";
+      let accesoConcedido = false;
+
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const llave = localStorage.key(i);
+          if (!llave) continue;
+
+          const contenido = localStorage.getItem(llave);
+          if (!contenido) continue;
+
+          try {
+            const jsonParseado = JSON.parse(contenido);
+            if (jsonParseado?.state?.session?.email?.toLowerCase().trim() === emailObjetivo) {
+              accesoConcedido = true;
+              break;
+            }
+            if (jsonParseado?.user?.email?.toLowerCase().trim() === emailObjetivo) {
+              accesoConcedido = true;
+              break;
+            }
+          } catch (e) {}
+
+          if (contenido.toLowerCase().includes(emailObjetivo)) {
+            accesoConcedido = true;
+            break;
+          }
+        }
+      } catch (error) {
+        console.error("Error leyendo LocalStorage en AgendaLayout:", error);
+      }
+
+      setIsAuthorized(accesoConcedido);
+    };
+
+    verificarPermisosAgenda();
+  }, []);
+
+  const handleDateChange = (date: Date) => {
+    setCurrentDate(date);
+    if (calendarRef.current) {
+      const calendarApi = calendarRef.current.getApi();
+      calendarApi.gotoDate(date);
+    }
+  };
 
   /* =========================
-      FETCH (Con price y appointment_id)
+      FETCH
   ========================= */
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -132,8 +173,6 @@ export default function AgendaLayout() {
   /* =========================
       HANDLERS
   ========================= */
-  
-  // Este es el nuevo handler que abre el drawer directamente al hacer clic en una reserva
   const handleViewAppointment = (appointment: CalendarAppointment) => {
     setEditingAppointment(appointment);
     openReservationDrawer();
@@ -160,7 +199,7 @@ export default function AgendaLayout() {
   };
 
   /* =========================
-      MAP CALENDAR (Cálculo de Totales)
+      MAP CALENDAR
   ========================= */
   const calendarAppointments = useMemo(() => {
     const groupTotals: Record<string, number> = {};
@@ -231,8 +270,8 @@ export default function AgendaLayout() {
                 <DailyAgendaGrid 
                   appointments={calendarAppointments} 
                   currentDate={currentDate} 
-                  onViewDetails={handleViewAppointment} // Redirigido al Drawer
-                  onCreateFromSlot={handleCreateFromSlot} 
+                  onViewDetails={handleViewAppointment} 
+                  onCreateFromSlot={isAuthorized ? handleCreateFromSlot : undefined} 
                 />
               ) : viewMode === "month" ? (
                 <MonthlyAgendaGrid appointments={calendarAppointments} currentDate={currentDate} />
@@ -240,8 +279,8 @@ export default function AgendaLayout() {
                 <WeeklyAgendaGrid 
                   appointments={calendarAppointments} 
                   currentDate={currentDate} 
-                  onViewDetails={handleViewAppointment} // Redirigido al Drawer
-                  onCreateFromSlot={handleCreateFromSlot} 
+                  onViewDetails={handleViewAppointment} 
+                  onCreateFromSlot={isAuthorized ? handleCreateFromSlot : undefined} 
                 />
               )}
             </div>
@@ -249,6 +288,7 @@ export default function AgendaLayout() {
         }
       />
 
+      {/* 🚩 CORREGIDO: Se retiró el atributo isAuthorized de aquí ya que no es requerido por el Drawer */}
       <ReservationDrawer
         isOpen={isReservationDrawerOpen}
         onClose={() => { closeReservationDrawer(); setEditingAppointment(null); }}

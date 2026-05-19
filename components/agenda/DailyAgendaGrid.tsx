@@ -33,6 +33,7 @@ function makeLocalDate(y: number, m: number, d: number) {
   return new Date(y, m, d, 0, 0, 0, 0);
 }
 
+// Lógica de colisiones intacta
 function computeOverlapLayout(appts: CalendarAppointment[]): LayoutAppt[] {
   const sorted = [...appts].sort(
     (a, b) => a.start.getTime() - b.start.getTime()
@@ -185,7 +186,7 @@ export default function DailyAgendaGrid({
               key={spec}
               className="relative border-l border-gray-200 dark:border-gray-700"
             >
-              {/* SLOTS VACÍOS (CLICK PARA CREAR RESERVA) */}
+              {/* SLOTS VACÍOS */}
               <div
                 className="absolute inset-0 z-0"
                 style={{ height: totalHeight }}
@@ -202,7 +203,12 @@ export default function DailyAgendaGrid({
                     return (
                       <div
                         key={idx}
-                        className="cursor-pointer transition-colors hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20"
+                        // 🚩 DINÁMICO: Si no hay función de creación, removemos el cursor e interactividad visual por completo
+                        className={
+                          onCreateFromSlot 
+                            ? "cursor-pointer transition-colors hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20" 
+                            : "cursor-default pointer-events-none"
+                        }
                         style={{ height: SLOT_HEIGHT, borderBottom: '1px solid rgba(0, 0, 0, 0.05)' }}
                         onClick={() =>
                           onCreateFromSlot?.({
@@ -216,7 +222,7 @@ export default function DailyAgendaGrid({
                 </div>
               </div>
 
-              {/* Línea ahora */}
+              {/* Línea de hora actual */}
               {isSameDay(localCurrentDate, now) && nowTop > 0 && (
                 <div
                   className="absolute left-0 right-0 z-30 flex items-center pointer-events-none"
@@ -227,7 +233,7 @@ export default function DailyAgendaGrid({
                 </div>
               )}
 
-              {/* CITAS */}
+              {/* CITAS EXISTENTES (Siguen siendo perfectamente visibles y clickeables para ver detalles) */}
               <div className="relative z-10 pointer-events-none" style={{ height: totalHeight }}>
                 {layouts.map(({ appt, col, colCount }) => {
                   const minutesFromStart = differenceInMinutes(
