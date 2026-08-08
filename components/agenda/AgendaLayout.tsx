@@ -67,6 +67,7 @@ export default function AgendaLayout() {
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [specialistFilter, setSpecialistFilter] = useState<string[]>([]);
   const [serviceFilter, setServiceFilter] = useState<string[]>([]);
+  const [locationFilter, setLocationFilter] = useState<string[]>([]);
   
   const isReservationDrawerOpen = useUIStore((state) => state.isReservationDrawerOpen);
   const closeReservationDrawer = useUIStore((state) => state.closeReservationDrawer);
@@ -156,11 +157,13 @@ export default function AgendaLayout() {
     const { data, error } = await supabase
       .from("appointments")
       .select(
-        "id, cliente, celular, servicio, especialista, appointment_at, estado, bg_color, duration, price, appointment_id"
+        "id, cliente, celular, servicio, especialista, appointment_at, estado, sede, bg_color, duration, price, appointment_id"
       )
       .gte("appointment_at", toLocalDateTimeString(from))
       .lt("appointment_at", toLocalDateTimeString(to))
       .order("appointment_at", { ascending: true });
+
+      console.log("Citas recibidas de Supabase:", data);
 
     setAppointments(error ? [] : (data as any) ?? []);
     setLoading(false);
@@ -211,10 +214,11 @@ export default function AgendaLayout() {
 
     return appointments
       .filter((a) => {
+        const locationMatch = locationFilter.length === 0 || locationFilter.includes(a.sede);
         const statusMatch = statusFilter.length === 0 || statusFilter.includes(a.estado);
         const specialistMatch = specialistFilter.length === 0 || specialistFilter.includes(a.especialista);
         const serviceMatch = serviceFilter.length === 0 || serviceFilter.includes(a.servicio);
-        return statusMatch && specialistMatch && serviceMatch;
+        return locationMatch && statusMatch && specialistMatch && serviceMatch;
       })
       .map((a) => {
         const start = parseLocalDate(a.appointment_at);
@@ -235,7 +239,7 @@ export default function AgendaLayout() {
           },
         };
       });
-  }, [appointments, statusFilter, specialistFilter, serviceFilter]);
+  }, [appointments,locationFilter, statusFilter, specialistFilter, serviceFilter]);
 
   return (
     <div className="min-h-[100dvh] flex h-full w-full flex-col overflow-hidden bg-white">
@@ -251,6 +255,8 @@ export default function AgendaLayout() {
             onNext={() => setCurrentDate(d => normalizeLocalDate(new Date(d.getTime() + 86400000 * (viewMode === "week" ? 7 : 1))))}
             view={viewMode}
             setView={setViewMode}
+            locationFilter={locationFilter}
+            setLocationFilter={setLocationFilter}
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
             specialistFilter={specialistFilter}

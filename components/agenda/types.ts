@@ -8,6 +8,7 @@ export type AgendaAppointmentDB = {
   appointment_id: number | null;
   appointment_at_local?: string | Date;
   estado: string;
+  sede: string;
   bg_color: string;
   price: string | null;
   duration?: string | null;

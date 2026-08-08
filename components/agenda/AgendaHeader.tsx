@@ -21,6 +21,8 @@ interface Props {
   onDateChange: (date: Date) => void;
   view: "day" | "week" | "month";
   setView: (v: "day" | "week" | "month") => void;
+  locationFilter: string[];
+  setLocationFilter: (v: string[]) => void;
   statusFilter: string[];
   setStatusFilter: (v: string[]) => void;
   specialistFilter: string[];
@@ -38,6 +40,8 @@ export function AgendaHeader({
   onDateChange,
   view,
   setView,
+  locationFilter,
+  setLocationFilter,
   statusFilter,
   setStatusFilter,
   specialistFilter,
@@ -160,6 +164,18 @@ export function AgendaHeader({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Nuevo Filtro de Sede */}
+          <FilterDropdown
+            label="Sede"
+            options={[
+              { label: "Marquetalia", value: "Marquetalia" },
+              { label: "Buga", value: "Buga" },
+              { label: "Santa Marta", value: "Santa Marta" },
+            ]}
+            selected={locationFilter}
+            onChange={setLocationFilter}
+          />
+
           <FilterDropdown
             label="Estado"
             options={[
@@ -171,6 +187,7 @@ export function AgendaHeader({
             selected={statusFilter}
             onChange={setStatusFilter}
           />
+          
           <FilterDropdown
             label="Especialista"
             options={[
