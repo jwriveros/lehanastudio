@@ -24,6 +24,7 @@ import {
   DollarSign,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ClipboardList,
   History,
   Tag,
@@ -154,7 +155,32 @@ const EMPTY_FORM: FormState = {
   estado: "Nueva reserva creada",
   lines: [{ ...EMPTY_LINE }],
 };
-
+const ESTADO_STYLES: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  "Nueva reserva creada": {
+    bg: "bg-blue-50 dark:bg-blue-950/40",
+    text: "text-blue-700 dark:text-blue-300 font-semibold",
+    border: "border-blue-300 dark:border-blue-800",
+    dot: "bg-blue-500",
+  },
+  "Cita confirmada": {
+    bg: "bg-emerald-50 dark:bg-emerald-950/40",
+    text: "text-emerald-700 dark:text-emerald-300 font-semibold",
+    border: "border-emerald-300 dark:border-emerald-800",
+    dot: "bg-emerald-500",
+  },
+  "Cita pagada": {
+    bg: "bg-purple-50 dark:bg-purple-950/40",
+    text: "text-purple-700 dark:text-purple-300 font-semibold",
+    border: "border-purple-300 dark:border-purple-800",
+    dot: "bg-purple-500",
+  },
+  "Cita cancelada": {
+    bg: "bg-rose-50 dark:bg-rose-950/40",
+    text: "text-rose-700 dark:text-rose-300 font-semibold",
+    border: "border-rose-300 dark:border-rose-800",
+    dot: "bg-rose-500",
+  },
+};
 /* =========================
    HELPERS (CORRECCIÓN HORA LITERAL)
 ========================= */
@@ -490,6 +516,8 @@ export default function ReservationForm({
   /* =========================
       RENDER PRINCIPAL
   ========================= */
+  const currentEstadoStyle = ESTADO_STYLES[form.estado] || ESTADO_STYLES["Nueva reserva creada"];
+
   return (
     <div className="flex h-full w-full overflow-hidden bg-gray-50 dark:bg-zinc-950">
       
@@ -754,31 +782,46 @@ export default function ReservationForm({
                 <div className="space-y-2">
                   <label htmlFor="estado" className="text-sm font-medium text-gray-700 dark:text-gray-400">Estado</label>
                   <div className="group relative">
-                    <Tag className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" />
+                    {/* Punto indicador de color */}
+                    <span className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full ${currentEstadoStyle.dot}`} />
+                    
                     <select
                       id="estado"
                       value={form.estado}
                       onChange={(e) => updateField("estado", e.target.value)}
-                      className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
+                      className={`w-full appearance-none rounded-xl border py-2.5 pl-8 pr-10 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 ${currentEstadoStyle.bg} ${currentEstadoStyle.text} ${currentEstadoStyle.border}`}
                     >
-                      <option value="Nueva reserva creada">Nueva reserva creada</option>
-                      <option value="Cita confirmada">Cita confirmada</option>
-                      <option value="Cita pagada">Cita pagada</option>
-                      <option value="Cita cancelada">Cita cancelada</option>
+                      <option value="Nueva reserva creada" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">🔵 Nueva reserva creada</option>
+                      <option value="Cita confirmada" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">🟢 Cita confirmada</option>
+                      <option value="Cita pagada" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">🟣 Cita pagada</option>
+                      <option value="Cita cancelada" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">🔴 Cita cancelada</option>
                     </select>
+                    
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 dark:text-gray-400" />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="sede" className="text-sm font-medium text-gray-700 dark:text-gray-400">Sede</label>
+                  <label htmlFor="sede" className="text-sm font-medium text-gray-700 dark:text-gray-400">
+                    Sede
+                  </label>
                   <div className="group relative">
-                    <Building className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" />
-                    <input
+                    <Building className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-indigo-500 z-10" />
+                    
+                    <select
                       id="sede"
-                      type="text"
                       value={form.sede}
                       onChange={(e) => updateField("sede", e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
-                    />
+                      className="w-full appearance-none rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-gray-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white dark:focus:ring-indigo-900/40"
+                    >
+                      <option value="" disabled>
+                        Selecciona una sede
+                      </option>
+                      <option value="Santa Marta">Santa Marta</option>
+                      <option value="Buga">Buga</option>
+                      <option value="Marquetalia">Marquetalia</option>
+                    </select>
+
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-indigo-500 z-10" />
                   </div>
                 </div>
                 {!isEditing && (
