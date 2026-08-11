@@ -131,60 +131,79 @@ export default function ReservationDetails({
     fetchGroup();
   }, [appointmentData, data.appointment_id]);
 
-  /* --- BÚSQUEDA Y UNIFICACIÓN DE CITAS DEL CLIENTE EN EL DÍA --- */
+  /* CARGAR Y UNIFICAR SERVICIOS ASOCIADOS DEL CLIENTE EN EL DÍA */
   useEffect(() => {
-    const celularCliente = data?.celular;
-    const nombreCliente = data?.cliente;
+    async function fetchAllCustomerServices() {
+      if (!appointmentData?.id) return;
 
-    if (appointmentData?.id && (celularCliente || nombreCliente)) {
-      const fetchClientAppointments = async () => {
-        setLoadingClientApps(true);
-        try {
-          const baseDate = new Date(appointmentData.start);
-          const startOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0).toISOString();
-          const endOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59).toISOString();
+      setLoadingClientApps(true);
+      try {
+        const baseDate = new Date(appointmentData.start);
+        const startOfDay = new Date(
+          baseDate.getFullYear(),
+          baseDate.getMonth(),
+          baseDate.getDate(),
+          0,
+          0,
+          0
+        ).toISOString();
+        const endOfDay = new Date(
+          baseDate.getFullYear(),
+          baseDate.getMonth(),
+          baseDate.getDate(),
+          23,
+          59,
+          59
+        ).toISOString();
 
-          let query = supabase
-            .from("appointments")
-            .select("*") // Seleccionamos todos los campos para poder usarlos en el cobro
+        const celularCliente = data?.celular;
+        const nombreCliente = data?.cliente;
+        const groupId = data?.appointment_id;
+
+        let query = supabase.from("appointments").select("*");
+
+        // Prioridad 1: Grupo Web
+        if (groupId) {
+          query = query.eq("appointment_id", groupId);
+        } else if (celularCliente) {
+          // Prioridad 2: Teléfono en el mismo día
+          query = query
+            .eq("celular", celularCliente)
             .gte("appointment_at", startOfDay)
-            .lte("appointment_at", endOfDay)
-            .neq("id", appointmentData.id); // Excluimos la cita principal activa
-
-          if (celularCliente) {
-            query = query.eq("celular", celularCliente);
-          } else if (nombreCliente) {
-            query = query.eq("cliente", nombreCliente);
-          }
-
-          const { data: dayApps, error } = await query;
-          if (error) throw error;
-
-          const extraApps = dayApps || [];
-          setClientDayAppointments(extraApps);
-
-          // AQUÍ ESTÁ EL CAMBIO CLAVE:
-          // Si no provienen de un grupo web (appointment_id), unimos manualmente las citas del día 
-          // a la lista de servicios asociados para que aparezcan juntas al cobrar
-          setAssociatedServices((prevServices) => {
-            // Evitamos duplicados revisando los IDs
-            const existingIds = new Set(prevServices.map((s) => s.id));
-            const newExtraServices = extraApps.filter((app) => !existingIds.has(app.id));
-            return [...prevServices, ...newExtraServices];
-          });
-
-        } catch (error) {
-          console.error("Error buscando citas para el cobro unificado:", error);
-        } finally {
-          setLoadingClientApps(false);
+            .lte("appointment_at", endOfDay);
+        } else if (nombreCliente) {
+          // Prioridad 3: Nombre en el mismo día
+          query = query
+            .eq("cliente", nombreCliente)
+            .gte("appointment_at", startOfDay)
+            .lte("appointment_at", endOfDay);
+        } else {
+          // Fallback: Cita individual
+          query = query.eq("id", appointmentData.id);
         }
-      };
 
-      fetchClientAppointments();
-    } else {
-      setClientDayAppointments([]);
+        const { data: list, error } = await query.order("id", {
+          ascending: true,
+        });
+
+        if (error) throw error;
+
+        if (list && list.length > 0) {
+          setAssociatedServices(list);
+          setSelectedServiceIds(list.map((s) => s.id));
+        } else {
+          setAssociatedServices([data]);
+          setSelectedServiceIds([appointmentData.id]);
+        }
+      } catch (err) {
+        console.error("Error al cargar servicios consolidados:", err);
+      } finally {
+        setLoadingClientApps(false);
+      }
     }
-  }, [appointmentData, data]);
+
+    fetchAllCustomerServices();
+  }, [appointmentData, data.appointment_id, data.celular, data.cliente]);
   /* ------------------------------------------------------------------------ */
 
   const currentTotal = associatedServices
