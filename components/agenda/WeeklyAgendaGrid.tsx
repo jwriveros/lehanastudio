@@ -26,11 +26,11 @@ const START_HOUR = 7;
 const END_HOUR = 22;
 const SLOT_MINUTES = 30;
 const SLOT_HEIGHT = 52; 
-const HEADER_HEIGHT = 64; 
+const HEADER_HEIGHT = 72; 
 const VISUAL_GAP = 2;
-const SPECIALIST_HEADER_HEIGHT = 8
-const SPECIALISTS = ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote"];
-const SPECIALIST_TITLES = ["L", "N", "Y"];
+
+const ALL_SPECIALISTS = ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote"];
+const ALL_SPECIALIST_TITLES = ["L", "N", "Y"];
 
 /* =========================
    COMPONENT
@@ -41,14 +41,21 @@ export default function WeeklyAgendaGrid({
   tooltip,
   onViewDetails,
   onCreateFromSlot,
+  // ¡AQUÍ ESTÁ LA CLAVE! Nos aseguramos de recibir el filtro
+  specialistFilter = [], 
 }: {
   appointments: CalendarAppointment[];
   currentDate: Date;
   tooltip?: TooltipInfo;
   onViewDetails?: (appt: CalendarAppointment) => void;
   onCreateFromSlot?: (data: { especialista: string; start: Date }) => void;
+  // Añadimos el tipo de dato aquí también
+  specialistFilter?: string[]; 
 }) {
   const [now, setNow] = useState(new Date());
+
+  // DEBUG: Esto imprimirá en la consola de tu navegador el filtro actual
+  console.log("Filtro recibido en la cuadrícula:", specialistFilter);
 
   useEffect(() => {
     const i = setInterval(() => setNow(new Date()), 60_000);
@@ -71,56 +78,76 @@ export default function WeeklyAgendaGrid({
   );
   const nowTop = (nowMinutesFromStart / SLOT_MINUTES) * SLOT_HEIGHT;
 
+  // LÓGICA DINÁMICA: Si hay filtro, mostramos solo las seleccionadas. Si no, mostramos todas.
+  const activeSpecialists = specialistFilter && specialistFilter.length > 0
+    ? ALL_SPECIALISTS.filter((s) => specialistFilter.includes(s))
+    : ALL_SPECIALISTS;
+
+  const activeTitles = activeSpecialists.map(
+    (s) => ALL_SPECIALIST_TITLES[ALL_SPECIALISTS.indexOf(s)]
+  );
+
   return (
     <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
-      {/* =====================
-          HEADER DÍAS
-      ===================== */}
+      
+      {/* HEADER DÍAS Y ESPECIALISTAS */}
       <div
-        className="sticky top-0 z-40 grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900"
+        className="sticky top-0 z-40 grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
         style={{ minHeight: HEADER_HEIGHT }}
       >
         <div className="border-r border-gray-200 dark:border-gray-800" />
+        
         {days.map((day) => {
           const isToday = isSameDay(day, now);
           return (
             <div
               key={day.toISOString()}
-              className="flex flex-col items-center justify-center border-r border-gray-200 py-2 dark:border-gray-800"
+              className="flex flex-col border-r border-gray-200 dark:border-gray-800"
             >
-              <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
-                {format(day, "EEE", { locale: es })}
+              <div className="flex flex-row items-center justify-center gap-1.5 py-2 border-b border-gray-200 dark:border-gray-700">
+                <span className="text-xs font-bold uppercase text-gray-600 dark:text-gray-400">
+                  {format(day, "EEEE", { locale: es })}
+                </span>
+                <div
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                    isToday
+                      ? "bg-indigo-600 text-white"
+                      : "text-gray-800 dark:text-gray-200"
+                  }`}
+                >
+                  {format(day, "dd")}
+                </div>
               </div>
+
+              {/* TÍTULOS DE ESPECIALISTAS (Dinámico) */}
               <div
-                className={`mt-1 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
-                  isToday
-                    ? "bg-indigo-600 text-white"
-                    : "text-gray-800 dark:text-gray-200"
-                }`}
+                className="grid flex-1 w-full"
+                style={{
+                  gridTemplateColumns: `repeat(${activeSpecialists.length}, 1fr)`,
+                }}
               >
-                {format(day, "dd")}
+                {activeTitles.map((title, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-center border-r last:border-r-0 border-gray-200 text-[10px] font-bold text-gray-500 bg-white dark:bg-gray-800/30 dark:border-gray-700 dark:text-gray-400"
+                  >
+                    {title}
+                  </div>
+                ))}
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* =====================
-          BODY SCROLL
-      ===================== */}
+      {/* BODY SCROLL */}
       <div
         className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))]"
         style={{ height: `calc(100% - ${HEADER_HEIGHT}px)` }}
       >
         {/* HORAS */}
         <div className="overflow-y-auto border-r border-gray-200 dark:border-gray-800">
-          <div
-            className="relative"
-            style={{
-              height: totalHeight,
-              paddingTop: SPECIALIST_HEADER_HEIGHT,
-            }}
-          >
+          <div className="relative" style={{ height: totalHeight }}>
             {hours.map((h, i) => (
               <div
                 key={i}
@@ -136,13 +163,14 @@ export default function WeeklyAgendaGrid({
           </div>
         </div>
 
-        {/* DÍAS */}
+        {/* COLUMNAS DE LOS DÍAS */}
         {days.map((day) => {
           const dayAppointments = appointments.filter(
             (a) =>
               a.start.getFullYear() === day.getFullYear() &&
               a.start.getMonth() === day.getMonth() &&
-              a.start.getDate() === day.getDate()
+              a.start.getDate() === day.getDate() &&
+              activeSpecialists.includes(a.raw.especialista) // Filtro interno
           );
 
           return (
@@ -150,12 +178,11 @@ export default function WeeklyAgendaGrid({
               key={day.toISOString()}
               className="relative border-r border-gray-200 dark:border-gray-800"
             >
-              {/* SLOTS VACÍOS (CLICK PARA CREAR RESERVA) */}
+              {/* SLOTS VACÍOS (Dinámicos) */}
               <div
                 className="absolute inset-0 z-0"
                 style={{
                   height: totalHeight,
-                  marginTop: SPECIALIST_HEADER_HEIGHT,
                   backgroundImage: `repeating-linear-gradient(to bottom, transparent, transparent ${
                     SLOT_HEIGHT - 1
                   }px, rgba(0,0,0,0.03) ${SLOT_HEIGHT}px)`,
@@ -164,10 +191,10 @@ export default function WeeklyAgendaGrid({
                 <div
                   className="grid h-full"
                   style={{
-                    gridTemplateColumns: `repeat(${SPECIALISTS.length}, 1fr)`,
+                    gridTemplateColumns: `repeat(${activeSpecialists.length}, 1fr)`,
                   }}
                 >
-                  {SPECIALISTS.map((specialist) => (
+                  {activeSpecialists.map((specialist) => (
                     <div
                       key={specialist}
                       className="border-r border-gray-200/50 dark:border-gray-700/50"
@@ -195,31 +222,12 @@ export default function WeeklyAgendaGrid({
                 </div>
               </div>
 
-              {/* HEADER ESPECIALISTAS */}
-              <div
-                className="sticky top-0 z-20 grid bg-white/80 backdrop-blur-sm dark:bg-gray-900/80"
-                style={{
-                  top: 0,
-                  height: SPECIALIST_HEADER_HEIGHT,
-                  gridTemplateColumns: `repeat(${SPECIALISTS.length}, 1fr)`,
-                }}
-              >
-                {SPECIALIST_TITLES.map((title, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-center border-b border-r border-gray-200 text-xs font-medium text-gray-600 dark:border-gray-700 dark:text-gray-400"
-                  >
-                    {title}
-                  </div>
-                ))}
-              </div>
-
               {/* LÍNEA DEL AHORA */}
               {isSameDay(day, now) && nowTop > 0 && (
                 <div
                   className="absolute left-0 right-0 z-30 flex items-center pointer-events-none"
                   style={{
-                    top: nowTop + SPECIALIST_HEADER_HEIGHT,
+                    top: nowTop,
                     transform: "translateY(-1px)",
                   }}
                 >
@@ -228,13 +236,10 @@ export default function WeeklyAgendaGrid({
                 </div>
               )}
 
-              {/* CITAS CON LÓGICA DE CASCADA */}
+              {/* CITAS (Ancho dinámico) */}
               <div
                 className="relative z-10 pointer-events-none"
-                style={{
-                  height: totalHeight,
-                  marginTop: SPECIALIST_HEADER_HEIGHT,
-                }}
+                style={{ height: totalHeight }}
               >
                 {dayAppointments.map((appt) => {
                   const minutesFromStart = differenceInMinutes(
@@ -256,7 +261,6 @@ export default function WeeklyAgendaGrid({
                       SLOT_HEIGHT -
                     VISUAL_GAP;
                   
-                  // Lógica de detección de colisiones por especialista
                   const collidingAppts = dayAppointments
                     .filter(a => a.raw.especialista === appt.raw.especialista)
                     .filter(a => (appt.start < a.end && a.start < appt.end))
@@ -265,14 +269,13 @@ export default function WeeklyAgendaGrid({
                   const collisionIndex = collidingAppts.findIndex(a => a.id === appt.id);
                   const totalCollisions = collidingAppts.length;
 
+                  // Calcula el ancho en base a activeSpecialists
                   const specialistIndex = Math.max(
                     0,
-                    SPECIALISTS.indexOf(appt.raw.especialista)
+                    activeSpecialists.indexOf(appt.raw.especialista)
                   );
-                  const baseWidth = 100 / SPECIALISTS.length;
+                  const baseWidth = 100 / activeSpecialists.length;
                   const leftBase = specialistIndex * baseWidth;
-
-                  // Efecto cascada: desplazamiento de 4px por cada cita colisionada
                   const offsetStep = 4;
 
                   return (
@@ -282,9 +285,7 @@ export default function WeeklyAgendaGrid({
                       style={{
                         top,
                         height,
-                        // Reducimos un poco el ancho si hay colisión para que se vea el fondo
                         width: `calc(${baseWidth}% - ${totalCollisions > 1 ? 8 : 4}px)`,
-                        // Aplicamos el desplazamiento horizontal (cascada)
                         left: `calc(${leftBase}% + ${2 + (collisionIndex * offsetStep)}px)`,
                         zIndex: 10 + collisionIndex,
                       }}
@@ -298,7 +299,6 @@ export default function WeeklyAgendaGrid({
                           width: '100%',
                           left: 0,
                           backgroundColor: appt.bg_color || "#6366f1",
-                          // Sombra para dar profundidad a las capas de la cascada
                           boxShadow: totalCollisions > 1 ? ' -2px 0 8px rgba(0,0,0,0.15)' : 'none'
                         }}
                       />

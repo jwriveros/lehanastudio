@@ -220,9 +220,9 @@ export default function FinanzasPage() {
               <button onClick={() => setRefreshKey(k => k + 1)} className="ml-2 p-1 hover:rotate-180 transition-all text-zinc-400"><RefreshCcw size={14}/></button>
             </div>
             
-            <button >
+            <div >
               <DailyPaymentsReports />
-            </button>
+            </div>
 
             <button onClick={() => setIsAdding(true)} className="bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 px-6 py-3 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-2 hover:scale-105 transition-all shadow-xl">
               <Plus size={16} /> Nuevo Gasto

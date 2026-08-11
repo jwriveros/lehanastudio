@@ -6,7 +6,6 @@ import { supabase } from "@/lib/supabaseClient";
 
 import AgendaShell from "./AgendaShell";
 import { AgendaHeader } from "./AgendaHeader";
-import AgendaSidebar from "./AgendaSidebar";
 
 import WeeklyAgendaGrid from "./WeeklyAgendaGrid";
 import MonthlyAgendaGrid from "./MonthlyAgendaGrid";
@@ -244,11 +243,8 @@ export default function AgendaLayout() {
   return (
     <div className="min-h-[100dvh] flex h-full w-full flex-col overflow-hidden bg-white">
       <AgendaShell
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={toggleSidebar}
         header={
           <AgendaHeader
-            onToggleAgendaSidebar={toggleSidebar}
             currentDate={currentDate}
             onToday={() => setCurrentDate(normalizeLocalDate(new Date()))}
             onPrev={() => setCurrentDate(d => normalizeLocalDate(new Date(d.getTime() - 86400000 * (viewMode === "week" ? 7 : 1))))}
@@ -266,7 +262,6 @@ export default function AgendaLayout() {
             onDateChange={handleDateChange}
           />
         }
-        sidebar={<AgendaSidebar collapsed={sidebarCollapsed} />}
         agenda={
           loading ? (
             <div className="flex h-full items-center justify-center text-sm text-zinc-500">Cargando agenda…</div>
@@ -286,7 +281,9 @@ export default function AgendaLayout() {
                   appointments={calendarAppointments} 
                   currentDate={currentDate} 
                   onViewDetails={handleViewAppointment} 
-                  onCreateFromSlot={isAuthorized ? handleCreateFromSlot : undefined} 
+                  onCreateFromSlot={isAuthorized ? handleCreateFromSlot : undefined}
+                  
+                  specialistFilter={specialistFilter} 
                 />
               )}
             </div>
