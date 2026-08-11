@@ -261,8 +261,12 @@ export default function FinanzasPage() {
             <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-xl"><BarChart3 size={20}/></div>
             <h2 className="text-sm font-black uppercase tracking-[0.2em] italic">Rendimiento Histórico</h2>
         </div>
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
+        
+        {/* Agregamos minHeight en los estilos del div por seguridad */}
+        <div className="h-[300px] w-full" style={{ minHeight: "300px" }}>
+          
+          {/* AQUÍ ESTÁ LA MAGIA: Agregamos minWidth={0} y minHeight={300} para evitar el error -1 en el servidor */}
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" opacity={0.5}/>
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 900}} />
@@ -273,6 +277,7 @@ export default function FinanzasPage() {
               <Bar dataKey="Gastos" fill="#f43f5e" radius={[10, 10, 10, 10]} barSize={25} />
             </BarChart>
           </ResponsiveContainer>
+          
         </div>
       </section>
 

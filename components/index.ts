@@ -1,6 +1,5 @@
 // jwriveros/lehanastudio/lehanastudio-a8a570c007a1557a6ccd13baa5a39a3fe79a534a/components/index.ts
 
-export { ChatPanel } from "./ChatPanel";
 export { default as ClientsPanel } from "./ClientsPanel";
 export { default as ProgressPanel } from "./ProgressPanel";
 export { default as ServicesPanel } from "./ServicesPanel";

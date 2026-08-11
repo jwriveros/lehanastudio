@@ -1,6 +1,4 @@
 "use client";
-
-import { useAgendaCollapse } from "@/components/layout/AgendaCollapseContext";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -56,7 +54,6 @@ function toLocalDateTimeString(d: Date) {
 ========================= */
 export default function AgendaLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { register } = useAgendaCollapse();
   const [appointments, setAppointments] = useState<AgendaAppointmentDB[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
@@ -77,11 +74,6 @@ export default function AgendaLayout() {
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   const toggleSidebar = () => setSidebarCollapsed((v) => !v);
-
-  useEffect(() => {
-    register(toggleSidebar);
-    return () => register(null);
-  }, [register]);
 
   /* SCANNER DE SEGURIDAD DIRECTO DEL LOCALSTORAGE */
   useEffect(() => {

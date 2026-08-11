@@ -119,8 +119,10 @@ export default function AdvancedComparativeReports() {
           </div>
         </div>
 
-        <div className="h-[400px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
+        {/* AQUÍ ESTÁ LA CORRECCIÓN: Agregamos minHeight al div padre */}
+        <div className="h-[400px] w-full" style={{ minHeight: "400px" }}>
+          {/* Y agregamos minWidth y minHeight al ResponsiveContainer */}
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={400}>
             <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" opacity={0.2}/>
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 900, fill: '#71717a'}} dy={10} />
