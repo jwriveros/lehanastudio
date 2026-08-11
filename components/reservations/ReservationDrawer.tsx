@@ -49,6 +49,12 @@ const ReservationDrawer = ({
     }
     setViewMode("edit");
   }, []);
+  // Función para cerrar de forma segura limpiando los estados de edición
+  const handleClose = useCallback(() => {
+    setViewMode("view");
+    setServicesToEdit([]);
+    onClose();
+  }, [onClose]);
 
   const title = appointmentData?.id
     ? viewMode === "edit"
@@ -63,7 +69,7 @@ const ReservationDrawer = ({
         className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-sm transition-opacity duration-300 ease-in-out ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
-        onClick={onClose}
+        onClick={handleClose}
       />
       
       {/* Drawer */}
@@ -84,7 +90,7 @@ const ReservationDrawer = ({
             </h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:ring-offset-gray-800"
             aria-label="Cerrar"
           >

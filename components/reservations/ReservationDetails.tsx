@@ -133,6 +133,8 @@ export default function ReservationDetails({
 
   /* CARGAR Y UNIFICAR SERVICIOS ASOCIADOS DEL CLIENTE EN EL DÍA */
   useEffect(() => {
+    let isMounted = true; // Control para evitar fugas de memoria
+
     async function fetchAllCustomerServices() {
       if (!appointmentData?.id) return;
 
@@ -188,24 +190,34 @@ export default function ReservationDetails({
 
         if (error) throw error;
 
-        if (list && list.length > 0) {
-          setAssociatedServices(list);
-          setSelectedServiceIds(list.map((s) => s.id));
-        } else {
-          setAssociatedServices([data]);
-          setSelectedServiceIds([appointmentData.id]);
+        // Solo actualizamos si el componente sigue montado en pantalla
+        if (isMounted) {
+          if (list && list.length > 0) {
+            setAssociatedServices(list);
+            setSelectedServiceIds(list.map((s) => s.id));
+          } else {
+            setAssociatedServices([data]);
+            setSelectedServiceIds([appointmentData.id]);
+          }
         }
       } catch (err) {
         console.error("Error al cargar servicios consolidados:", err);
       } finally {
-        setLoadingClientApps(false);
+        if (isMounted) setLoadingClientApps(false);
       }
     }
 
     fetchAllCustomerServices();
-  }, [appointmentData, data.appointment_id, data.celular, data.cliente]);
-  /* ------------------------------------------------------------------------ */
 
+    // 🧹 LIMPIEZA DE ESTADO AL SALIR O CAMBIAR DE CITA
+    return () => {
+      isMounted = false;
+      setAssociatedServices([]);
+      setClientDayAppointments([]);
+      setSelectedServiceIds([]);
+      setIsEditingPrices(false);
+    };
+  }, [appointmentData, data.appointment_id, data.celular, data.cliente]);
   const currentTotal = associatedServices
     .filter((s) => selectedServiceIds.includes(s.id))
     .reduce((acc, s) => acc + Number(s.price || 0), 0);
