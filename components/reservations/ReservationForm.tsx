@@ -74,6 +74,7 @@ type FormState = {
 
 interface ReservationFormProps {
   appointmentData?: any | null;
+  associatedServices?: any[];
   onSuccess?: () => void;
 }
 
@@ -221,6 +222,7 @@ function localDateTimeToUTC(localDateTime: string) {
 ========================= */
 export default function ReservationForm({
   appointmentData,
+  associatedServices,
   onSuccess,
 }: ReservationFormProps) {
   const closeReservationDrawer = useUIStore((s) => s.closeReservationDrawer);
@@ -262,17 +264,17 @@ export default function ReservationForm({
     return () => { mounted = false; };
   }, []);
 
-  /* PRECARGAR DATOS */
+  /* PRECARGAR DATOS CON SOPORTE COMPLETO PARA MULTI-SERVICIOS */
   useEffect(() => {
+    // 1. Si no hay datos de cita, reiniciamos el formulario
     if (!appointmentData) {
       setForm(EMPTY_FORM);
       return;
     }
 
-  
-
     const raw = appointmentData.raw ?? {};
 
+    // 2. Si es una nueva cita que se está creando desde cero
     if (appointmentData.id === "new") {
       setForm({
         ...EMPTY_FORM,
@@ -287,63 +289,76 @@ export default function ReservationForm({
     }
 
     const loadData = async () => {
+      let linesData: ServiceLine[] = [];
+
+      // PASO A: Si el padre nos pasó la lista de servicios (asociados o del itinerario del día)
+      if (associatedServices && associatedServices.length > 0) {
+        linesData = associatedServices.map((l) => ({
+          id: l.id,
+          servicio: l.servicio ?? l.title ?? "",
+          precio: Number(l.price ?? l.precio ?? 0),
+          abono: Number(l.abono ?? 0),
+          duracion: String(l.duration ?? l.duracion ?? "60"),
+          especialista: l.especialista ?? "",
+          appointment_at: toDatetimeLocal(l.appointment_at ?? l.appointment_at_local ?? appointmentData.start),
+        }));
+      } else {
+        // PASO B: Si no vienen en las props, buscamos por appointment_id en Supabase
         const groupId = raw.appointment_id;
-        let linesData: ServiceLine[] = [];
 
         if (groupId) {
-            const { data } = await supabase
-                .from("appointments")
-                .select("*")
-                .eq("appointment_id", groupId)
-                .order("appointment_at", { ascending: true });
-            
-            if (data && data.length > 0) {
-              console.log("2. DATO EDITAR (INDIVIDUAL):", {
-                id: data[0].id, // Cambiado de data.id a data[0].id
-                appointment_at_BD: data[0].appointment_at,
-                iso_string: new Date(data[0].appointment_at).toISOString()
-            });
-                linesData = data.map(l => ({
-                    id: l.id,
-                    servicio: l.servicio,
-                    precio: Number(l.price || 0),
-                    abono: Number(l.abono || 0),
-                    duracion: String(l.duration || "60"),
-                    especialista: l.especialista,
-                    appointment_at: toDatetimeLocal(l.appointment_at)
-                }));
-            }
+          const { data, error } = await supabase
+            .from("appointments")
+            .select("*")
+            .eq("appointment_id", groupId)
+            .order("appointment_at", { ascending: true });
+
+          if (!error && data && data.length > 0) {
+            linesData = data.map((l) => ({
+              id: l.id,
+              servicio: l.servicio,
+              precio: Number(l.price || 0),
+              abono: Number(l.abono || 0),
+              duracion: String(l.duration || "60"),
+              especialista: l.especialista,
+              appointment_at: toDatetimeLocal(l.appointment_at),
+            }));
+          }
         }
 
+        // PASO C: Si tampoco hay grupo en BD, cargamos solo la cita seleccionada
         if (linesData.length === 0) {
-            linesData = [{
-                id: Number(appointmentData.id),
-                servicio: raw.servicio ?? appointmentData.title ?? "",
-                precio: Number(raw.price ?? 0),
-                duracion: String(raw.duration ?? "60"),
-                especialista: raw.especialista ?? "",
-                appointment_at: toDatetimeLocal(
-                    raw.appointment_at ?? raw.appointment_at_local ?? appointmentData.start
-                ),
-            }];
+          linesData = [{
+            id: Number(appointmentData.id),
+            servicio: raw.servicio ?? appointmentData.title ?? "",
+            precio: Number(raw.price ?? 0),
+            duracion: String(raw.duration ?? "60"),
+            especialista: raw.especialista ?? "",
+            appointment_at: toDatetimeLocal(
+              raw.appointment_at ?? raw.appointment_at_local ?? appointmentData.start
+            ),
+          }];
         }
+      }
 
-        setForm({
-            cliente: raw.cliente ?? appointmentData.cliente ?? "",
-            celular: String(raw.celular ?? appointmentData.celular ?? ""),
-            indicativo: raw.indicativo ?? "+57",
-            sede: raw.sede ?? "Marquetalia",
-            cantidad: 1,
-            estado: raw.estado ?? "Nueva reserva creada",
-            lines: linesData
-        });
-        setNotifyOnEdit(false);
+      // Cargar toda la información dentro del estado del formulario
+      setForm({
+        cliente: raw.cliente ?? appointmentData.cliente ?? "",
+        celular: String(raw.celular ?? appointmentData.celular ?? ""),
+        indicativo: raw.indicativo ?? "+57",
+        sede: raw.sede ?? "Marquetalia",
+        cantidad: 1,
+        estado: raw.estado ?? "Nueva reserva creada",
+        lines: linesData,
+      });
+
+      setNotifyOnEdit(false);
     };
 
     loadData();
     setSaveClient(false);
-    setDeletedLineIds([]); 
-  }, [appointmentData]);
+    setDeletedLineIds([]);
+  }, [appointmentData, associatedServices]);
 
   /* HELPERS FORMULARIO */
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {

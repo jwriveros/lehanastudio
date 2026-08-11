@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useUIStore } from "@/lib/uiStore";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import FichaTecnicaEditor from "./FichaTecnicaEditor"; // Importación del editor de fichas
+import FichaTecnicaEditor from "./FichaTecnicaEditor";
 import {
   User,
   Scissors,
@@ -19,11 +19,12 @@ import {
   Undo2,
   ArrowLeft,
   History,
+  Loader2,
 } from "lucide-react";
 
 interface ReservationDetailsProps {
   appointmentData: any | null;
-  onEdit: () => void;
+  onEdit: (services?: any[]) => void; // 👈 Modificado para permitir pasar la lista de servicios
   onSuccess?: () => void;
 }
 
@@ -38,17 +39,20 @@ export default function ReservationDetails({
   const [isEditingPrices, setIsEditingPrices] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // CONTROL DEL PANEL LATERAL
-  const [showHistory, setShowHistory] = useState(false);
+  // --- NUEVO: ESTADOS PARA EL ITINERARIO ADICIONAL ---
+  const [clientDayAppointments, setClientDayAppointments] = useState<any[]>([]);
+  const [loadingClientApps, setLoadingClientApps] = useState(false);
+  // --------------------------------------------------
 
-  // ESTADO DE AUTORIZACIÓN BASADO EN TU LOCAL STORAGE
+  const [showHistory, setShowHistory] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   const data = appointmentData?.raw || {};
   const isPaid = data.estado?.toLowerCase() === "cita pagada";
   const isCancelled = data.estado?.toLowerCase() === "cita cancelada";
+  const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
+  
 
-  /* LECTOR BLINDADO PARA EL PATH: state.session.email */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -60,29 +64,21 @@ export default function ReservationDetails({
         for (let i = 0; i < localStorage.length; i++) {
           const llave = localStorage.key(i);
           if (!llave) continue;
-
           const contenido = localStorage.getItem(llave);
           if (!contenido) continue;
 
           try {
             const jsonParseado = JSON.parse(contenido);
-            
-            // 1. Ir directo al path exacto de tu persistencia
             if (jsonParseado?.state?.session?.email?.toLowerCase().trim() === emailObjetivo) {
               accesoConcedido = true;
               break;
             }
-
-            // Fallback por si acaso estuviera en el formato por defecto de Supabase
             if (jsonParseado?.user?.email?.toLowerCase().trim() === emailObjetivo) {
               accesoConcedido = true;
               break;
             }
-          } catch (e) {
-            // Ignorar errores de parseo si la llave actual no almacena un JSON válido
-          }
+          } catch (e) {}
 
-          // 2. Candado maestro: Si el texto crudo contiene el correo, le damos acceso inmediato
           if (contenido.toLowerCase().includes(emailObjetivo)) {
             accesoConcedido = true;
             break;
@@ -98,7 +94,19 @@ export default function ReservationDetails({
     verificarPermisosLocalStorage();
   }, [appointmentData]);
 
-  /* CARGAR SERVICIOS ASOCIADOS A LA CITA ACTUAL */
+  useEffect(() => {
+    if (associatedServices.length > 0) {
+      setSelectedServiceIds(associatedServices.map((s) => s.id));
+    }
+  }, [associatedServices]);
+
+  const toggleSelectService = (id: number) => {
+    setSelectedServiceIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  /* CARGAR SERVICIOS ASOCIADOS A LA CITA ACTUAL (El Carrito Web) */
   useEffect(() => {
     async function fetchGroup() {
       if (!appointmentData?.id) return;
@@ -123,29 +131,105 @@ export default function ReservationDetails({
     fetchGroup();
   }, [appointmentData, data.appointment_id]);
 
-  const currentTotal = associatedServices.reduce((acc, s) => acc + Number(s.price || 0), 0);
+  /* --- BÚSQUEDA Y UNIFICACIÓN DE CITAS DEL CLIENTE EN EL DÍA --- */
+  useEffect(() => {
+    const celularCliente = data?.celular;
+    const nombreCliente = data?.cliente;
+
+    if (appointmentData?.id && (celularCliente || nombreCliente)) {
+      const fetchClientAppointments = async () => {
+        setLoadingClientApps(true);
+        try {
+          const baseDate = new Date(appointmentData.start);
+          const startOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0).toISOString();
+          const endOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59).toISOString();
+
+          let query = supabase
+            .from("appointments")
+            .select("*") // Seleccionamos todos los campos para poder usarlos en el cobro
+            .gte("appointment_at", startOfDay)
+            .lte("appointment_at", endOfDay)
+            .neq("id", appointmentData.id); // Excluimos la cita principal activa
+
+          if (celularCliente) {
+            query = query.eq("celular", celularCliente);
+          } else if (nombreCliente) {
+            query = query.eq("cliente", nombreCliente);
+          }
+
+          const { data: dayApps, error } = await query;
+          if (error) throw error;
+
+          const extraApps = dayApps || [];
+          setClientDayAppointments(extraApps);
+
+          // AQUÍ ESTÁ EL CAMBIO CLAVE:
+          // Si no provienen de un grupo web (appointment_id), unimos manualmente las citas del día 
+          // a la lista de servicios asociados para que aparezcan juntas al cobrar
+          setAssociatedServices((prevServices) => {
+            // Evitamos duplicados revisando los IDs
+            const existingIds = new Set(prevServices.map((s) => s.id));
+            const newExtraServices = extraApps.filter((app) => !existingIds.has(app.id));
+            return [...prevServices, ...newExtraServices];
+          });
+
+        } catch (error) {
+          console.error("Error buscando citas para el cobro unificado:", error);
+        } finally {
+          setLoadingClientApps(false);
+        }
+      };
+
+      fetchClientAppointments();
+    } else {
+      setClientDayAppointments([]);
+    }
+  }, [appointmentData, data]);
+  /* ------------------------------------------------------------------------ */
+
+  const currentTotal = associatedServices
+    .filter((s) => selectedServiceIds.includes(s.id))
+    .reduce((acc, s) => acc + Number(s.price || 0), 0);
 
   const handleTogglePayment = async () => {
-    if (!isAuthorized) return; 
+    if (!isAuthorized) return;
+
+    // Obtenemos únicamente los servicios que están seleccionados
+    const activeServices = associatedServices.filter((s) =>
+      selectedServiceIds.includes(s.id)
+    );
+
+    if (activeServices.length === 0) {
+      alert("Por favor, selecciona al menos un servicio para realizar la acción.");
+      return;
+    }
+
+    // --- ACCIÓN: ANULAR PAGO DE SERVICIOS SELECCIONADOS ---
     if (isPaid) {
       setIsSubmitting(true);
       try {
-        await fetch("/api/bookings/unpay", { 
-          method: "POST", 
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ appointmentId: appointmentData.id })
-        });
+        await Promise.all(
+          activeServices.map((s) =>
+            fetch("/api/bookings/unpay", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ appointmentId: s.id }),
+            })
+          )
+        );
+
         onSuccess?.();
         router.refresh();
         closeReservationDrawer();
       } catch (err) {
-        alert("Error al anular el pago");
+        alert("Error al anular el pago de los servicios seleccionados");
       } finally {
         setIsSubmitting(false);
       }
       return;
     }
 
+    // --- ACCIÓN: CONFIRMAR COBRO DE SERVICIOS SELECCIONADOS ---
     if (!isEditingPrices) {
       setIsEditingPrices(true);
       return;
@@ -156,19 +240,22 @@ export default function ReservationDetails({
       const res = await fetch("/api/bookings/mark-as-paid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           appointmentId: appointmentData.id,
-          serviceUpdates: associatedServices.map(s => ({ id: s.id, price: Number(s.price) }))
+          serviceUpdates: activeServices.map((s) => ({
+            id: s.id,
+            price: Number(s.price),
+          })),
         }),
       });
-      
+
       if (!res.ok) throw new Error();
-      
+
       onSuccess?.();
       router.refresh();
       closeReservationDrawer();
     } catch (error) {
-      alert("Error al registrar el pago");
+      alert("Error al registrar el pago de los servicios seleccionados");
     } finally {
       setIsSubmitting(false);
     }
@@ -288,44 +375,87 @@ export default function ReservationDetails({
 
         {/* SERVICIOS Y PRECIOS */}
         <div className="bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-          <p className="text-[10px] font-black uppercase text-zinc-400 mb-3 tracking-widest">Services Contratados</p>
+          <p className="text-[10px] font-black uppercase text-zinc-400 mb-3 tracking-widest">
+            Services Contratados
+          </p>
           <div className="space-y-4">
-            {associatedServices.map((s) => (
-              <div key={s.id} className="flex justify-between items-start">
-                <div className="flex flex-col overflow-hidden mr-2">
-                  <span className="text-sm font-bold text-zinc-700 dark:text-zinc-300 truncate">{s.servicio}</span>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <Scissors size={10} className="text-indigo-400" />
-                    <span className="text-[10px] font-black text-indigo-500/70 uppercase tracking-tight">
-                      {s.especialista || "Sin especialista"}
-                    </span>
-                  </div>
-                </div>
-                {isEditingPrices ? (
-                  <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-28 shrink-0">
-                    <span className="text-[10px] font-bold mr-1 text-zinc-400">$</span>
-                    <input 
-                      type="number" 
-                      value={s.price || 0}
-                      onChange={(e) => setAssociatedServices(prev => 
-                        prev.map(item => item.id === s.id ? {...item, price: e.target.value} : item)
-                      )}
-                      className="w-full bg-transparent text-xs font-black outline-none text-zinc-800 dark:text-zinc-100"
+            {associatedServices.map((s) => {
+              const isSelected = selectedServiceIds.includes(s.id);
+
+              return (
+                <div key={s.id} className="flex justify-between items-center gap-3">
+                  {/* CASILLA DE SELECCIÓN (CHECKBOX) */}
+                  <div className="flex items-center gap-3 overflow-hidden flex-1">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectService(s.id)}
+                      className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 dark:bg-zinc-900 dark:border-zinc-700 cursor-pointer"
                     />
+
+                    <div className="flex flex-col overflow-hidden">
+                      <span
+                        className={`text-sm font-bold truncate transition-opacity ${
+                          isSelected
+                            ? "text-zinc-700 dark:text-zinc-300"
+                            : "text-zinc-400 dark:text-zinc-600 line-through"
+                        }`}
+                      >
+                        {s.servicio}
+                      </span>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Scissors size={10} className="text-indigo-400" />
+                        <span className="text-[10px] font-black text-indigo-500/70 uppercase tracking-tight">
+                          {s.especialista || "Sin especialista"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  <span className="text-sm font-black text-indigo-600 shrink-0">
-                    ${Number(s.price || 0).toLocaleString("es-CO")}
-                  </span>
-                )}
-              </div>
-            ))}
+
+                  {/* PRECIO O EDICIÓN DE PRECIO */}
+                  {isEditingPrices ? (
+                    <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-28 shrink-0">
+                      <span className="text-[10px] font-bold mr-1 text-zinc-400">$</span>
+                      <input
+                        type="number"
+                        disabled={!isSelected}
+                        value={s.price || 0}
+                        onChange={(e) =>
+                          setAssociatedServices((prev) =>
+                            prev.map((item) =>
+                              item.id === s.id
+                                ? { ...item, price: e.target.value }
+                                : item
+                            )
+                          )
+                        }
+                        className="w-full bg-transparent text-xs font-black outline-none text-zinc-800 dark:text-zinc-100 disabled:opacity-40"
+                      />
+                    </div>
+                  ) : (
+                    <span
+                      className={`text-sm font-black shrink-0 ${
+                        isSelected ? "text-indigo-600" : "text-zinc-400 line-through"
+                      }`}
+                    >
+                      ${Number(s.price || 0).toLocaleString("es-CO")}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
             <div className="pt-3 border-t border-dashed flex justify-between items-center">
-              <span className="text-xs font-black uppercase text-zinc-500">Total a pagar</span>
-              <span className="text-xl font-black text-emerald-600">${currentTotal.toLocaleString("es-CO")}</span>
+              <span className="text-xs font-black uppercase text-zinc-500">
+                Total Seleccionado
+              </span>
+              <span className="text-xl font-black text-emerald-600">
+                ${currentTotal.toLocaleString("es-CO")}
+              </span>
             </div>
           </div>
         </div>
+        {/* ------------------------------------------- */}
 
         {/* ACCIONES DEL PIE */}
         <div className="mt-auto pt-6">
@@ -356,11 +486,52 @@ export default function ReservationDetails({
               {/* Editar Cita */}
               {!isEditingPrices && (
                 <button
-                  onClick={onEdit}
-                  disabled={!isAuthorized}
-                  className="px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-md active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={async () => {
+                    setIsSubmitting(true);
+                    try {
+                      const celularCliente = data.celular;
+                      const nombreCliente = data.cliente;
+                      const fechaCita = appointmentData?.start ? new Date(appointmentData.start) : new Date();
+
+                      // Rangos de inicio y fin del día
+                      const startOfDay = new Date(fechaCita.getFullYear(), fechaCita.getMonth(), fechaCita.getDate(), 0, 0, 0).toISOString();
+                      const endOfDay = new Date(fechaCita.getFullYear(), fechaCita.getMonth(), fechaCita.getDate(), 23, 59, 59).toISOString();
+
+                      // 1. Construir consulta a Supabase buscando TODAS las citas de ese cliente hoy
+                      let query = supabase
+                        .from("appointments")
+                        .select("*")
+                        .gte("appointment_at", startOfDay)
+                        .lte("appointment_at", endOfDay);
+
+                      if (celularCliente) {
+                        query = query.eq("celular", celularCliente);
+                      } else if (nombreCliente) {
+                        query = query.eq("cliente", nombreCliente);
+                      }
+
+                      const { data: allServicesToday, error } = await query;
+
+                      if (error) throw error;
+
+                      // 2. Si encontramos varias citas, se las enviamos todas a onEdit
+                      if (allServicesToday && allServicesToday.length > 0) {
+                        onEdit(allServicesToday);
+                      } else {
+                        // Si no encuentra más, pasa al menos la actual
+                        onEdit(associatedServices.length > 0 ? associatedServices : [data]);
+                      }
+                    } catch (err) {
+                      console.error("Error al obtener servicios del cliente:", err);
+                      onEdit(associatedServices.length > 0 ? associatedServices : [data]);
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting || !isAuthorized}
+                  className="px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-md active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  <Edit size={20} />
+                  {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <Edit size={20} />}
                 </button>
               )}
             </div>

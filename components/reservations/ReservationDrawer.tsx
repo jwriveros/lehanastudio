@@ -18,13 +18,17 @@ const ReservationDrawer = ({
   onSuccess,
 }: ReservationDrawerProps) => {
   const [viewMode, setViewMode] = useState<"view" | "edit">("edit");
+  
+  // 1. Estado para almacenar la lista completa de servicios que se van a editar
+  const [servicesToEdit, setServicesToEdit] = useState<any[]>([]);
 
   /* =========================
-      DEFINIR MODO
+      DEFINIR MODO Y LIMPIAR
   ========================= */
   useEffect(() => {
     if (!appointmentData) {
       setViewMode("edit");
+      setServicesToEdit([]);
       return;
     }
     // Si es una cita nueva ("new") ir a edit, si ya existe ir a view (lectura)
@@ -32,10 +36,17 @@ const ReservationDrawer = ({
       setViewMode("view"); 
     } else {
       setViewMode("edit");
+      setServicesToEdit([]);
     }
   }, [appointmentData, isOpen]);
   
-  const handleEdit = useCallback(() => {
+  // 2. Modificamos handleEdit para recibir la lista de servicios del grupo
+  const handleEdit = useCallback((associatedServices?: any[]) => {
+    if (associatedServices && associatedServices.length > 0) {
+      setServicesToEdit(associatedServices);
+    } else {
+      setServicesToEdit([]);
+    }
     setViewMode("edit");
   }, []);
 
@@ -86,6 +97,7 @@ const ReservationDrawer = ({
           {viewMode === "edit" ? (
             <ReservationForm
               appointmentData={appointmentData}
+              associatedServices={servicesToEdit} // 3. Pasamos todos los servicios al formulario
               onSuccess={() => {
                 onSuccess?.();
                 onClose();
@@ -95,8 +107,8 @@ const ReservationDrawer = ({
             <div className="p-6">
               <ReservationDetails
                 appointmentData={appointmentData}
-                onEdit={handleEdit}
-                onSuccess={onSuccess} // <--- ESTA ES LA LÍNEA QUE FALTABA
+                onEdit={handleEdit} // 4. Pasa los servicios al hacer clic en editar
+                onSuccess={onSuccess}
               />
             </div>
           )}
