@@ -14,7 +14,7 @@ import {
 import type { NavItem } from "@/lib/nav";
 // Mapa de iconos para asociar con los hrefs de tu proyecto
 const iconMap: Record<string, React.ElementType> = {
-  "/support": MessageSquare,
+  "/dashboard/bot": BriefcaseBusiness,
   "/agenda": Calendar,
   "/business": BriefcaseBusiness,
   "/dashboard": BarChart,

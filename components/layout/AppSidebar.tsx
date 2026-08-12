@@ -13,7 +13,8 @@ import {
   Menu,
   X,
   DollarSign,
-  Home
+  Home,
+  Bot
 } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggleButton } from "./ThemeToggleButton";
@@ -36,6 +37,7 @@ export default function AppSidebar() {
     { icon: Home, href: "/inicio", label: "Inicio", roles: ['ADMIN', 'ESPECIALISTA', 'SPECIALIST'] },
     { icon: Calendar, href: "/agenda", label: "Agenda", roles: ['ADMIN'] },
     { icon: DollarSign, href: "/mis-informes", label: "Mis informes", roles: ['SPECIALIST', 'ESPECIALISTA'] },
+    { icon: Bot, href: "/dashboard/bot", label: "BotDashboard", roles: ['ADMIN'] },
     { icon: BriefcaseBusiness, href: "/business", label: "Negocio", roles: ['ADMIN'] },
     { icon: BarChart, href: "/dashboard", label: "Dashboard", roles: ['ADMIN'] },
     { icon: DollarSign, href: "/finanzas", label: "Finanzas", roles: ['ADMIN'] },
