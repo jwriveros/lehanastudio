@@ -13,14 +13,17 @@ export async function GET(request: NextRequest) {
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
 
-    // 1. Definición del rango de fechas en formato ISO para consultas de base de datos
-    const startDate = startDateParam || "2026-08-09";
+    // 1. Manejo dinámico de fechas por defecto en formato YYYY-MM-DD
+    const now = new Date();
+    const defaultToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+    const startDate = startDateParam || defaultToday;
     const endDate = endDateParam || startDate;
 
     const startISO = `${startDate}T00:00:00.000Z`;
     const endISO = `${endDate}T23:59:59.999Z`;
 
-    // Rango UTC para n8n_chat_histories y estado de la sesión
+    // Rango UTC para n8n_chat_histories y appointments (Colombia UTC-5)
     let startUTC: string;
     let endUTC: string;
 
@@ -31,13 +34,9 @@ export async function GET(request: NextRequest) {
       startUTC = new Date(Date.UTC(sYear, sMonth - 1, sDay, 5, 0, 0, 0)).toISOString();
       endUTC = new Date(Date.UTC(eYear, eMonth - 1, eDay + 1, 4, 59, 59, 999)).toISOString();
     } else {
-      const now = new Date();
       startUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 5, 0, 0, 0)).toISOString();
       endUTC = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() + 1, 4, 59, 59, 999)).toISOString();
     }
-
-    const nowLocal = new Date();
-    const todayStartUTC = new Date(Date.UTC(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate(), 5, 0, 0, 0)).toISOString();
 
     // 2. Consulta de clientes atendidos en n8n_chat_histories
     const { data: n8nHistory, error: n8nError } = await supabase
@@ -94,7 +93,6 @@ export async function GET(request: NextRequest) {
 
     // 3. CONSULTAS EN PARALELO (RESERVAS POR BOT, TOTALES Y SEGUIMIENTOS ENVIADOS)
     const [{ count: reservationsByBot }, { count: totalReservations }, { count: followupsSent }] = await Promise.all([
-      // Reservas realizadas por el Bot
       supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
@@ -102,14 +100,12 @@ export async function GET(request: NextRequest) {
         .gte("last_synced_at", startUTC)
         .lte("last_synced_at", endUTC),
 
-      // Reservas totales
       supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
         .gte("last_synced_at", startUTC)
         .lte("last_synced_at", endUTC),
 
-      // SEGUIMIENTOS ENVIADOS (Usando el rango ISO exacto)
       supabase
         .from("seguimientos_enviados")
         .select("*", { count: "exact", head: true })
@@ -117,11 +113,12 @@ export async function GET(request: NextRequest) {
         .lte("created_at", endISO)
     ]);
 
-    // 4. Consulta a la vista unificada de sesiones del día
+    // 4. CONSULTA A LA VISTA UNIFICADA (FILTRADA CON startISO Y endISO PARA FUNCIONAR EN PRODUCCIÓN)
     const { data: enrichedSessionsData, error: sessionsError } = await supabase
       .from("view_chat_sessions_full")
       .select("id, client_phone, status, active_agent, context_summary, updated_at")
-      .gte("updated_at", todayStartUTC)
+      .gte("updated_at", startISO)
+      .lte("updated_at", endISO)
       .order("updated_at", { ascending: false });
 
     if (sessionsError) console.error("Error al consultar view_chat_sessions_full:", sessionsError);
