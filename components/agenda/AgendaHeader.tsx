@@ -134,7 +134,7 @@ export function AgendaHeader({
                       mode="single"
                       selected={currentDate}
                       onSelect={handleDateSelect}
-                      locale={es}
+                      locale={es as any}
                       classNames={{
                         month_caption: "flex justify-between items-center mb-4 px-2",
                         caption_label: "text-xs font-black uppercase tracking-widest",

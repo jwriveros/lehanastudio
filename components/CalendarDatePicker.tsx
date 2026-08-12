@@ -48,7 +48,7 @@ export default function CalendarDatePicker({ selectedDate, onDateChange }: DateP
               mode="single"
               selected={selectedDate}
               onSelect={handleSelect}
-              locale={es}
+              locale={es as any}
               className="apple-datepicker"
               classNames={{
                 caption: "flex justify-between items-center mb-4 px-2",
