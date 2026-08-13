@@ -85,10 +85,9 @@ export function AgendaHeader({
 
   return (
     <>
-      {/* Elevamos el z-index del header a z-50 para superar las barras sticky inferiores */}
       <header className="relative z-50 flex flex-col gap-3 border-b border-gray-200 bg-white p-3 sm:p-4 dark:border-gray-800 dark:bg-gray-900">
         
-        {/* FILA SUPERIOR: Botón Crear Reserva + Navegación */}
+        {/* FILA SUPERIOR: Botón Crear Reserva + Controles de Fecha */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           
           <button
@@ -128,14 +127,14 @@ export function AgendaHeader({
                   {label}
                 </button>
 
-                {/* Popover del Calendario con z-[200] para sobreponerse a cualquier header sticky */}
+                {/* Popover alineado con right-0 para evitar desbordamientos a la derecha */}
                 {showPicker && (
                   <>
                     <div
                       className="fixed inset-0 z-[190]"
                       onClick={() => setShowPicker(false)}
                     />
-                    <div className="absolute top-full mt-2 right-0 sm:left-1/2 sm:-translate-x-1/2 z-[200] w-[290px] max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl rounded-3xl p-3 animate-in fade-in zoom-in-95 duration-150 text-zinc-900 dark:text-zinc-100">
+                    <div className="absolute top-full mt-2 right-0 z-[200] w-[290px] max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl rounded-3xl p-3 animate-in fade-in zoom-in-95 duration-150 text-zinc-900 dark:text-zinc-100">
                       <DayPicker
                         mode="single"
                         selected={currentDate}
@@ -181,7 +180,7 @@ export function AgendaHeader({
           </div>
         </div>
 
-        {/* FILA INFERIOR: Selector de vista + Filtros */}
+        {/* FILA INFERIOR: Modos de Vista + Filtros */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-100 dark:border-gray-800/60">
           
           <div className="flex overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-0.5 text-xs dark:border-gray-700 dark:bg-gray-800">
