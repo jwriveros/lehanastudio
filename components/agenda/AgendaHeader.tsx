@@ -1,18 +1,19 @@
 "use client";
+
 import React, { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { FilterDropdown } from "./FilterDropdown";
-import CreateBookingDrawer from './CreateBookingDrawer';
+import CreateBookingDrawer from "./CreateBookingDrawer";
 import {
   ChevronLeft,
   ChevronRight,
-  CalendarDays
+  CalendarDays,
+  Plus,
 } from "lucide-react";
 
-// 1. Limpiamos onToggleAgendaSidebar de las Props porque ya no usamos la barra lateral
 interface Props {
   currentDate: Date;
   onPrev: () => void;
@@ -61,124 +62,138 @@ export function AgendaHeader({
 
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
-      onDateChange?.(date); 
+      onDateChange?.(date);
       setShowPicker(false);
     }
   };
+
   const handleSpecialistChange = (newValues: string[]) => {
-    // 1. Si el usuario desmarcó todo manualmente, limpiamos el filtro
     if (newValues.length === 0) {
       setSpecialistFilter([]);
       return;
     }
 
-    // 2. Verificamos si el usuario acaba de hacer clic explícitamente en "Todas".
-    // Esto es cierto si "Todas" viene en los nuevos valores, PERO nuestro filtro actual ya tenía nombres seleccionados.
     const hizoClicEnTodas = newValues.includes("Todas") && specialistFilter.length > 0;
 
     if (hizoClicEnTodas) {
-      // Limpiamos el filtro para mostrar todas las especialistas
-      setSpecialistFilter([]); 
+      setSpecialistFilter([]);
     } else {
-      // 3. Si seleccionó a una especialista, quitamos la palabra "Todas" de la lista 
-      // para guardar únicamente los nombres reales en el estado.
-      const valoresReales = newValues.filter(val => val !== "Todas");
+      const valoresReales = newValues.filter((val) => val !== "Todas");
       setSpecialistFilter(valoresReales);
     }
   };
 
-  // 2. Envolvemos el header y el drawer en un Fragmento (<> ... </>)
   return (
     <>
-      <header className="flex flex-col gap-3 border-b border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 md:flex-row md:items-center md:justify-between">
-        {/* Sección Izquierda */}
-        <div className="flex w-full items-center justify-between md:w-auto md:justify-start md:gap-4">
+      {/* Elevamos el z-index del header a z-50 para superar las barras sticky inferiores */}
+      <header className="relative z-50 flex flex-col gap-3 border-b border-gray-200 bg-white p-3 sm:p-4 dark:border-gray-800 dark:bg-gray-900">
+        
+        {/* FILA SUPERIOR: Botón Crear Reserva + Navegación */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
           
-          {/* Botón de Crear Reserva */}
           <button
+            type="button"
             onClick={() => setIsCreateOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3.5 text-xs sm:text-sm rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95"
           >
-            <span>+</span> Crear Reserva
+            <Plus size={16} />
+            <span>Crear Reserva</span>
           </button>
 
-          <button
-            onClick={onToday}
-            className="hidden items-center gap-2 rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700 transition-all hover:bg-gray-50 active:scale-95 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 sm:flex"
-          >
-            <CalendarDays size={16} />
-            Hoy
-          </button>
-
-          <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+          <div className="flex items-center gap-1.5">
             <button
-              onClick={onPrev}
-              className="rounded-lg p-1.5 text-gray-500 hover:bg-white dark:hover:bg-gray-700 transition-all"
+              type="button"
+              onClick={onToday}
+              className="flex items-center gap-1.5 rounded-xl border border-gray-300 bg-gray-50 px-2.5 py-1.5 text-xs font-bold text-gray-700 transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
             >
-              <ChevronLeft size={18} />
+              <CalendarDays size={14} className="text-indigo-600 dark:text-indigo-400" />
+              <span>Hoy</span>
             </button>
 
-            <div className="relative">
+            <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-0.5 rounded-xl">
               <button
-                onClick={() => setShowPicker(!showPicker)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-black uppercase tracking-tighter text-gray-800 dark:text-white hover:text-indigo-600 transition-colors"
+                type="button"
+                onClick={onPrev}
+                className="rounded-lg p-1 text-gray-500 hover:bg-white dark:hover:bg-gray-700 transition-all"
               >
-                {label}
+                <ChevronLeft size={18} />
               </button>
 
-              {showPicker && (
-                <>
-                  <div className="fixed inset-0 z-[110]" onClick={() => setShowPicker(false)} />
-                  <div className="absolute top-12 left-0 z-[120] bg-white dark:bg-zinc-900 border dark:border-zinc-800 shadow-2xl rounded-[2rem] p-4 animate-in fade-in zoom-in-95 duration-200 text-zinc-900 dark:text-zinc-100">
-                    <DayPicker
-                      mode="single"
-                      selected={currentDate}
-                      onSelect={handleDateSelect}
-                      locale={es as any}
-                      classNames={{
-                        month_caption: "flex justify-between items-center mb-4 px-2",
-                        caption_label: "text-xs font-black uppercase tracking-widest",
-                        nav: "flex gap-1",
-                        button_previous: "p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800",
-                        button_next: "p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800",
-                        weekday: "text-zinc-400 font-bold text-[10px] uppercase p-2",
-                        day: "h-8 w-8 text-xs font-bold rounded-lg transition-all hover:bg-indigo-50 dark:hover:bg-indigo-900/30",
-                        selected: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md",
-                        today: "text-indigo-600 font-black ring-1 ring-indigo-600/30 rounded-lg",
-                      }}
-                      components={{
-                        Chevron: (props) => {
-                          if (props.orientation === "left") return <ChevronLeft size={16} />;
-                          return <ChevronRight size={16} />;
-                        }
-                      }}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowPicker(!showPicker)}
+                  className="px-2 py-1 text-xs sm:text-sm font-black uppercase tracking-tight text-gray-800 dark:text-white hover:text-indigo-600 transition-colors"
+                >
+                  {label}
+                </button>
 
-            <button
-              onClick={onNext}
-              className="rounded-lg p-1.5 text-gray-500 hover:bg-white dark:hover:bg-gray-700 transition-all"
-            >
-              <ChevronRight size={18} />
-            </button>
+                {/* Popover del Calendario con z-[200] para sobreponerse a cualquier header sticky */}
+                {showPicker && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-[190]"
+                      onClick={() => setShowPicker(false)}
+                    />
+                    <div className="absolute top-full mt-2 right-0 sm:left-1/2 sm:-translate-x-1/2 z-[200] w-[290px] max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl rounded-3xl p-3 animate-in fade-in zoom-in-95 duration-150 text-zinc-900 dark:text-zinc-100">
+                      <DayPicker
+                        mode="single"
+                        selected={currentDate}
+                        onSelect={handleDateSelect}
+                        locale={es as any}
+                        classNames={{
+                          months: "flex flex-col space-y-4",
+                          month: "space-y-4",
+                          month_caption: "flex justify-between items-center px-1 mb-2",
+                          caption_label: "text-xs font-black uppercase tracking-widest text-zinc-800 dark:text-zinc-200",
+                          nav: "flex items-center gap-1",
+                          button_previous: "p-1 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white",
+                          button_next: "p-1 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white",
+                          month_grid: "w-full border-collapse space-y-1",
+                          weekdays: "flex justify-between border-b border-gray-100 dark:border-zinc-800 pb-1 mb-1",
+                          weekday: "text-zinc-400 font-bold text-[10px] uppercase w-8 text-center",
+                          weeks: "w-full flex flex-col gap-1",
+                          week: "flex w-full justify-between gap-1",
+                          day: "h-8 w-8 text-xs font-bold rounded-lg transition-all hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center justify-center text-center",
+                          selected: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md font-extrabold",
+                          today: "text-indigo-600 font-black ring-1 ring-indigo-600/40 rounded-lg",
+                        }}
+                        components={{
+                          Chevron: (props) => {
+                            if (props.orientation === "left") return <ChevronLeft size={16} />;
+                            return <ChevronRight size={16} />;
+                          },
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={onNext}
+                className="rounded-lg p-1 text-gray-500 hover:bg-white dark:hover:bg-gray-700 transition-all"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
           </div>
-          {/* Eliminamos el botón de MessageSquareText que abría el sidebar móvil */}
         </div>
 
-        {/* Sección Derecha: Vista y Filtros */}
-        <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-end">
-          <div className="flex overflow-hidden rounded-full border border-gray-300 bg-white text-xs dark:border-gray-700">
+        {/* FILA INFERIOR: Selector de vista + Filtros */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-100 dark:border-gray-800/60">
+          
+          <div className="flex overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-0.5 text-xs dark:border-gray-700 dark:bg-gray-800">
             {(["day", "week", "month"] as const).map((v) => (
               <button
+                type="button"
                 key={v}
                 onClick={() => setView(v)}
-                className={`px-4 py-2 transition-colors font-black uppercase ${
+                className={`px-3 py-1.5 transition-all font-black uppercase rounded-lg text-[11px] ${
                   view === v
-                    ? "bg-indigo-600 text-white"
-                    : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                 }`}
               >
                 {v === "day" ? "Día" : v === "week" ? "Sem" : "Mes"}
@@ -186,7 +201,7 @@ export function AgendaHeader({
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <FilterDropdown
               label="Sede"
               options={[
@@ -209,7 +224,7 @@ export function AgendaHeader({
               selected={statusFilter}
               onChange={setStatusFilter}
             />
-            
+
             <FilterDropdown
               label="Especialista"
               options={[
@@ -225,10 +240,9 @@ export function AgendaHeader({
         </div>
       </header>
 
-      {/* 3. Renderizamos el Drawer de creación de reservas */}
-      <CreateBookingDrawer 
-        open={isCreateOpen} 
-        onClose={() => setIsCreateOpen(false)} 
+      <CreateBookingDrawer
+        open={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
       />
     </>
   );

@@ -15,7 +15,7 @@ export default function AgendaShell({
     <div className="flex flex-col h-screen w-full overflow-hidden bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
       
       {/* --- Encabezado --- */}
-      <header className="shrink-0 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <header className="shrink-0 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 ">
         {header}
       </header>
       
