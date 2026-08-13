@@ -20,6 +20,9 @@ type TooltipInfo = {
   especialista?: string;
 };
 
+/* =========================
+   CONFIGURACIÓN DE LA REJILLA
+========================= */
 const START_HOUR = 7;
 const END_HOUR = 22;
 const SLOT_MINUTES = 30;
@@ -30,6 +33,9 @@ const VISUAL_GAP = 2;
 const ALL_SPECIALISTS = ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote"];
 const ALL_SPECIALIST_TITLES = ["L", "N", "Y"];
 
+/* =========================
+   COMPONENTE PRINCIPAL
+========================= */
 export default function WeeklyAgendaGrid({
   appointments = [],
   currentDate = new Date(),
@@ -86,19 +92,21 @@ export default function WeeklyAgendaGrid({
   );
 
   return (
-    // 1. Contenedor exterior con desplazamiento horizontal para móviles y altura adaptativa
+    // 1. Contenedor principal con scroll horizontal
     <div className="w-full overflow-x-auto pb-4">
-      <div className="w-full min-w-[850px] lg:min-w-full border border-gray-200 dark:border-gray-800 rounded-2xl bg-white dark:bg-gray-950 overflow-hidden">
+      
+      {/* 2. Contenedor Unificado con Scroll Vertical:
+             Al colocar max-h y overflow-y-auto aquí, la cabecera y el cuerpo 
+             comparten exactamente el mismo ancho de scrollbar, alineando las líneas. */}
+      <div className="w-full min-w-[850px] lg:min-w-full border border-gray-200 dark:border-gray-800 rounded-2xl bg-white dark:bg-gray-950 overflow-y-auto max-h-[calc(100vh-210px)]">
         
-        {/* 2. ENCABEZADO FIJO (Sticky Top): Se mantiene visible al hacer scroll vertical */}
+        {/* ENCABEZADO PEGAJOSO (Sticky Top) */}
         <div
           className="sticky top-0 z-20 grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
           style={{ minHeight: HEADER_HEIGHT }}
         >
-          {/* Esquina superior izquierda vacía sobre la columna de horas */}
           <div className="border-r border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900" />
 
-          {/* Días de la semana + Iniciales de Especialistas */}
           {days.map((day) => {
             const isToday = isSameDay(day, now);
             return (
@@ -106,7 +114,7 @@ export default function WeeklyAgendaGrid({
                 key={day.toISOString()}
                 className="flex flex-col border-r border-gray-200 dark:border-gray-800 last:border-r-0 bg-gray-50 dark:bg-gray-900"
               >
-                {/* Fila del Día (Ej: LUNES 10) */}
+                {/* Nombre y número del día */}
                 <div className="flex flex-row items-center justify-center gap-1 py-2 border-b border-gray-200 dark:border-gray-700">
                   <span className="text-[10px] sm:text-xs font-bold uppercase text-gray-600 dark:text-gray-400 truncate">
                     {format(day, "EEEE", { locale: es })}
@@ -122,7 +130,7 @@ export default function WeeklyAgendaGrid({
                   </div>
                 </div>
 
-                {/* Fila de Especialistas (L, N, Y) */}
+                {/* Subcolumnas de Especialistas (L, N, Y) */}
                 <div
                   className="grid flex-1 w-full"
                   style={{
@@ -143,11 +151,10 @@ export default function WeeklyAgendaGrid({
           })}
         </div>
 
-        {/* 3. CUERPO CON SCROLL VERTICAL: Contiene las horas y las cuadrículas de citas */}
-        <div
-          className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))] overflow-y-auto max-h-[calc(100vh-210px)]"
-        >
-          {/* Columna con etiquetas de horas (7:00 AM, 7:30 AM...) */}
+        {/* CUERPO PRINCIPAL DE LA REJILLA */}
+        <div className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))]">
+          
+          {/* Columna con etiquetas de horas */}
           <div className="border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
             <div className="relative" style={{ height: totalHeight }}>
               {hours.map((h, i) => (
@@ -165,7 +172,7 @@ export default function WeeklyAgendaGrid({
             </div>
           </div>
 
-          {/* Columnas interactiva para cada día */}
+          {/* Columnas para cada día de la semana */}
           {days.map((day) => {
             const dayAppointments = (appointments || []).filter(
               (a) =>
@@ -181,7 +188,7 @@ export default function WeeklyAgendaGrid({
                 key={day.toISOString()}
                 className="relative border-r border-gray-200 dark:border-gray-800 last:border-r-0 bg-white dark:bg-gray-950"
               >
-                {/* Cuadrícula de slots disponibles */}
+                {/* Cuadrícula de slots disponibles por especialista */}
                 <div
                   className="absolute inset-0 z-0"
                   style={{
