@@ -1,99 +1,101 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Script from "next/script";
-import { RefreshCcw, BarChart3, Lock } from "lucide-react";
+import React from "react";
+import Link from "next/link";
+import { Calendar, DollarSign, Clock, XCircle } from "lucide-react";
 
-// Mantenemos esto para que Vercel no falle con TypeScript
-const MetabaseDashboard = "metabase-dashboard" as any;
+interface MetricCardProps {
+  title: string;
+  value: string | number;
+  subtitle: string;
+  icon: React.ElementType;
+}
+
+// Componente reusable para cada tarjeta de métrica (KPI)
+function MetricCard({ title, value, subtitle, icon: Icon }: MetricCardProps) {
+  return (
+    <div className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all duration-200 hover:shadow-md dark:border-gray-800/80 dark:bg-gray-900/80">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          {title}
+        </span>
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
+          <Icon size={18} />
+        </div>
+      </div>
+
+      <div className="my-3">
+        <span className="text-3xl font-black text-gray-900 dark:text-white">
+          {value}
+        </span>
+      </div>
+
+      <span className="text-xs font-medium text-gray-400 dark:text-gray-500">
+        {subtitle}
+      </span>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
-  const [token, setToken] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [isScriptLoaded, setIsScriptLoaded] = useState(false); // Nuevo estado
-
-  const metabaseInstanceUrl = "https://reports.lehanastudio.com";
-
-  useEffect(() => {
-    async function getToken() {
-      try {
-        const res = await fetch("/api/metabase/token");
-        const data = await res.json();
-        if (data.token) setToken(data.token);
-      } catch (err) {
-        console.error("Error al obtener el token:", err);
-      }
-    }
-    getToken();
-  }, [refreshKey]);
-
-  const handleRefresh = () => {
-    setRefreshKey((prev) => prev + 1);
-  };
-
   return (
-    <main className="flex flex-col h-screen w-full bg-white dark:bg-zinc-950 animate-in fade-in duration-700 overflow-hidden">
+    <div className="flex flex-col gap-6 p-4 sm:p-6 w-full max-w-7xl mx-auto">
       
-      {/* Script con manejo de estado */}
-      <Script 
-        src={`${metabaseInstanceUrl}/app/embed.js`}
-        strategy="afterInteractive"
-        onLoad={() => {
-          (window as any).metabaseConfig = {
-            theme: { preset: "light" },
-            isGuest: true,
-            instanceUrl: metabaseInstanceUrl
-          };
-          setIsScriptLoaded(true); // Marcamos que el script y config están listos
-        }}
-      />
+      {/* Saludo de bienvenida */}
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-gray-900 dark:text-white">
+          Bienvenido, Admin
+        </h1>
+        <p className="mt-1 text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400">
+          Rol: <span className="text-indigo-600 dark:text-indigo-400">ADMIN</span> | Sesión validada correctamente.
+        </p>
+      </div>
 
-      {/* HEADER COMPACTO */}
-      <header className="flex items-center justify-between px-6 py-3 border-b dark:border-zinc-800 bg-white dark:bg-zinc-900 z-20">
-        <div className="flex items-center gap-3">
-          <div className="p-1.5 bg-indigo-600 rounded-xl">
-            <BarChart3 size={18} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-black tracking-tighter uppercase italic leading-none">Analytics</h1>
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Lehana Studio</p>
-          </div>
-        </div>
-        <button onClick={handleRefresh} className="p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg">
-          <RefreshCcw size={16} className={!token ? "animate-spin" : ""} />
-        </button>
-      </header>
+      {/* Grid de tarjetas KPI (4 columnas en escritorio, 1 en móviles) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          title="Citas hoy"
+          value={11}
+          subtitle="Agendadas para hoy"
+          icon={Calendar}
+        />
+        <MetricCard
+          title="Ingresos hoy"
+          value="$ 0"
+          subtitle="Pagos registrados hoy"
+          icon={DollarSign}
+        />
+        <MetricCard
+          title="Pendientes"
+          value={7}
+          subtitle="Por confirmar hoy"
+          icon={Clock}
+        />
+        <MetricCard
+          title="Citas canceladas"
+          value={1}
+          subtitle="Canceladas hoy"
+          icon={XCircle}
+        />
+      </div>
 
-      {/* CONTENEDOR DEL DASHBOARD */}
-      <section className="flex-1 w-full h-full relative bg-white">
-        {/* CONDICIÓN CRÍTICA: Esperar al token Y al script */}
-        {token && isScriptLoaded ? (
-          <div key={refreshKey} className="w-full h-full">
-            <MetabaseDashboard
-              token={token}
-              instance-url={metabaseInstanceUrl} // Pasamos la URL directamente aquí también
-              with-title="false"
-              with-downloads="true"
-              style={{ width: '100%', height: '100%', border: 'none' }}
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-4">
-            <RefreshCcw className="animate-spin text-indigo-600" size={32} />
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-              Estableciendo conexión con Metabase...
-            </p>
-          </div>
-        )}
-      </section>
+      {/* Tarjeta de Resumen de hoy */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800/80 dark:bg-gray-900/80">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
+          Resumen de hoy
+        </h2>
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+          Ve a la pestaña de{" "}
+          <Link
+            href="/agenda"
+            className="font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+          >
+            Agenda
+          </Link>{" "}
+          para ver y gestionar todas tus citas.
+        </p>
+      </div>
 
-      <footer className="px-6 py-2 border-t dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 flex justify-between items-center text-[9px] font-bold text-zinc-500 uppercase">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          <span>Sincronizado</span>
-        </div>
-        <p className="italic text-zinc-400">© 2026 LEHANA ANALYTICS</p>
-      </footer>
-    </main>
+    </div>
   );
 }

@@ -39,7 +39,7 @@ export default function AppSidebar() {
             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
               isActive
                 ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-bold"
-                : "text-gray-400 hover:text-white hover:bg-gray-800/60"
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/60"
             }`}
           >
             <Icon size={20} className="flex-shrink-0" />
