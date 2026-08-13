@@ -85,111 +85,112 @@ export function AgendaHeader({
 
   return (
     <>
-      <header className="relative z-50 flex flex-col gap-3 border-b border-gray-200 bg-white p-3 sm:p-4 dark:border-gray-800 dark:bg-gray-900">
+      <header className="relative z-50 flex flex-wrap items-center justify-between gap-2.5 border-b border-gray-200 bg-white p-3 sm:p-4 dark:border-gray-800 dark:bg-gray-900">
         
-        {/* FILA SUPERIOR: Botón Crear Reserva + Controles de Fecha */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* GRUPO PRINCIPAL CONTINUO: [+] -> [Hoy] -> [< AGOSTO 2026 >] -> [DÍA | SEM | MES] */}
+        <div className="flex flex-wrap items-center gap-2">
           
+          {/* 1. Botón compacto únicamente con '+' */}
           <button
             type="button"
             onClick={() => setIsCreateOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3.5 text-xs sm:text-sm rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95"
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/20 transition-all hover:bg-indigo-700 active:scale-95 flex-shrink-0"
+            title="Crear Reserva"
+            aria-label="Crear Reserva"
           >
-            <Plus size={16} />
-            <span>Crear Reserva</span>
+            <Plus size={20} />
           </button>
 
-          <div className="flex items-center gap-1.5">
+          {/* 2. Botón Hoy inmediatamente al lado */}
+          <button
+            type="button"
+            onClick={onToday}
+            className="flex h-9 items-center gap-1.5 rounded-xl border border-gray-300 bg-gray-50 px-3 text-xs font-bold text-gray-700 transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 flex-shrink-0"
+          >
+            <CalendarDays size={14} className="text-indigo-600 dark:text-indigo-400" />
+            <span>Hoy</span>
+          </button>
+
+          {/* 3. Selector de Fecha e Historial (< AGOSTO 2026 >) inmediatamente al lado */}
+          <div className="flex h-9 items-center rounded-xl bg-gray-100 dark:bg-gray-800 p-0.5 flex-shrink-0">
             <button
               type="button"
-              onClick={onToday}
-              className="flex items-center gap-1.5 rounded-xl border border-gray-300 bg-gray-50 px-2.5 py-1.5 text-xs font-bold text-gray-700 transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              onClick={onPrev}
+              className="rounded-lg p-1 text-gray-500 hover:bg-white dark:hover:bg-gray-700 transition-all"
+              aria-label="Anterior"
             >
-              <CalendarDays size={14} className="text-indigo-600 dark:text-indigo-400" />
-              <span>Hoy</span>
+              <ChevronLeft size={16} />
             </button>
 
-            <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-0.5 rounded-xl">
+            <div className="relative">
               <button
                 type="button"
-                onClick={onPrev}
-                className="rounded-lg p-1 text-gray-500 hover:bg-white dark:hover:bg-gray-700 transition-all"
+                onClick={() => setShowPicker(!showPicker)}
+                className="px-2 py-1 text-xs sm:text-sm font-black uppercase tracking-tight text-gray-800 dark:text-white hover:text-indigo-600 transition-colors"
               >
-                <ChevronLeft size={18} />
+                {label}
               </button>
 
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowPicker(!showPicker)}
-                  className="px-2 py-1 text-xs sm:text-sm font-black uppercase tracking-tight text-gray-800 dark:text-white hover:text-indigo-600 transition-colors"
-                >
-                  {label}
-                </button>
-
-                {/* Popover alineado con right-0 para evitar desbordamientos a la derecha */}
-                {showPicker && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-[190]"
-                      onClick={() => setShowPicker(false)}
+              {/* Popover del Calendario desplegable */}
+              {showPicker && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[190] bg-black/20 backdrop-blur-[1px]"
+                    onClick={() => setShowPicker(false)}
+                  />
+                  <div className="fixed top-28 left-1/2 -translate-x-1/2 sm:absolute sm:top-full sm:mt-2 sm:left-auto sm:right-0 sm:translate-x-0 z-[200] w-[285px] max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl rounded-3xl p-3 animate-in fade-in zoom-in-95 duration-150 text-zinc-900 dark:text-zinc-100">
+                    <DayPicker
+                      mode="single"
+                      selected={currentDate}
+                      onSelect={handleDateSelect}
+                      locale={es as any}
+                      classNames={{
+                        months: "flex flex-col space-y-4",
+                        month: "space-y-4",
+                        month_caption: "flex justify-between items-center px-1 mb-2",
+                        caption_label: "text-xs font-black uppercase tracking-widest text-zinc-800 dark:text-zinc-200",
+                        nav: "flex items-center gap-1",
+                        button_previous: "p-1 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white",
+                        button_next: "p-1 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white",
+                        month_grid: "w-full border-collapse space-y-1",
+                        weekdays: "flex justify-between border-b border-gray-100 dark:border-zinc-800 pb-1 mb-1",
+                        weekday: "text-zinc-400 font-bold text-[10px] uppercase w-8 text-center",
+                        weeks: "w-full flex flex-col gap-1",
+                        week: "flex w-full justify-between gap-1",
+                        day: "h-8 w-8 text-xs font-bold rounded-lg transition-all hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center justify-center text-center",
+                        selected: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md font-extrabold",
+                        today: "text-indigo-600 font-black ring-1 ring-indigo-600/40 rounded-lg",
+                      }}
+                      components={{
+                        Chevron: (props) => {
+                          if (props.orientation === "left") return <ChevronLeft size={16} />;
+                          return <ChevronRight size={16} />;
+                        },
+                      }}
                     />
-                    <div className="absolute top-full mt-2 right-0 z-[200] w-[290px] max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 shadow-2xl rounded-3xl p-3 animate-in fade-in zoom-in-95 duration-150 text-zinc-900 dark:text-zinc-100">
-                      <DayPicker
-                        mode="single"
-                        selected={currentDate}
-                        onSelect={handleDateSelect}
-                        locale={es as any}
-                        classNames={{
-                          months: "flex flex-col space-y-4",
-                          month: "space-y-4",
-                          month_caption: "flex justify-between items-center px-1 mb-2",
-                          caption_label: "text-xs font-black uppercase tracking-widest text-zinc-800 dark:text-zinc-200",
-                          nav: "flex items-center gap-1",
-                          button_previous: "p-1 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white",
-                          button_next: "p-1 rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white",
-                          month_grid: "w-full border-collapse space-y-1",
-                          weekdays: "flex justify-between border-b border-gray-100 dark:border-zinc-800 pb-1 mb-1",
-                          weekday: "text-zinc-400 font-bold text-[10px] uppercase w-8 text-center",
-                          weeks: "w-full flex flex-col gap-1",
-                          week: "flex w-full justify-between gap-1",
-                          day: "h-8 w-8 text-xs font-bold rounded-lg transition-all hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center justify-center text-center",
-                          selected: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-md font-extrabold",
-                          today: "text-indigo-600 font-black ring-1 ring-indigo-600/40 rounded-lg",
-                        }}
-                        components={{
-                          Chevron: (props) => {
-                            if (props.orientation === "left") return <ChevronLeft size={16} />;
-                            return <ChevronRight size={16} />;
-                          },
-                        }}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={onNext}
-                className="rounded-lg p-1 text-gray-500 hover:bg-white dark:hover:bg-gray-700 transition-all"
-              >
-                <ChevronRight size={18} />
-              </button>
+                  </div>
+                </>
+              )}
             </div>
-          </div>
-        </div>
 
-        {/* FILA INFERIOR: Modos de Vista + Filtros */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-100 dark:border-gray-800/60">
-          
-          <div className="flex overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-0.5 text-xs dark:border-gray-700 dark:bg-gray-800">
+            <button
+              type="button"
+              onClick={onNext}
+              className="rounded-lg p-1 text-gray-500 hover:bg-white dark:hover:bg-gray-700 transition-all"
+              aria-label="Siguiente"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          {/* 4. Selector de Vista (DÍA / SEM / MES) inmediatamente al lado */}
+          <div className="flex h-9 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-0.5 text-xs dark:border-gray-700 dark:bg-gray-800 flex-shrink-0">
             {(["day", "week", "month"] as const).map((v) => (
               <button
                 type="button"
                 key={v}
                 onClick={() => setView(v)}
-                className={`px-3 py-1.5 transition-all font-black uppercase rounded-lg text-[11px] ${
+                className={`px-3 py-1 transition-all font-black uppercase rounded-lg text-[11px] ${
                   view === v
                     ? "bg-indigo-600 text-white shadow-sm"
                     : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
@@ -199,46 +200,48 @@ export function AgendaHeader({
               </button>
             ))}
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <FilterDropdown
-              label="Sede"
-              options={[
-                { label: "Marquetalia", value: "Marquetalia" },
-                { label: "Buga", value: "Buga" },
-                { label: "Santa Marta", value: "Santa Marta" },
-              ]}
-              selected={locationFilter}
-              onChange={setLocationFilter}
-            />
+        {/* GRUPO DE FILTROS: Sede, Estado, Especialista */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
+          <FilterDropdown
+            label="Sede"
+            options={[
+              { label: "Marquetalia", value: "Marquetalia" },
+              { label: "Buga", value: "Buga" },
+              { label: "Santa Marta", value: "Santa Marta" },
+            ]}
+            selected={locationFilter}
+            onChange={setLocationFilter}
+          />
 
-            <FilterDropdown
-              label="Estado"
-              options={[
-                { label: "Nueva reserva creada", value: "Nueva reserva creada" },
-                { label: "Cita confirmada", value: "Cita confirmada" },
-                { label: "Cita pagada", value: "Cita pagada" },
-                { label: "Cita cancelada", value: "Cita cancelada" },
-              ]}
-              selected={statusFilter}
-              onChange={setStatusFilter}
-            />
+          <FilterDropdown
+            label="Estado"
+            options={[
+              { label: "Nueva reserva creada", value: "Nueva reserva creada" },
+              { label: "Cita confirmada", value: "Cita confirmada" },
+              { label: "Cita pagada", value: "Cita pagada" },
+              { label: "Cita cancelada", value: "Cita cancelada" },
+            ]}
+            selected={statusFilter}
+            onChange={setStatusFilter}
+          />
 
-            <FilterDropdown
-              label="Especialista"
-              options={[
-                { label: "Todas", value: "Todas" },
-                { label: "Leslie Gutierrez", value: "Leslie Gutierrez" },
-                { label: "Nary Cabrales", value: "Nary Cabrales" },
-                { label: "Yucelis Moscote", value: "Yucelis Moscote" },
-              ]}
-              selected={specialistFilter.length === 0 ? ["Todas"] : specialistFilter}
-              onChange={handleSpecialistChange}
-            />
-          </div>
+          <FilterDropdown
+            label="Especialista"
+            options={[
+              { label: "Todas", value: "Todas" },
+              { label: "Leslie Gutierrez", value: "Leslie Gutierrez" },
+              { label: "Nary Cabrales", value: "Nary Cabrales" },
+              { label: "Yucelis Moscote", value: "Yucelis Moscote" },
+            ]}
+            selected={specialistFilter.length === 0 ? ["Todas"] : specialistFilter}
+            onChange={handleSpecialistChange}
+          />
         </div>
       </header>
 
+      {/* Drawer desplegable para la creación de reservas */}
       <CreateBookingDrawer
         open={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}

@@ -20,9 +20,6 @@ type TooltipInfo = {
   especialista?: string;
 };
 
-/* =========================
-   CONFIGURACIÓN DE LA REJILLA
-========================= */
 const START_HOUR = 7;
 const END_HOUR = 22;
 const SLOT_MINUTES = 30;
@@ -33,9 +30,6 @@ const VISUAL_GAP = 2;
 const ALL_SPECIALISTS = ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote"];
 const ALL_SPECIALIST_TITLES = ["L", "N", "Y"];
 
-/* =========================
-   COMPONENTE PRINCIPAL
-========================= */
 export default function WeeklyAgendaGrid({
   appointments = [],
   currentDate = new Date(),
@@ -53,21 +47,19 @@ export default function WeeklyAgendaGrid({
 }) {
   const [now, setNow] = useState<Date>(() => new Date());
 
-  // Actualización del indicador de hora actual cada 60 segundos
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(interval);
   }, []);
 
-  // Cálculo seguro del inicio de la semana
-  const validCurrentDate = currentDate instanceof Date && !isNaN(currentDate.getTime()) 
-    ? currentDate 
-    : new Date();
-    
+  const validCurrentDate =
+    currentDate instanceof Date && !isNaN(currentDate.getTime())
+      ? currentDate
+      : new Date();
+
   const weekStart = startOfWeek(validCurrentDate, { weekStartsOn: 1 });
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
-  // Generación de lista de horas de la jornada
   const hours: number[] = [];
   for (let h = START_HOUR; h < END_HOUR; h += SLOT_MINUTES / 60) {
     hours.push(h);
@@ -75,7 +67,6 @@ export default function WeeklyAgendaGrid({
 
   const totalHeight = hours.length * SLOT_HEIGHT;
 
-  // Cálculo defensivo de la posición de la línea de tiempo actual
   const nowMinutesFromStart = differenceInMinutes(
     now,
     new Date(now.getFullYear(), now.getMonth(), now.getDate(), START_HOUR, 0)
@@ -83,7 +74,6 @@ export default function WeeklyAgendaGrid({
   const safeNowMinutes = isNaN(nowMinutesFromStart) ? 0 : nowMinutesFromStart;
   const nowTop = (safeNowMinutes / SLOT_MINUTES) * SLOT_HEIGHT;
 
-  // Filtrado de especialistas activos
   const activeSpecialists =
     specialistFilter && specialistFilter.length > 0
       ? ALL_SPECIALISTS.filter((s) => specialistFilter.includes(s))
@@ -96,24 +86,27 @@ export default function WeeklyAgendaGrid({
   );
 
   return (
+    // 1. Contenedor exterior con desplazamiento horizontal para móviles y altura adaptativa
     <div className="w-full overflow-x-auto pb-4">
-      {/* Contenedor con ancho mínimo para impedir que las columnas colapsen en móviles */}
-      <div className="min-w-[850px] border border-gray-200 dark:border-gray-800 rounded-2xl bg-white dark:bg-gray-950">
+      <div className="w-full min-w-[850px] lg:min-w-full border border-gray-200 dark:border-gray-800 rounded-2xl bg-white dark:bg-gray-950 overflow-hidden">
         
-        {/* ENCABEZADO DE DÍAS Y ESPECIALISTAS (z-20 para quedar bajo los menús emergentes del header) */}
+        {/* 2. ENCABEZADO FIJO (Sticky Top): Se mantiene visible al hacer scroll vertical */}
         <div
           className="sticky top-0 z-20 grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
           style={{ minHeight: HEADER_HEIGHT }}
         >
-          <div className="border-r border-gray-200 dark:border-gray-800" />
+          {/* Esquina superior izquierda vacía sobre la columna de horas */}
+          <div className="border-r border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900" />
 
+          {/* Días de la semana + Iniciales de Especialistas */}
           {days.map((day) => {
             const isToday = isSameDay(day, now);
             return (
               <div
                 key={day.toISOString()}
-                className="flex flex-col border-r border-gray-200 dark:border-gray-800 last:border-r-0"
+                className="flex flex-col border-r border-gray-200 dark:border-gray-800 last:border-r-0 bg-gray-50 dark:bg-gray-900"
               >
+                {/* Fila del Día (Ej: LUNES 10) */}
                 <div className="flex flex-row items-center justify-center gap-1 py-2 border-b border-gray-200 dark:border-gray-700">
                   <span className="text-[10px] sm:text-xs font-bold uppercase text-gray-600 dark:text-gray-400 truncate">
                     {format(day, "EEEE", { locale: es })}
@@ -129,7 +122,7 @@ export default function WeeklyAgendaGrid({
                   </div>
                 </div>
 
-                {/* Subcolumnas con iniciales de Especialistas */}
+                {/* Fila de Especialistas (L, N, Y) */}
                 <div
                   className="grid flex-1 w-full"
                   style={{
@@ -139,7 +132,7 @@ export default function WeeklyAgendaGrid({
                   {activeTitles.map((title, i) => (
                     <div
                       key={i}
-                      className="flex items-center justify-center border-r last:border-r-0 border-gray-200 text-[9px] sm:text-[10px] font-bold text-gray-500 bg-white dark:bg-gray-800/30 dark:border-gray-700 dark:text-gray-400"
+                      className="flex items-center justify-center border-r last:border-r-0 border-gray-200 text-[9px] sm:text-[10px] font-bold text-gray-500 bg-white dark:bg-gray-800/50 dark:border-gray-700 dark:text-gray-300"
                     >
                       {title}
                     </div>
@@ -150,13 +143,12 @@ export default function WeeklyAgendaGrid({
           })}
         </div>
 
-        {/* CUERPO PRINCIPAL DE LA REJILLA */}
+        {/* 3. CUERPO CON SCROLL VERTICAL: Contiene las horas y las cuadrículas de citas */}
         <div
-          className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))]"
-          style={{ height: `calc(100% - ${HEADER_HEIGHT}px)` }}
+          className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))] overflow-y-auto max-h-[calc(100vh-210px)]"
         >
-          {/* Columna con etiquetas de horas */}
-          <div className="overflow-y-auto border-r border-gray-200 dark:border-gray-800">
+          {/* Columna con etiquetas de horas (7:00 AM, 7:30 AM...) */}
+          <div className="border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
             <div className="relative" style={{ height: totalHeight }}>
               {hours.map((h, i) => (
                 <div
@@ -173,7 +165,7 @@ export default function WeeklyAgendaGrid({
             </div>
           </div>
 
-          {/* Columnas correspondientes a cada día de la semana */}
+          {/* Columnas interactiva para cada día */}
           {days.map((day) => {
             const dayAppointments = (appointments || []).filter(
               (a) =>
@@ -187,9 +179,9 @@ export default function WeeklyAgendaGrid({
             return (
               <div
                 key={day.toISOString()}
-                className="relative border-r border-gray-200 dark:border-gray-800 last:border-r-0"
+                className="relative border-r border-gray-200 dark:border-gray-800 last:border-r-0 bg-white dark:bg-gray-950"
               >
-                {/* Filas interactivas para agregar reservas por celda */}
+                {/* Cuadrícula de slots disponibles */}
                 <div
                   className="absolute inset-0 z-0"
                   style={{
@@ -233,7 +225,7 @@ export default function WeeklyAgendaGrid({
                   </div>
                 </div>
 
-                {/* Línea roja marcadora de la hora actual */}
+                {/* Marcador de hora actual */}
                 {isSameDay(day, now) && nowTop > 0 && !isNaN(nowTop) && (
                   <div
                     className="absolute left-0 right-0 z-30 flex items-center pointer-events-none"
@@ -247,7 +239,7 @@ export default function WeeklyAgendaGrid({
                   </div>
                 )}
 
-                {/* Renderizado defensivo de tarjetas de citas */}
+                {/* Tarjetas de citas */}
                 <div
                   className="relative z-10 pointer-events-none"
                   style={{ height: totalHeight }}
@@ -271,13 +263,13 @@ export default function WeeklyAgendaGrid({
                     const top = isNaN(calculatedTop) ? 0 : calculatedTop;
 
                     const rawDuration = differenceInMinutes(appt.end, appt.start);
-                    const durationMinutes = isNaN(rawDuration) || rawDuration <= 0 ? 30 : rawDuration;
+                    const durationMinutes =
+                      isNaN(rawDuration) || rawDuration <= 0 ? 30 : rawDuration;
 
                     const calculatedHeight =
                       (durationMinutes / SLOT_MINUTES) * SLOT_HEIGHT - VISUAL_GAP;
                     const height = isNaN(calculatedHeight) ? SLOT_HEIGHT : calculatedHeight;
 
-                    // Manejo de superposiciones entre citas
                     const collidingAppts = dayAppointments
                       .filter((a) => a.raw?.especialista === appt.raw?.especialista)
                       .filter((a) => appt.start < a.end && a.start < appt.end)
