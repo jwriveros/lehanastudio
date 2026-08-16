@@ -49,6 +49,16 @@ function toLocalDateTimeString(d: Date) {
   );
 }
 
+/**
+ * Helper para calcular automáticamente el bloque semanal según el día
+ * JavaScript getDay(): 0 = Domingo, 1 = Lunes, ..., 5 = Viernes, 6 = Sábado
+ */
+function getBlockForDate(date: Date): "block1" | "block2" {
+  const day = date.getDay();
+  // 5 (Viernes), 6 (Sábado) o 0 (Domingo) pertenecen al Bloque 2
+  return day === 0 || day >= 5 ? "block2" : "block1";
+}
+
 /* =========================
     COMPONENTE PRINCIPAL
 ========================= */
@@ -58,6 +68,11 @@ export default function AgendaLayout() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(normalizeLocalDate(new Date()));
+
+  // 1. INICIALIZACIÓN AUTOMÁTICA: Detecta el bloque inicial según la fecha de hoy
+  const [weekBlock, setWeekBlock] = useState<"block1" | "block2">(() =>
+    getBlockForDate(normalizeLocalDate(new Date()))
+  );
 
   const calendarRef = useRef<any>(null);  
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
@@ -74,6 +89,11 @@ export default function AgendaLayout() {
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   const toggleSidebar = () => setSidebarCollapsed((v) => !v);
+
+  // 2. EFECTO REACTIVO: Cambia el bloque automáticamente cuando el usuario cambia de fecha
+  useEffect(() => {
+    setWeekBlock(getBlockForDate(currentDate));
+  }, [currentDate]);
 
   /* SCANNER DE SEGURIDAD DIRECTO DEL LOCALSTORAGE */
   useEffect(() => {
@@ -154,7 +174,7 @@ export default function AgendaLayout() {
       .lt("appointment_at", toLocalDateTimeString(to))
       .order("appointment_at", { ascending: true });
 
-      console.log("Citas recibidas de Supabase:", data);
+    console.log("Citas recibidas de Supabase:", data);
 
     setAppointments(error ? [] : (data as any) ?? []);
     setLoading(false);
@@ -230,7 +250,7 @@ export default function AgendaLayout() {
           },
         };
       });
-  }, [appointments,locationFilter, statusFilter, specialistFilter, serviceFilter]);
+  }, [appointments, locationFilter, statusFilter, specialistFilter, serviceFilter]);
 
   return (
     <div className="min-h-[100dvh] flex h-full w-full flex-col overflow-hidden bg-white">
@@ -243,6 +263,8 @@ export default function AgendaLayout() {
             onNext={() => setCurrentDate(d => normalizeLocalDate(new Date(d.getTime() + 86400000 * (viewMode === "week" ? 7 : 1))))}
             view={viewMode}
             setView={setViewMode}
+            weekBlock={weekBlock}
+            setWeekBlock={setWeekBlock}
             locationFilter={locationFilter}
             setLocationFilter={setLocationFilter}
             statusFilter={statusFilter}
@@ -274,8 +296,8 @@ export default function AgendaLayout() {
                   currentDate={currentDate} 
                   onViewDetails={handleViewAppointment} 
                   onCreateFromSlot={isAuthorized ? handleCreateFromSlot : undefined}
-                  
                   specialistFilter={specialistFilter} 
+                  weekBlock={weekBlock}
                 />
               )}
             </div>
@@ -283,7 +305,6 @@ export default function AgendaLayout() {
         }
       />
 
-      {/* 🚩 CORREGIDO: Se retiró el atributo isAuthorized de aquí ya que no es requerido por el Drawer */}
       <ReservationDrawer
         isOpen={isReservationDrawerOpen}
         onClose={() => { closeReservationDrawer(); setEditingAppointment(null); }}

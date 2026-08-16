@@ -30,8 +30,14 @@ const SLOT_HEIGHT = 52;
 const HEADER_HEIGHT = 72;
 const VISUAL_GAP = 2;
 
-const ALL_SPECIALISTS = ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote"];
-const ALL_SPECIALIST_TITLES = ["L", "N", "Y"];
+// 1. Inclusión de la 4ª especialista (Andrea Garcia -> "A")
+const ALL_SPECIALISTS = [
+  "Leslie Gutierrez",
+  "Nary Cabrales",
+  "Yucelis Moscote",
+  "Andrea Garcia",
+];
+const ALL_SPECIALIST_TITLES = ["L", "N", "Y", "A"];
 
 /* =========================
    COMPONENTE PRINCIPAL
@@ -43,6 +49,7 @@ export default function WeeklyAgendaGrid({
   onViewDetails,
   onCreateFromSlot,
   specialistFilter = [],
+  weekBlock = "block1", // Nueva propiedad opcional: "block1" (LUN-JUE) o "block2" (VIE-DOM)
 }: {
   appointments: CalendarAppointment[];
   currentDate: Date;
@@ -50,6 +57,7 @@ export default function WeeklyAgendaGrid({
   onViewDetails?: (appt: CalendarAppointment) => void;
   onCreateFromSlot?: (data: { especialista: string; start: Date }) => void;
   specialistFilter?: string[];
+  weekBlock?: "block1" | "block2";
 }) {
   const [now, setNow] = useState<Date>(() => new Date());
 
@@ -64,7 +72,13 @@ export default function WeeklyAgendaGrid({
       : new Date();
 
   const weekStart = startOfWeek(validCurrentDate, { weekStartsOn: 1 });
-  const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+  const allDays = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+
+  // 2. Segmentación de la semana según el bloque activo
+  const days =
+    weekBlock === "block1"
+      ? allDays.slice(0, 4) // Lunes, Martes, Miércoles, Jueves
+      : allDays.slice(4, 7); // Viernes, Sábado, Domingo
 
   const hours: number[] = [];
   for (let h = START_HOUR; h < END_HOUR; h += SLOT_MINUTES / 60) {
@@ -95,17 +109,20 @@ export default function WeeklyAgendaGrid({
     // 1. Contenedor principal con scroll horizontal
     <div className="w-full overflow-x-auto pb-4">
       
-      {/* 2. Contenedor Unificado con Scroll Vertical:
-             Al colocar max-h y overflow-y-auto aquí, la cabecera y el cuerpo 
-             comparten exactamente el mismo ancho de scrollbar, alineando las líneas. */}
-      <div className="w-full min-w-[850px] lg:min-w-full border border-gray-200 dark:border-gray-800 rounded-2xl bg-white dark:bg-gray-950 overflow-y-auto max-h-[calc(100vh-210px)]">
+      {/* 2. Contenedor unificado con scroll vertical */}
+      <div className="w-full min-w-[750px] lg:min-w-full border border-gray-200 dark:border-gray-800 rounded-2xl bg-white dark:bg-gray-950 overflow-y-auto max-h-[calc(100vh-210px)]">
         
         {/* ENCABEZADO PEGAJOSO (Sticky Top) */}
         <div
-          className="sticky top-0 z-20 grid grid-cols-[64px_repeat(7,minmax(0,1fr))] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
-          style={{ minHeight: HEADER_HEIGHT }}
+          className="sticky top-0 z-20 grid border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
+          style={{
+            gridTemplateColumns: `64px repeat(${days.length}, minmax(0, 1fr))`,
+            minHeight: HEADER_HEIGHT,
+          }}
         >
-          <div className="border-r border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900" />
+          <div className="border-r border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900 flex items-center justify-center text-[10px] font-black text-gray-400">
+            HORA
+          </div>
 
           {days.map((day) => {
             const isToday = isSameDay(day, now);
@@ -115,7 +132,7 @@ export default function WeeklyAgendaGrid({
                 className="flex flex-col border-r border-gray-200 dark:border-gray-800 last:border-r-0 bg-gray-50 dark:bg-gray-900"
               >
                 {/* Nombre y número del día */}
-                <div className="flex flex-row items-center justify-center gap-1 py-2 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex flex-row items-center justify-center gap-1.5 py-2 border-b border-gray-200 dark:border-gray-700">
                   <span className="text-[10px] sm:text-xs font-bold uppercase text-gray-600 dark:text-gray-400 truncate">
                     {format(day, "EEEE", { locale: es })}
                   </span>
@@ -130,7 +147,7 @@ export default function WeeklyAgendaGrid({
                   </div>
                 </div>
 
-                {/* Subcolumnas de Especialistas (L, N, Y) */}
+                {/* Subcolumnas de Especialistas (L, N, Y, A) */}
                 <div
                   className="grid flex-1 w-full"
                   style={{
@@ -152,8 +169,12 @@ export default function WeeklyAgendaGrid({
         </div>
 
         {/* CUERPO PRINCIPAL DE LA REJILLA */}
-        <div className="grid grid-cols-[64px_repeat(7,minmax(0,1fr))]">
-          
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: `64px repeat(${days.length}, minmax(0, 1fr))`,
+          }}
+        >
           {/* Columna con etiquetas de horas */}
           <div className="border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
             <div className="relative" style={{ height: totalHeight }}>
@@ -172,7 +193,7 @@ export default function WeeklyAgendaGrid({
             </div>
           </div>
 
-          {/* Columnas para cada día de la semana */}
+          {/* Columnas para cada día visible */}
           {days.map((day) => {
             const dayAppointments = (appointments || []).filter(
               (a) =>
