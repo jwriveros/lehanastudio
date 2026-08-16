@@ -33,11 +33,11 @@ const VISUAL_GAP = 2;
 // 1. Inclusión de la 4ª especialista (Andrea Garcia -> "A")
 const ALL_SPECIALISTS = [
   "Leslie Gutierrez",
-  "Nary Cabrales",
   "Yucelis Moscote",
+  "Nary Cabrales",
   "Andrea Garcia",
 ];
-const ALL_SPECIALIST_TITLES = ["L", "N", "Y", "A"];
+const ALL_SPECIALIST_TITLES = ["Leslie", "Yuce", "Nary", "Andrea"];
 
 /* =========================
    COMPONENTE PRINCIPAL
@@ -129,7 +129,7 @@ export default function WeeklyAgendaGrid({
             return (
               <div
                 key={day.toISOString()}
-                className="flex flex-col border-r border-gray-200 dark:border-gray-800 last:border-r-0 bg-gray-50 dark:bg-gray-900"
+                className="flex flex-col border-r border-gray-300 dark:border-gray-800 last:border-r-0 bg-gray-50 dark:bg-gray-900"
               >
                 {/* Nombre y número del día */}
                 <div className="flex flex-row items-center justify-center gap-1.5 py-2 border-b border-gray-200 dark:border-gray-700">

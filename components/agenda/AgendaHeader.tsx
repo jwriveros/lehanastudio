@@ -261,7 +261,7 @@ export function AgendaHeader({
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 }`}
               >
-                <span>Bloque 1: LUN 10 - JUE 13</span>
+                <span>LUNES A JUEVES</span>
               </button>
 
               <button
@@ -273,7 +273,7 @@ export function AgendaHeader({
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 }`}
               >
-                <span>Bloque 2: VIE 14 - DOM 16</span>
+                <span>VIERNES A DOMINGO</span>
               </button>
             </div>
           </div>
