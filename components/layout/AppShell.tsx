@@ -34,7 +34,7 @@ export default function AppShell({ children }: AppShellProps) {
         {/* Cabecera interna del Sidebar */}
         <div className="flex h-14 items-center justify-between px-4 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
           <span className="font-black text-indigo-600 dark:text-indigo-400 tracking-wider text-sm uppercase">
-            Lehana Studio
+            L S
           </span>
           <button
             type="button"
