@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSessionStore } from "@/lib/sessionStore";
 import { supabase } from "@/lib/supabaseClient";
@@ -18,7 +19,8 @@ import {
   Send,
   Instagram,
   Facebook,
-  Scissors
+  Scissors,
+  Calendar
 } from "lucide-react";
 
 // Códigos de país para el selector de WhatsApp
@@ -34,7 +36,7 @@ const COUNTRY_CODES = [
   { code: "+593", label: "🇪🇨 Ecuador (+593)" },
 ];
 
-// Categorías principales descritas de forma conceptual sin listas de precios
+// Categorías principales de servicios
 const SERVICE_CATEGORIES = [
   {
     name: "Micropigmentación",
@@ -76,7 +78,7 @@ const SERVICE_CATEGORIES = [
 export default function HomePage() {
   const router = useRouter();
 
-  // Estado de autenticación
+  // Estado de autenticación para el equipo
   const { login, error, isLoading } = useSessionStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -90,7 +92,6 @@ export default function HomePage() {
   const [academyLoading, setAcademyLoading] = useState(false);
   const [academySuccess, setAcademySuccess] = useState(false);
 
-  // Manejador del inicio de sesión corregido
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const ok = await login(email, password);
@@ -100,7 +101,6 @@ export default function HomePage() {
     }
   };
 
-  // Envió de datos a la tabla academy_leads en Supabase
   const handleAcademySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAcademyLoading(true);
@@ -155,14 +155,26 @@ export default function HomePage() {
             <a href="#contacto" className="hover:text-rose-600 transition-colors">Contacto</a>
           </nav>
 
-          <button 
-            type="button"
-            onClick={() => setIsLoginOpen(true)}
-            className="flex items-center gap-2 rounded-2xl bg-zinc-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95 cursor-pointer"
-          >
-            <Lock size={14} />
-            <span>Iniciar Sesión</span>
-          </button>
+          <div className="flex items-center gap-3">
+            {/* ENLACE GARANTIZADO A LA PÁGINA COMPLETA /reservar */}
+            <Link
+              href="/reservar"
+              className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 px-5 py-2.5 text-xs font-extrabold text-white shadow-md shadow-rose-500/20 hover:from-rose-600 hover:to-pink-600 transition-all active:scale-95 cursor-pointer"
+            >
+              <Calendar size={14} />
+              <span>Agendar / Mi Perfil</span>
+            </Link>
+
+            {/* BOTÓN INICIAR SESIÓN */}
+            <button 
+              type="button"
+              onClick={() => setIsLoginOpen(true)}
+              className="flex items-center gap-2 rounded-2xl bg-zinc-900 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95 cursor-pointer"
+            >
+              <Lock size={14} />
+              <span>Iniciar Sesión</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -196,7 +208,7 @@ export default function HomePage() {
                   className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-7 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all active:scale-95"
                 >
                   <MessageCircle size={18} />
-                  <span>Agendar Cita por WhatsApp</span>
+                  <span>Chatea con nosotras</span>
                 </a>
 
                 <a
@@ -327,7 +339,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 5. SECCIÓN ACADEMIA & FORMULARIO */}
+        {/* 5. SECCIÓN ACADEMIA */}
         <section id="academia" className="py-20 px-4 bg-gradient-to-b from-zinc-50 to-rose-50/40 border-t border-zinc-200/60">
           <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             
@@ -448,7 +460,7 @@ export default function HomePage() {
 
       </main>
 
-      {/* 6. MODAL OSCURO DE INICIO DE SESIÓN */}
+      {/* 6. MODAL OSCURO DE INICIO DE SESIÓN PARA ESPECIALISTAS */}
       {isLoginOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900 p-6 sm:p-8 shadow-2xl">
