@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
@@ -97,9 +98,12 @@ function formatTime12h(time24: string): string {
 }
 
 export default function BookingPage() {
+  const searchParams = useSearchParams();
+  const phoneParam = searchParams.get("phone");
   const [step, setStep] = useState<"identify" | "register" | "profile" | "booking" | "summary">("identify");
   const [phoneSearch, setPhoneSearch] = useState("");
   const [searching, setSearching] = useState(false);
+  
 
   // Datos del Cliente Principal
   const [clientId, setClientId] = useState<number | null>(null);
@@ -153,6 +157,52 @@ export default function BookingPage() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(0, 0, 0, 0);
     return tomorrow;
+  };
+  useEffect(() => {
+    if (phoneParam) {
+      const cleanPhone = phoneParam.replace(/\D/g, "");
+      setPhoneSearch(cleanPhone);
+      // Auto-ejecutamos la búsqueda de la cuenta del cliente
+      autoIdentifyFromWhatsApp(cleanPhone);
+    }
+  }, [phoneParam]);
+  const autoIdentifyFromWhatsApp = async (cleanPhone: string) => {
+    setSearching(true);
+    try {
+      const { data: clientRes } = await supabase
+        .from("clients")
+        .select("*")
+        .or(`celular.eq.${cleanPhone},telefono.eq.${cleanPhone}`)
+        .limit(1);
+
+      if (clientRes && clientRes.length > 0) {
+        const c = clientRes[0];
+        setClientId(c.id);
+        const nameParts = (c.nombre || "").split(" ");
+        setFirstName(nameParts[0] || "");
+        setLastName(nameParts.slice(1).join(" ") || "");
+        setEmail(c.correo_electronico || "");
+        setMunicipio(c.municipio || "");
+        setDireccion(c.direccion || "");
+        setGenero(c.genero || "Femenino");
+
+        const { data: appts } = await supabase
+          .from("appointments")
+          .select("*")
+          .eq("celular", cleanPhone)
+          .order("appointment_at", { ascending: false });
+
+        setPastAppointments(appts || []);
+        // Salta directamente al perfil/agendamiento
+        setStep("profile");
+      } else {
+        setStep("register");
+      }
+    } catch (err) {
+      console.error("Error identificando desde WhatsApp:", err);
+    } finally {
+      setSearching(false);
+    }
   };
 
   useEffect(() => {
