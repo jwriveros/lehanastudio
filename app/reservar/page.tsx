@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Calendar from "react-calendar";
@@ -97,13 +97,13 @@ function formatTime12h(time24: string): string {
   return `${formattedHours}:${minutes} ${modifier}`;
 }
 
-export default function BookingPage() {
+// 1. COMPONENTE INTERNO QUE UTILIZA useSearchParams()
+function BookingContent() {
   const searchParams = useSearchParams();
   const phoneParam = searchParams.get("phone");
   const [step, setStep] = useState<"identify" | "register" | "profile" | "booking" | "summary">("identify");
   const [phoneSearch, setPhoneSearch] = useState("");
   const [searching, setSearching] = useState(false);
-  
 
   // Datos del Cliente Principal
   const [clientId, setClientId] = useState<number | null>(null);
@@ -158,14 +158,15 @@ export default function BookingPage() {
     tomorrow.setHours(0, 0, 0, 0);
     return tomorrow;
   };
+
   useEffect(() => {
     if (phoneParam) {
       const cleanPhone = phoneParam.replace(/\D/g, "");
       setPhoneSearch(cleanPhone);
-      // Auto-ejecutamos la búsqueda de la cuenta del cliente
       autoIdentifyFromWhatsApp(cleanPhone);
     }
   }, [phoneParam]);
+
   const autoIdentifyFromWhatsApp = async (cleanPhone: string) => {
     setSearching(true);
     try {
@@ -193,7 +194,6 @@ export default function BookingPage() {
           .order("appointment_at", { ascending: false });
 
         setPastAppointments(appts || []);
-        // Salta directamente al perfil/agendamiento
         setStep("profile");
       } else {
         setStep("register");
@@ -511,10 +511,6 @@ export default function BookingPage() {
     }
   };
 
-  /* =========================================================
-     🔥 CONFIRMACIÓN DE RESERVA A TRAVÉS DE /api/booking/create
-     Guarda en Supabase y dispara la notificación de WhatsApp vía n8n
-  ========================================================= */
   const handleConfirmBooking = async () => {
     let finalItems = [...cartItems];
     if (selectedService && selectedDate && selectedTime && selectedSpecialist) {
@@ -537,7 +533,6 @@ export default function BookingPage() {
       const cleanPhone = phoneSearch.replace(/\D/g, "");
       const clientFullName = `${firstName} ${lastName}`.trim();
 
-      // Mapear los elementos al formato que requiere api/booking/create/route.ts
       const itemsPayload = finalItems.map((item) => ({
         servicio: item.service.Servicio,
         especialista: item.specialist,
@@ -1432,5 +1427,22 @@ export default function BookingPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+// 2. COMPONENTE PRINCIPAL EXPORTADO CON LÍMITE DE SUSPENSE
+export default function BookingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen bg-zinc-50">
+          <p className="text-xs font-bold text-rose-600 animate-pulse">
+            Cargando portal de reservas...
+          </p>
+        </div>
+      }
+    >
+      <BookingContent />
+    </Suspense>
   );
 }

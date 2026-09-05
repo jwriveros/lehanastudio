@@ -13,7 +13,15 @@ interface DateAvailability {
   slots: SlotDetail[];
 }
 
-// Desempaqueta el objeto horario_semanal
+// Formatea la fecha en formato YYYY-MM-DD en hora local
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Desempaqueta el horario base semanal
 function safeParseSchedule(rawSchedule: any): any {
   if (!rawSchedule) return {};
   let current = rawSchedule;
@@ -37,7 +45,7 @@ function safeParseSchedule(rawSchedule: any): any {
   return typeof current === "object" && current !== null ? current : {};
 }
 
-// Convierte horas en formato HH:MM a minutos transcurridos desde medianoche
+// Convierte HH:MM a minutos transcurridos desde medianoche
 function timeToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
   const cleanTime = timeStr.trim().split(" ")[0].split("T").pop() || "";
@@ -51,8 +59,12 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const serviceId = searchParams.get("service_id");
   const sede = searchParams.get("sede") || "Marquetalia";
-  
-  // Parámetros de rango de fechas optimizados (Evita cargar todo el año de golpe)
+  const explicitSpecialist = searchParams.get("specialist");
+
+  const filterDate = searchParams.get("date");
+  const jornada = searchParams.get("jornada");
+  const searchMode = searchParams.get("search_mode") || "strict";
+
   const customStartDate = searchParams.get("start_date");
   const customEndDate = searchParams.get("end_date");
   const daysAhead = parseInt(searchParams.get("days_ahead") || "30", 10);
@@ -80,7 +92,8 @@ export async function GET(request: NextRequest) {
     }
 
     const duration = parseInt(service.duracion || "60", 10);
-    
+    const serviceSku = service.SKU || service.id;
+
     let serviceEspecialistas: string[] = [];
     if (typeof service.especialistas === "string") {
       try {
@@ -92,14 +105,20 @@ export async function GET(request: NextRequest) {
       serviceEspecialistas = service.especialistas;
     }
 
-    // 2. Obtener las especialistas desde app_users
+    // 2. Obtener especialistas desde app_users
     const { data: specialists } = await supabase
       .from("app_users")
       .select("id, name, horario_semanal");
 
-    const qualifiedSpecialists = (specialists || []).filter((sp) =>
+    let qualifiedSpecialists = (specialists || []).filter((sp) =>
       serviceEspecialistas.includes(sp.name)
     );
+
+    if (explicitSpecialist) {
+      qualifiedSpecialists = qualifiedSpecialists.filter(
+        (sp) => sp.name.toLowerCase() === explicitSpecialist.toLowerCase()
+      );
+    }
 
     if (qualifiedSpecialists.length === 0) {
       return NextResponse.json({
@@ -110,32 +129,40 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 3. Determinación optimizada del rango de fechas
+    // 3. Definición del rango de fechas
     let startDate: Date;
     let endDate: Date;
 
-    if (customStartDate && customEndDate) {
-      startDate = new Date(`${customStartDate}T00:00:00`);
-      endDate = new Date(`${customEndDate}T23:59:59`);
+    if (filterDate) {
+      const [fY, fM, fD] = filterDate.split("-").map(Number);
+      startDate = new Date(fY, fM - 1, fD, 0, 0, 0);
+      endDate = new Date(fY, fM - 1, fD, 23, 59, 59);
+    } else if (customStartDate && customEndDate) {
+      const [sY, sM, sD] = customStartDate.split("-").map(Number);
+      const [eY, eM, eD] = customEndDate.split("-").map(Number);
+      startDate = new Date(sY, sM - 1, sD, 0, 0, 0);
+      endDate = new Date(eY, eM - 1, eD, 23, 59, 59);
     } else {
-      // Por defecto: desde mañana hasta N días adelante (30 días recomendados)
       startDate = new Date();
       startDate.setDate(startDate.getDate() + 1);
+      startDate.setHours(0, 0, 0, 0);
+
       endDate = new Date();
       endDate.setDate(endDate.getDate() + daysAhead);
+      endDate.setHours(23, 59, 59, 999);
     }
 
-    const startDateStr = startDate.toISOString().split("T")[0];
-    const endDateStr = endDate.toISOString().split("T")[0];
+    const startDateStr = formatLocalDate(startDate);
+    const endDateStr = formatLocalDate(endDate);
 
-    // 4. Consultar bloqueos en specialist_overrides
+    // 4. Consultar reglas en specialist_overrides
     const { data: overrides } = await supabase
       .from("specialist_overrides")
       .select("*")
       .gte("date", startDateStr)
       .lte("date", endDateStr);
 
-    // 5. Consultar citas activas en appointments
+    // 5. Consultar citas activas en appointments para la sede
     const { data: existingAppts } = await supabase
       .from("appointments")
       .select("appointment_at, duration, especialista, sede, estado")
@@ -145,12 +172,19 @@ export async function GET(request: NextRequest) {
       .lte("appointment_at", `${endDateStr} 23:59:59`);
 
     const daysOfWeekEs = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
-    
-    // Franjas candidatas cada 15 minutos (de 09:00 a 18:00)
-    const candidateSlots: string[] = [];
-    const startMinOfDay = 9 * 60; // 09:00
-    const endMinOfDay = 18 * 60;  // 18:00
 
+    let startMinOfDay = 9 * 60;
+    let endMinOfDay = 18 * 60;
+
+    if (jornada === "manana") {
+      startMinOfDay = 9 * 60;
+      endMinOfDay = 12 * 60;
+    } else if (jornada === "tarde") {
+      startMinOfDay = 12 * 60;
+      endMinOfDay = 18 * 60;
+    }
+
+    const candidateSlots: string[] = [];
     for (let m = startMinOfDay; m <= endMinOfDay; m += 15) {
       const hh = Math.floor(m / 60);
       const mm = m % 60;
@@ -160,12 +194,35 @@ export async function GET(request: NextRequest) {
     }
 
     const availableDates: DateAvailability[] = [];
+    const isMainSede = sede.toLowerCase() === "marquetalia";
 
-    // 6. Recorrer día por día en el rango solicitado
+    // 6. Recorrer día a día
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split("T")[0];
+      const dateStr = formatLocalDate(d);
       const dayName = daysOfWeekEs[d.getDay()];
       const daySlots: SlotDetail[] = [];
+
+      const dayAppts = (existingAppts || []).filter((appt) => {
+        const normalizedApptAt = (appt.appointment_at || "").replace(" ", "T");
+        const [apptDate] = normalizedApptAt.split("T");
+        return apptDate === dateStr;
+      });
+
+      const hasAnyApptInDay = dayAppts.length > 0;
+
+      const apptsBySpecialist: Record<string, { start: number; end: number }[]> = {};
+      dayAppts.forEach((appt) => {
+        const normalizedApptAt = (appt.appointment_at || "").replace(" ", "T");
+        const [, apptTimePart] = normalizedApptAt.split("T");
+        const apptStartMin = timeToMinutes(apptTimePart || "00:00");
+        const apptDuration = parseInt(appt.duration || "60", 10);
+        const apptEndMin = apptStartMin + apptDuration;
+
+        if (!apptsBySpecialist[appt.especialista]) {
+          apptsBySpecialist[appt.especialista] = [];
+        }
+        apptsBySpecialist[appt.especialista].push({ start: apptStartMin, end: apptEndMin });
+      });
 
       for (const slot of candidateSlots) {
         const slotStartMin = timeToMinutes(slot);
@@ -173,46 +230,103 @@ export async function GET(request: NextRequest) {
         const freeSpecialistsForSlot: string[] = [];
 
         for (const sp of qualifiedSpecialists) {
-          const scheduleObj = safeParseSchedule(sp.horario_semanal);
-          const dayConfig = scheduleObj[dayName];
-
-          if (!dayConfig || dayConfig.estado === "cerrado") continue;
-
-          const workStartMin = timeToMinutes(dayConfig.inicio || "09:00");
-          const lastSlotAllowedMin = timeToMinutes(dayConfig.fin || "18:00");
-
-          if (slotStartMin < workStartMin || slotStartMin > lastSlotAllowedMin) continue;
-
-          // Verificar bloqueos en specialist_overrides
-          const isBlocked = (overrides || []).some((b) => {
-            const isSameSpecialist = b.specialist_id === sp.id || b.especialista === sp.name;
-            if (!isSameSpecialist || b.date !== dateStr) return false;
-
-            const bStartMin = timeToMinutes(b.start_time || "00:00");
-            const bEndMin = timeToMinutes(b.end_time || "23:59");
-            return slotStartMin < bEndMin && slotEndMin > bStartMin;
+          const spOverrides = (overrides || []).filter((b) => {
+            const isSameSp = b.specialist_id === sp.id || b.especialista === sp.name;
+            return isSameSp && b.date === dateStr;
           });
 
-          if (isBlocked) continue;
+          let isAvailableInSede = false;
 
-          // Verificar traslape con citas en appointments
-          const isOccupied = (existingAppts || []).some((appt) => {
-            if (appt.especialista !== sp.name) return false;
-            
-            const normalizedApptAt = (appt.appointment_at || "").replace(" ", "T");
-            const [apptDate, apptTimePart] = normalizedApptAt.split("T");
+          /* =========================================================
+             🏢 REGLA DE SEDES: MARQUETALIA (BASE) VS OTARAS (OVERRIDE)
+          ========================================================= */
+          if (isMainSede) {
+            const scheduleObj = safeParseSchedule(sp.horario_semanal);
+            const dayConfig = scheduleObj[dayName];
 
-            if (apptDate !== dateStr) return false;
+            if (dayConfig && dayConfig.estado === "abierto") {
+              const workStartMin = timeToMinutes(dayConfig.inicio || "09:00");
+              const lastSlotAllowedMin = timeToMinutes(dayConfig.fin || "18:00");
 
-            const apptStartMin = timeToMinutes(apptTimePart || "00:00");
-            const apptDuration = parseInt(appt.duration || "60", 10);
-            const apptEndMin = apptStartMin + apptDuration;
+              if (slotStartMin >= workStartMin && slotStartMin <= lastSlotAllowedMin) {
+                isAvailableInSede = true;
+              }
+            }
 
-            return slotStartMin < apptEndMin && slotEndMin > apptStartMin;
-          });
+            const hasConflictOverride = spOverrides.some((rule) => {
+              const bStartMin = timeToMinutes(rule.start_time || "00:00");
+              const bEndMin = timeToMinutes(rule.end_time || "23:59");
+              const inTimeRange = slotStartMin < bEndMin && slotEndMin > bStartMin;
 
-          if (!isOccupied) {
+              if (!inTimeRange) return false;
+
+              if (rule.type === "blocked") return true;
+              if (rule.type === "assigned_sede" && rule.sede?.toLowerCase() !== "marquetalia") return true;
+
+              return false;
+            });
+
+            if (hasConflictOverride) isAvailableInSede = false;
+
+          } else {
+            const assignedSedeOverride = spOverrides.find((rule) => {
+              if (rule.type !== "assigned_sede") return false;
+              if (!rule.sede || rule.sede.toLowerCase() !== sede.toLowerCase()) return false;
+
+              const bStartMin = timeToMinutes(rule.start_time || "00:00");
+              const bEndMin = timeToMinutes(rule.end_time || "23:59");
+
+              return slotStartMin >= bStartMin && slotEndMin <= bEndMin;
+            });
+
+            if (assignedSedeOverride) {
+              if (
+                assignedSedeOverride.allowed_services &&
+                Array.isArray(assignedSedeOverride.allowed_services) &&
+                assignedSedeOverride.allowed_services.length > 0
+              ) {
+                const isServiceAllowed =
+                  assignedSedeOverride.allowed_services.includes(serviceSku) ||
+                  assignedSedeOverride.allowed_services.includes(service.id);
+
+                if (isServiceAllowed) {
+                  isAvailableInSede = true;
+                }
+              } else {
+                isAvailableInSede = true;
+              }
+            }
+          }
+
+          if (!isAvailableInSede) continue;
+
+          const spAppts = apptsBySpecialist[sp.name] || [];
+          const isOccupied = spAppts.some(
+            (appt) => slotStartMin < appt.end && slotEndMin > appt.start
+          );
+
+          if (isOccupied) continue;
+
+          /* =========================================================
+             🎯 APLICACIÓN DE MODO ESTRICTO O AMPLIO DE AGENDAMIENTO
+          ========================================================= */
+          if (searchMode === "broad" || explicitSpecialist || !hasAnyApptInDay) {
             freeSpecialistsForSlot.push(sp.name);
+          } else {
+            const spHasApptsToday = spAppts.length > 0;
+
+            if (spHasApptsToday) {
+              const isAllowedAnchor = spAppts.some((appt) => {
+                const isRightAfter = appt.end === slotStartMin;
+                const isRightBefore = slotEndMin === appt.start;
+                const isOneHourAfter = slotStartMin === appt.end + 60;
+                return isRightAfter || isRightBefore || isOneHourAfter;
+              });
+
+              if (isAllowedAnchor) {
+                freeSpecialistsForSlot.push(sp.name);
+              }
+            }
           }
         }
 
@@ -237,9 +351,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       service: service.Servicio,
       duration,
-      evaluated_range: {
-        from: startDateStr,
-        to: endDateStr,
+      query_filters: {
+        sede,
+        date: filterDate || "Rango general",
+        jornada: jornada || "Completa",
+        search_mode: searchMode,
       },
       available_dates: availableDates,
     });
