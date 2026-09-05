@@ -1,8 +1,9 @@
 "use client";
+
 import React, { useEffect, useState, useCallback } from "react";
 import ReservationForm from "./ReservationForm";
 import ReservationDetails from "./ReservationDetails";
-import { X, CalendarPlus } from "lucide-react";
+import { X, Sparkles } from "lucide-react";
 
 export interface ReservationDrawerProps {
   isOpen: boolean;
@@ -18,20 +19,18 @@ const ReservationDrawer = ({
   onSuccess,
 }: ReservationDrawerProps) => {
   const [viewMode, setViewMode] = useState<"view" | "edit">("edit");
-  
-  // 1. Estado para almacenar la lista completa de servicios que se van a editar
   const [servicesToEdit, setServicesToEdit] = useState<any[]>([]);
 
-  /* =========================
-      DEFINIR MODO Y LIMPIAR
-  ========================= */
+  /* =========================================================
+     🔹 DEFINIR MODO LECTURA O EDICIÓN Y LIMPIEZA
+  ========================================================= */
   useEffect(() => {
     if (!appointmentData) {
       setViewMode("edit");
       setServicesToEdit([]);
       return;
     }
-    // Si es una cita nueva ("new") ir a edit, si ya existe ir a view (lectura)
+    // Si la cita ya existe en base de datos, ir a modo lectura ("view")
     if (appointmentData?.id && appointmentData.id !== "new") {
       setViewMode("view"); 
     } else {
@@ -40,7 +39,6 @@ const ReservationDrawer = ({
     }
   }, [appointmentData, isOpen]);
   
-  // 2. Modificamos handleEdit para recibir la lista de servicios del grupo
   const handleEdit = useCallback((associatedServices?: any[]) => {
     if (associatedServices && associatedServices.length > 0) {
       setServicesToEdit(associatedServices);
@@ -49,7 +47,7 @@ const ReservationDrawer = ({
     }
     setViewMode("edit");
   }, []);
-  // Función para cerrar de forma segura limpiando los estados de edición
+
   const handleClose = useCallback(() => {
     setViewMode("view");
     setServicesToEdit([]);
@@ -58,62 +56,68 @@ const ReservationDrawer = ({
 
   const title = appointmentData?.id
     ? viewMode === "edit"
-      ? "Editar reserva"
-      : "Detalles de la reserva"
-    : "Nueva reserva";
+      ? "Editar Reserva"
+      : "Detalles de la Reserva"
+    : "Nueva Reserva";
 
   return (
     <>
-      {/* Overlay */}
+      {/* 1. TELÓN DE FONDO (OVERLAY CON DESENFOQUE) */}
       <div
-        className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-sm transition-opacity duration-300 ease-in-out ${
+        className={`fixed inset-0 z-[290] bg-black/60 backdrop-blur-xs transition-opacity duration-300 ease-in-out ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={handleClose}
       />
       
-      {/* Drawer */}
+      {/* 2. PANEL LATERAL (DRAWER EN ZINC Y ROSE) */}
       <div
-        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-2xl transform flex-col bg-gray-50 shadow-xl transition-transform duration-300 ease-in-out dark:bg-gray-900 ${
+        className={`fixed right-0 top-0 z-[300] flex h-full w-full max-w-2xl transform flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased shadow-2xl transition-transform duration-300 ease-in-out border-l border-zinc-200/80 dark:border-zinc-800 ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!isOpen}
       >
-        {/* HEADER */}
-        <header className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white p-4 dark:border-gray-700/80 dark:bg-gray-800">
+        {/* ENCABEZADO SUPERIOR */}
+        <header className="flex flex-shrink-0 items-center justify-between border-b border-zinc-200/80 bg-white/90 dark:bg-zinc-900/90 dark:border-zinc-800 p-4 sm:px-6 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400">
-              <CalendarPlus size={22} />
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-500 border border-rose-500/20">
+              <Sparkles size={20} />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {title}
-            </h2>
+            <div>
+              <span className="text-[10px] font-black uppercase text-rose-500 tracking-wider block leading-none">
+                Lehana Studio CRM
+              </span>
+              <h2 className="text-sm sm:text-base font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50 leading-tight">
+                {title}
+              </h2>
+            </div>
           </div>
+
           <button
             onClick={handleClose}
-            className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white dark:focus:ring-offset-gray-800"
-            aria-label="Cerrar"
+            className="rounded-2xl p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-white cursor-pointer"
+            aria-label="Cerrar panel"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </header>
 
-        {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto">
+        {/* ÁREA DE CONTENIDO PRINCIPAL */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {viewMode === "edit" ? (
             <ReservationForm
               appointmentData={appointmentData}
-              associatedServices={servicesToEdit} // 3. Pasamos todos los servicios al formulario
+              associatedServices={servicesToEdit}
               onSuccess={() => {
                 onSuccess?.();
                 onClose();
               }}
             />
           ) : (
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <ReservationDetails
                 appointmentData={appointmentData}
-                onEdit={handleEdit} // 4. Pasa los servicios al hacer clic en editar
+                onEdit={handleEdit}
                 onSuccess={onSuccess}
               />
             </div>

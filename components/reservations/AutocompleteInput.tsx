@@ -1,4 +1,5 @@
 "use client";
+
 import React, {
   useState,
   useEffect,
@@ -11,11 +12,11 @@ interface AutocompleteInputProps<T> {
   label?: string;
   placeholder: string;
   apiEndpoint: string;
-  /** 👉 Valor inicial para el modo edición */
+  /** Valor inicial para el modo edición */
   initialValue?: string;
-  /** 👉 Texto que queda en el input al seleccionar */
+  /** Texto que queda en el input al seleccionar */
   getValue: (item: T) => string;
-  /** 👉 Render de cada opción (ej: nombre + celular) */
+  /** Render de cada opción (ej: nombre + celular) */
   renderItem?: (item: T) => React.ReactNode;
   getKey?: (item: T, index: number) => string | number;
   onSelect: (item: T) => void;
@@ -44,10 +45,8 @@ function AutocompleteInput<T>({
   const containerRef = useRef<HTMLDivElement>(null);
   const ignoreSearchRef = useRef(false);
 
-  // Sincronizar el valor interno cuando cambia el valor inicial (útil al cargar datos de edición)
-  // ✅ DESPUÉS (Solo sincroniza si el cambio viene de afuera)
+  // Sincronizar el valor interno cuando cambia el valor inicial desde afuera
   useEffect(() => {
-    // Solo actualizamos e ignoramos la búsqueda si el valor es DISTINTO al actual
     if (initialValue !== undefined && initialValue !== inputValue) {
       ignoreSearchRef.current = true;
       setInputValue(initialValue);
@@ -55,7 +54,9 @@ function AutocompleteInput<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValue]);
 
-  const defaultInputClasses = "w-full rounded-md border border-gray-300 bg-white py-2 pl-3 pr-10 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
+  /* 🌸 ESTILOS DELICADOS POR DEFECTO DEL INPUT (LEHANA STUDIO) */
+  const defaultInputClasses = 
+    "w-full rounded-2xl border border-zinc-200/80 bg-white py-2 pl-3.5 pr-10 text-[11px] font-bold text-zinc-900 shadow-2xs focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 transition-all duration-200";
 
   /* =========================
       Cerrar al hacer click fuera
@@ -89,12 +90,12 @@ function AutocompleteInput<T>({
       setIsOpen(false);
       return;
     }
-    // limpiar debounce anterior
+
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
+
     debounceRef.current = setTimeout(async () => {
-      // abortar request anterior
       if (abortRef.current) {
         abortRef.current.abort();
       }
@@ -131,7 +132,7 @@ function AutocompleteInput<T>({
   }, [inputValue, apiEndpoint]);
 
   /* =========================
-      Selección
+      Selección de un elemento
   ========================= */
   const handleSelect = useCallback(
     (item: T) => {
@@ -148,9 +149,9 @@ function AutocompleteInput<T>({
   );
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div ref={containerRef} className="relative w-full font-sans antialiased">
       {label && (
-        <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label className="mb-1 block text-[9px] font-black uppercase tracking-wider text-zinc-400">
           {label}
         </label>
       )}
@@ -162,31 +163,35 @@ function AutocompleteInput<T>({
           onChange={(e) => {
             const val = e.target.value;
             setInputValue(val);
-            if (onChange) onChange(val); // <--- Avisar al padre del cambio de texto
+            if (onChange) onChange(val);
           }}
-          onFocus={() => setIsOpen(true)}
+          onFocus={() => {
+            if (suggestions.length > 0) setIsOpen(true);
+          }}
           className={inputClassName || defaultInputClasses}
           autoComplete="off"
         />
         {isLoading && (
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-            <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+            <Loader2 className="h-4 w-4 animate-spin text-rose-500" />
           </div>
         )}
       </div>
+
+      {/* 🌸 DESPLEGABLE DE RESULTADOS REFINADO Y SIN BORDES NEGROS */}
       {isOpen && !isLoading && (
-        <div className="absolute z-10 mt-1 w-full rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 dark:bg-gray-700">
+        <div className="absolute top-full mt-1.5 z-[160] w-full rounded-3xl border border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-150">
           {suggestions.length === 0 && inputValue.trim().length >= 2 ? (
-            <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
+            <div className="px-3 py-2.5 text-[11px] font-bold text-zinc-400 dark:text-zinc-500 text-center">
               No se encontraron resultados.
             </div>
           ) : (
-            <ul className="max-h-60 overflow-auto rounded-md py-1 text-base focus:outline-none sm:text-sm">
+            <ul className="max-h-52 overflow-y-auto space-y-0.5 custom-scrollbar text-xs">
               {suggestions.map((item, index) => (
                 <li
                   key={getKey ? getKey(item, index) : index}
                   onClick={() => handleSelect(item)}
-                  className="relative cursor-pointer select-none px-4 py-2 text-gray-900 hover:bg-indigo-600 hover:text-white dark:text-white"
+                  className="relative cursor-pointer select-none rounded-2xl px-3 py-2 text-zinc-800 dark:text-zinc-100 font-bold hover:bg-rose-50/80 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-400 transition-colors duration-150"
                 >
                   {renderItem ? renderItem(item) : getValue(item)}
                 </li>
@@ -198,4 +203,5 @@ function AutocompleteInput<T>({
     </div>
   );
 }
+
 export default React.memo(AutocompleteInput) as typeof AutocompleteInput;

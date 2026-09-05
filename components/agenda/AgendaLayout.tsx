@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -11,10 +12,11 @@ import DailyAgendaGrid from "./DailyAgendaGrid";
 import ReservationDrawer from "@/components/reservations/ReservationDrawer";
 import { useUIStore } from "@/lib/uiStore";
 import { CalendarAppointment, AgendaAppointmentDB } from "./types";
+import { Loader2 } from "lucide-react";
 
-/* =========================
-    FECHAS (Lógicas auxiliares)
-========================= */
+/* =========================================================
+   🔹 FUNCIONES AUXILIARES DE FECHAS
+========================================================= */
 function parseLocalDate(dateString: string) {
   const [date, time = "00:00:00"] = dateString.split("T");
   const [y, m, d] = date.split("-").map(Number);
@@ -49,19 +51,14 @@ function toLocalDateTimeString(d: Date) {
   );
 }
 
-/**
- * Helper para calcular automáticamente el bloque semanal según el día
- * JavaScript getDay(): 0 = Domingo, 1 = Lunes, ..., 5 = Viernes, 6 = Sábado
- */
 function getBlockForDate(date: Date): "block1" | "block2" {
   const day = date.getDay();
-  // 5 (Viernes), 6 (Sábado) o 0 (Domingo) pertenecen al Bloque 2
   return day === 0 || day >= 5 ? "block2" : "block1";
 }
 
-/* =========================
-    COMPONENTE PRINCIPAL
-========================= */
+/* =========================================================
+   🔹 COMPONENTE PRINCIPAL
+========================================================= */
 export default function AgendaLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [appointments, setAppointments] = useState<AgendaAppointmentDB[]>([]);
@@ -69,7 +66,7 @@ export default function AgendaLayout() {
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(normalizeLocalDate(new Date()));
 
-  // 1. INICIALIZACIÓN AUTOMÁTICA: Detecta el bloque inicial según la fecha de hoy
+  // Detecta el bloque inicial según la fecha de hoy
   const [weekBlock, setWeekBlock] = useState<"block1" | "block2">(() =>
     getBlockForDate(normalizeLocalDate(new Date()))
   );
@@ -85,12 +82,10 @@ export default function AgendaLayout() {
   const openReservationDrawer = useUIStore((state) => state.openReservationDrawer);
   const [editingAppointment, setEditingAppointment] = useState<CalendarAppointment | null>(null);
 
-  // ESTADO LOCAL PROPIO PARA LOS PERMISOS DE CREACIÓN DE LA GRILLA
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   const toggleSidebar = () => setSidebarCollapsed((v) => !v);
 
-  // 2. EFECTO REACTIVO: Cambia el bloque automáticamente cuando el usuario cambia de fecha
   useEffect(() => {
     setWeekBlock(getBlockForDate(currentDate));
   }, [currentDate]);
@@ -146,9 +141,9 @@ export default function AgendaLayout() {
     }
   };
 
-  /* =========================
-      FETCH
-  ========================= */
+  /* =========================================================
+     FETCH DE CITAS DESDE SUPABASE
+  ========================================================= */
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
     let from: Date;
@@ -174,8 +169,6 @@ export default function AgendaLayout() {
       .lt("appointment_at", toLocalDateTimeString(to))
       .order("appointment_at", { ascending: true });
 
-    console.log("Citas recibidas de Supabase:", data);
-
     setAppointments(error ? [] : (data as any) ?? []);
     setLoading(false);
   }, [currentDate, viewMode]);
@@ -184,9 +177,9 @@ export default function AgendaLayout() {
     fetchAppointments();
   }, [fetchAppointments]);
 
-  /* =========================
-      HANDLERS
-  ========================= */
+  /* =========================================================
+     MANEJADORES DE EVENTOS
+  ========================================================= */
   const handleViewAppointment = (appointment: CalendarAppointment) => {
     setEditingAppointment(appointment);
     openReservationDrawer();
@@ -212,9 +205,9 @@ export default function AgendaLayout() {
     openReservationDrawer();
   };
 
-  /* =========================
-      MAP CALENDAR
-  ========================= */
+  /* =========================================================
+     MAPEADO Y FILTRADO DE CITAS
+  ========================================================= */
   const calendarAppointments = useMemo(() => {
     const groupTotals: Record<string, number> = {};
     appointments.forEach(a => {
@@ -253,7 +246,7 @@ export default function AgendaLayout() {
   }, [appointments, locationFilter, statusFilter, specialistFilter, serviceFilter]);
 
   return (
-    <div className="min-h-[100dvh] flex h-full w-full flex-col overflow-hidden bg-white">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-zinc-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased">
       <AgendaShell
         header={
           <AgendaHeader
@@ -278,7 +271,10 @@ export default function AgendaLayout() {
         }
         agenda={
           loading ? (
-            <div className="flex h-full items-center justify-center text-sm text-zinc-500">Cargando agenda…</div>
+            <div className="flex h-full w-full items-center justify-center p-20 flex-col gap-3">
+              <Loader2 size={32} className="animate-spin text-rose-500" />
+              <span className="text-xs font-bold text-zinc-400">Actualizando agenda...</span>
+            </div>
           ) : (
             <div className="h-full w-full">
               {viewMode === "day" ? (

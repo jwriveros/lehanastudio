@@ -13,53 +13,56 @@ export function ThemeToggleButton() {
     setMounted(true);
   }, []);
 
+  // Skeleton loader mientras se carga el tema en Next.js
   if (!mounted) {
-    return <div className="h-9 w-9 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />;
+    return <div className="h-9 w-28 rounded-2xl bg-zinc-200/60 dark:bg-zinc-800/60 animate-pulse" />;
   }
 
   return (
-    <div className="flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-800 dark:bg-gray-900">
+    <div className="flex items-center gap-0.5 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-100/80 dark:bg-zinc-950 p-1 shadow-2xs">
+      
       {/* Opción Modo Claro */}
       <button
         type="button"
         onClick={() => setTheme("light")}
-        className={`rounded-lg p-1.5 transition-all ${
+        className={`rounded-xl p-1.5 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
           theme === "light"
-            ? "bg-white text-amber-500 shadow-sm dark:bg-gray-800"
-            : "text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            ? "bg-white text-rose-500 shadow-xs border border-zinc-200/60 font-bold"
+            : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
         }`}
         title="Modo Claro"
       >
-        <Sun size={16} />
+        <Sun size={15} />
       </button>
 
       {/* Opción Sincronizar con Dispositivo/Sistema */}
       <button
         type="button"
         onClick={() => setTheme("system")}
-        className={`rounded-lg p-1.5 transition-all ${
+        className={`rounded-xl p-1.5 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
           theme === "system"
-            ? "bg-white text-indigo-600 shadow-sm dark:bg-gray-800 dark:text-indigo-400"
-            : "text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            ? "bg-white dark:bg-zinc-800 text-rose-500 shadow-xs border border-zinc-200/60 dark:border-zinc-700 font-bold"
+            : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
         }`}
         title="Modo Dispositivo (Sistema)"
       >
-        <Laptop size={16} />
+        <Laptop size={15} />
       </button>
 
       {/* Opción Modo Oscuro */}
       <button
         type="button"
         onClick={() => setTheme("dark")}
-        className={`rounded-lg p-1.5 transition-all ${
+        className={`rounded-xl p-1.5 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
           theme === "dark"
-            ? "bg-white text-indigo-400 shadow-sm dark:bg-gray-800"
-            : "text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            ? "bg-zinc-800 text-rose-400 shadow-xs border border-zinc-700 font-bold"
+            : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
         }`}
         title="Modo Oscuro"
       >
-        <Moon size={16} />
+        <Moon size={15} />
       </button>
+
     </div>
   );
 }

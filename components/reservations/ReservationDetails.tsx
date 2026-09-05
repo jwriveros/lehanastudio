@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -20,6 +21,7 @@ import {
   ArrowLeft,
   History,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 
 interface ReservationDetailsProps {
@@ -48,7 +50,7 @@ export default function ReservationDetails({
   const isPaid = data.estado?.toLowerCase() === "cita pagada";
   const isCancelled = data.estado?.toLowerCase() === "cita cancelada";
 
-  /* PERMISOS DE USUARIO */
+  /* PERMISOS DE USUARIO EN LOCALSTORAGE */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -90,7 +92,7 @@ export default function ReservationDetails({
     verificarPermisosLocalStorage();
   }, [appointmentData]);
 
-  /* SELECCIÓN AUTOMÁTICA DE SERVICIOS AL CARGAR */
+  /* SELECCIÓN AUTOMÁTICA DE SERVICIOS */
   useEffect(() => {
     if (associatedServices.length > 0) {
       setSelectedServiceIds(associatedServices.map((s) => s.id));
@@ -103,7 +105,7 @@ export default function ReservationDetails({
     );
   };
 
-  /* EFECTO ÚNICO Y UNIFICADO PARA CARGAR TODOS LOS SERVICIOS DEL CLIENTE */
+  /* CARGA DE SERVICIOS CONSOLIDADOS DEL CLIENTE */
   useEffect(() => {
     let isMounted = true;
 
@@ -133,26 +135,19 @@ export default function ReservationDetails({
 
         let query = supabase.from("appointments").select("*");
 
-        // Prioridad 1: Si pertenece a un grupo web
         if (groupId) {
           query = query.eq("appointment_id", groupId);
-        } 
-        // Prioridad 2: Buscar por celular en todo el día
-        else if (celularCliente) {
+        } else if (celularCliente) {
           query = query
             .eq("celular", celularCliente)
             .gte("appointment_at", startOfDay)
             .lte("appointment_at", endOfDay);
-        } 
-        // Prioridad 3: Buscar por nombre en todo el día
-        else if (nombreCliente) {
+        } else if (nombreCliente) {
           query = query
             .eq("cliente", nombreCliente)
             .gte("appointment_at", startOfDay)
             .lte("appointment_at", endOfDay);
-        } 
-        // Fallback: Cita individual
-        else {
+        } else {
           query = query.eq("id", appointmentData.id);
         }
 
@@ -202,7 +197,6 @@ export default function ReservationDetails({
       return;
     }
 
-    // ANULAR PAGO
     if (isPaid) {
       setIsSubmitting(true);
       try {
@@ -227,7 +221,6 @@ export default function ReservationDetails({
       return;
     }
 
-    // CONFIRMAR COBRO
     if (!isEditingPrices) {
       setIsEditingPrices(true);
       return;
@@ -304,11 +297,11 @@ export default function ReservationDetails({
   };
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-white dark:bg-zinc-900 rounded-2xl">
+    <div className="flex h-full w-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased">
       
-      {/* PANEL IZQUIERDO DESLIZABLE */}
+      {/* PANEL IZQUIERDO DESLIZABLE (FICHA TÉCNICA) */}
       {showHistory && data.celular && (
-        <div className="w-full md:w-[400px] border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col h-full shrink-0">
+        <div className="w-full md:w-[420px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col h-full shrink-0 custom-scrollbar">
           <div className="p-4 flex-1 overflow-y-auto">
             <FichaTecnicaEditor celular={String(data.celular)} />
           </div>
@@ -316,108 +309,117 @@ export default function ReservationDetails({
       )}
 
       {/* PANEL DERECHO: DETALLES PRINCIPALES */}
-      <div className="flex-1 flex flex-col gap-6 p-6 overflow-y-auto h-full">
-        {/* SECCIÓN CLIENTE Y ESTADO */}
-        <div className="flex items-center justify-between border-b pb-4 dark:border-zinc-800">
+      <div className="flex-1 flex flex-col gap-5 p-4 sm:p-6 overflow-y-auto h-full custom-scrollbar">
+        
+        {/* SECCIÓN CLIENTE Y ESTADO DE LA CITA */}
+        <div className="flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800 pb-4">
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-100 p-2 rounded-full text-indigo-600 dark:bg-indigo-900/40">
-              <User size={20} />
+            <div className="p-2.5 bg-rose-500/10 text-rose-500 rounded-2xl border border-rose-500/20">
+              <User size={18} />
             </div>
             <div>
-              <p className="text-xs text-zinc-500 uppercase font-bold">Cliente</p>
+              <p className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">Cliente</p>
               <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-lg font-black dark:text-white leading-none">{data.cliente}</p>
+                <p className="text-base font-extrabold dark:text-white leading-none uppercase">{data.cliente}</p>
                 {data.celular && (
                   <button
                     type="button"
                     onClick={() => setShowHistory(!showHistory)}
-                    className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-tight transition-all ${
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                       showHistory 
-                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20" 
-                        : "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 hover:bg-indigo-100"
+                        ? "bg-rose-500 text-white shadow-md shadow-rose-500/20" 
+                        : "bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20"
                     }`}
                   >
                     <History size={11} />
-                    {showHistory ? "Ocultar" : "Historial"}
+                    {showHistory ? "Ocultar Ficha" : "Ficha Técnica"}
                   </button>
                 )}
               </div>
             </div>
           </div>
-          <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-            isPaid ? "bg-green-100 text-green-700" : isCancelled ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+
+          <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
+            isPaid 
+              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30" 
+              : isCancelled 
+              ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border-zinc-200 dark:border-zinc-700" 
+              : "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30"
           }`}>
-            {data.estado?.replace("Cita ", "")}
-          </div>
+            {data.estado?.replace("Cita ", "") || "Reserva"}
+          </span>
         </div>
 
-        {/* DETALLES CITA */}
-        <div className="grid grid-cols-2 gap-4">
+        {/* METADATOS DE LA CITA */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-white dark:bg-zinc-900/90 p-4 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 shadow-2xs">
           <div className="flex items-center gap-2">
-            <Calendar size={16} className="text-zinc-400" />
-            <span className="text-sm font-medium">
+            <Calendar size={15} className="text-rose-500 shrink-0" />
+            <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
               {appointmentData?.start ? format(appointmentData.start, "PPP", { locale: es }) : "—"}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Clock size={16} className="text-zinc-400" />
-            <span className="text-sm font-medium">
+            <Clock size={15} className="text-rose-500 shrink-0" />
+            <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
               {appointmentData?.start ? format(appointmentData.start, "h:mm aa", { locale: es }) : "—"}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Building size={16} className="text-zinc-400" />
-            <span className="text-sm font-medium">{data.sede}</span>
+            <Building size={15} className="text-rose-500 shrink-0" />
+            <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">{data.sede || "Santa Marta"}</span>
           </div>
         </div>
 
-        {/* SERVICIOS Y PRECIOS */}
-        <div className="bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-          <p className="text-[10px] font-black uppercase text-zinc-400 mb-3 tracking-widest">
-            Services Contratados
-          </p>
+        {/* SERVICIOS Y DESGLOSE DE PRECIOS */}
+        <div className="bg-white dark:bg-zinc-900/90 p-5 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black uppercase text-zinc-400 tracking-wider flex items-center gap-1.5">
+              <Sparkles size={14} className="text-rose-500" />
+              Servicios Contratados
+            </p>
+          </div>
 
           {loadingServices ? (
             <div className="flex items-center justify-center py-6 gap-2 text-zinc-400 text-xs italic">
-              <Loader2 size={16} className="animate-spin text-indigo-500" /> Cargando servicios del cliente...
+              <Loader2 size={18} className="animate-spin text-rose-500" /> Cargando servicios...
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {associatedServices.map((s) => {
                 const isSelected = selectedServiceIds.includes(s.id);
 
                 return (
-                  <div key={s.id} className="flex justify-between items-center gap-3">
+                  <div key={s.id} className="flex justify-between items-center gap-3 bg-zinc-50/80 dark:bg-zinc-950 p-3 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
                     <div className="flex items-center gap-3 overflow-hidden flex-1">
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleSelectService(s.id)}
-                        className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 dark:bg-zinc-900 dark:border-zinc-700 cursor-pointer"
+                        className="w-4 h-4 rounded-md border-zinc-300 text-rose-500 focus:ring-rose-400 dark:bg-zinc-900 dark:border-zinc-700 cursor-pointer"
                       />
 
                       <div className="flex flex-col overflow-hidden">
                         <span
-                          className={`text-sm font-bold truncate transition-opacity ${
+                          className={`text-xs font-extrabold truncate transition-opacity ${
                             isSelected
-                              ? "text-zinc-700 dark:text-zinc-300"
+                              ? "text-zinc-800 dark:text-zinc-200"
                               : "text-zinc-400 dark:text-zinc-600 line-through"
                           }`}
                         >
                           {s.servicio}
                         </span>
                         <div className="flex items-center gap-1 mt-0.5">
-                          <Scissors size={10} className="text-indigo-400" />
-                          <span className="text-[10px] font-black text-indigo-500/70 uppercase tracking-tight">
-                            {s.especialista || "Sin especialista"}
+                          <Scissors size={11} className="text-rose-500" />
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                            {s.especialista || "Sin asignar"}
                           </span>
                         </div>
                       </div>
                     </div>
 
                     {isEditingPrices ? (
-                      <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-28 shrink-0">
-                        <span className="text-[10px] font-bold mr-1 text-zinc-400">$</span>
+                      <div className="flex items-center bg-white dark:bg-zinc-900 border border-rose-300 dark:border-rose-900/50 rounded-xl px-2.5 py-1 w-28 shrink-0 shadow-2xs">
+                        <span className="text-[10px] font-bold mr-1 text-rose-500">$</span>
                         <input
                           type="number"
                           disabled={!isSelected}
@@ -431,13 +433,13 @@ export default function ReservationDetails({
                               )
                             )
                           }
-                          className="w-full bg-transparent text-xs font-black outline-none text-zinc-800 dark:text-zinc-100 disabled:opacity-40"
+                          className="w-full bg-transparent text-xs font-black outline-none text-zinc-900 dark:text-zinc-100 disabled:opacity-40"
                         />
                       </div>
                     ) : (
                       <span
-                        className={`text-sm font-black shrink-0 ${
-                          isSelected ? "text-indigo-600" : "text-zinc-400 line-through"
+                        className={`text-xs font-black shrink-0 ${
+                          isSelected ? "text-rose-500" : "text-zinc-400 line-through"
                         }`}
                       >
                         ${Number(s.price || 0).toLocaleString("es-CO")}
@@ -447,41 +449,44 @@ export default function ReservationDetails({
                 );
               })}
 
-              <div className="pt-3 border-t border-dashed flex justify-between items-center">
-                <span className="text-xs font-black uppercase text-zinc-500">
+              <div className="pt-3 border-t border-dashed border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
                   Total Seleccionado
                 </span>
-                <span className="text-xl font-black text-emerald-600">
-                  ${currentTotal.toLocaleString("es-CO")}
+                <span className="text-lg font-black text-rose-500">
+                  ${currentTotal.toLocaleString("es-CO")} COP
                 </span>
               </div>
             </div>
           )}
         </div>
 
-        {/* ACCIONES DEL PIE */}
-        <div className="mt-auto pt-6">
-          <div className="flex flex-col gap-3">
+        {/* BOTONERA DE ACCIONES DEL PIE */}
+        <div className="mt-auto pt-4">
+          <div className="flex flex-col gap-2.5">
             <div className="flex gap-2">
               {isEditingPrices && !isPaid && (
                 <button
                   type="button"
                   onClick={() => setIsEditingPrices(false)}
-                  className="px-4 py-3 bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 rounded-xl hover:bg-zinc-200 transition-all shadow-sm active:scale-[0.95]"
+                  className="px-3.5 py-3 bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 rounded-2xl hover:bg-zinc-200 transition-all cursor-pointer active:scale-95"
+                  title="Volver"
                 >
-                  <ArrowLeft size={20} />
+                  <ArrowLeft size={16} />
                 </button>
               )}
 
-              {/* Cobrar Cita */}
+              {/* Cobrar Cita / Confirmar / Anular Pago */}
               <button
                 onClick={handleTogglePayment}
                 disabled={isSubmitting || associatedServices.length === 0 || !isAuthorized}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white transition-all shadow-md active:scale-[0.98] ${
-                  isPaid ? "bg-red-500 hover:bg-red-600" : "bg-emerald-500 hover:bg-emerald-600"
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-black uppercase tracking-wider text-white transition-all shadow-md active:scale-95 cursor-pointer ${
+                  isPaid 
+                    ? "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20" 
+                    : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
                 } disabled:opacity-40 disabled:cursor-not-allowed`}
               >
-                {isPaid ? <Undo2 size={18} /> : <DollarSign size={18} />}
+                {isPaid ? <Undo2 size={15} /> : <DollarSign size={15} />}
                 {isPaid ? "Anular Pago" : isEditingPrices ? "Confirmar Pago" : "Cobrar Cita"}
               </button>
               
@@ -490,9 +495,10 @@ export default function ReservationDetails({
                 <button
                   onClick={() => onEdit(associatedServices)}
                   disabled={isSubmitting || !isAuthorized}
-                  className="px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-md active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                  className="p-3 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white rounded-2xl shadow-md shadow-rose-500/20 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center cursor-pointer"
+                  title="Editar Cita"
                 >
-                  {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <Edit size={20} />}
+                  {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Edit size={16} />}
                 </button>
               )}
             </div>
@@ -502,19 +508,19 @@ export default function ReservationDetails({
               <button
                 onClick={handleCancelAction}
                 disabled={isSubmitting || isPaid || isCancelled || !isAuthorized}
-                className="flex-1 flex items-center justify-center gap-2 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-bold text-zinc-600 dark:text-zinc-400 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-zinc-800"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-2xl text-xs font-bold text-zinc-600 dark:text-zinc-400 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-all cursor-pointer active:scale-95"
               >
-                <Ban size={16} /> Cancelar Cita
+                <Ban size={14} /> Cancelar Cita
               </button>
               
               {/* Eliminar Reserva */}
               <button
                 onClick={handleDelete}
                 disabled={isSubmitting || !isAuthorized}
-                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Eliminar reserva"
+                className="p-2.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-2xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Eliminar Reserva"
               >
-                <Trash2 size={20} />
+                <Trash2 size={16} />
               </button>
             </div>
           </div>

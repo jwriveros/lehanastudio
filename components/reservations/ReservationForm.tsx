@@ -1,4 +1,5 @@
 "use client";
+
 import FichaTecnicaEditor from "./FichaTecnicaEditor";
 import React, {
   useEffect,
@@ -10,8 +11,6 @@ import React, {
 import AutocompleteInput from "./AutocompleteInput";
 import { supabase } from "@/lib/supabaseClient";
 import { useUIStore } from "@/lib/uiStore";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import {
   Plus,
   Trash2,
@@ -26,33 +25,37 @@ import {
   ChevronRight,
   ChevronDown,
   ClipboardList,
-  History,
   Tag,
   Bell,
-  BellOff
+  BellOff,
+  Sparkles,
+  Check,
 } from "lucide-react";
 
-/* =========================
-   TIPOS
-========================= */
+/* =========================================================
+   🔹 TIPOS DE DATOS (INTACTOS)
+========================================================= */
 type ClientItem = {
   nombre: string | null;
   celular: number;
   numberc?: string | null;
   indicador?: string | null;
 };
+
 type ServiceItem = {
   SKU: string;
   Servicio: string | null;
   Precio: number | null;
   duracion: string | null;
 };
+
 type SpecialistItem = {
   id: string;
   name: string;
   color?: string | null;
   role?: string;
 };
+
 type ServiceLine = {
   id?: number; 
   servicio: string;
@@ -62,6 +65,7 @@ type ServiceLine = {
   especialista: string;
   appointment_at: string;
 };
+
 type FormState = {
   cliente: string;
   celular: string;
@@ -78,9 +82,98 @@ interface ReservationFormProps {
   onSuccess?: () => void;
 }
 
-/* =========================
-   CONSTANTES (LISTA COMPLETA - INTACTA)
-========================= */
+/* =========================================================
+   🔹 SUB-COMPONENTE: CUSTOM SELECT ELEGANTE
+========================================================= */
+function CustomSelect({
+  value,
+  onChange,
+  options,
+  placeholder = "Seleccionar...",
+  icon: Icon,
+  className = "",
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { label: string; value: string; dot?: string }[];
+  placeholder?: string;
+  icon?: any;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOpt = options.find((o) => o.value === value);
+
+  return (
+    <div className={`relative w-full ${className}`} ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`w-full flex items-center justify-between rounded-2xl border bg-white dark:bg-zinc-950 py-2.5 px-3.5 text-[11px] font-extrabold text-zinc-800 dark:text-zinc-100 shadow-2xs transition-all duration-200 cursor-pointer ${
+          open 
+            ? "border-rose-300 dark:border-rose-900/60 ring-2 ring-rose-400/10" 
+            : "border-zinc-200/80 dark:border-zinc-800 hover:border-rose-300/60"
+        }`}
+      >
+        <div className="flex items-center gap-2 truncate">
+          {selectedOpt?.dot ? (
+            <span className={`h-2 w-2 rounded-full ${selectedOpt.dot} shrink-0`} />
+          ) : Icon ? (
+            <Icon size={14} className="text-zinc-400 shrink-0" />
+          ) : null}
+          <span className="truncate">{selectedOpt ? selectedOpt.label : placeholder}</span>
+        </div>
+        <ChevronDown size={13} className={`text-zinc-400 transition-transform duration-200 shrink-0 ${open ? "rotate-180 text-rose-500" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full mt-2 w-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
+            {options.map((opt) => {
+              const isSelected = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-2xl text-[11px] font-bold text-left transition-all cursor-pointer ${
+                    isSelected
+                      ? "bg-rose-50/80 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400"
+                      : "text-zinc-700 dark:text-zinc-300 hover:bg-rose-500/10 hover:text-rose-500"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    {opt.dot && <span className={`h-2 w-2 rounded-full ${opt.dot} shrink-0`} />}
+                    <span className="truncate">{opt.label}</span>
+                  </div>
+                  {isSelected && <Check size={13} className="text-rose-500 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   🔹 LISTA DE PAÍSES (INTACTA)
+========================================================= */
 const COUNTRIES = [
   { code: "+57", flag: "🇨🇴", name: "Colombia" },
   { code: "+1", flag: "🇺🇸", name: "Estados Unidos" },
@@ -147,6 +240,7 @@ const EMPTY_LINE: ServiceLine = {
   especialista: "",
   appointment_at: "",
 };
+
 const EMPTY_FORM: FormState = {
   cliente: "",
   celular: "",
@@ -156,60 +250,39 @@ const EMPTY_FORM: FormState = {
   estado: "Nueva reserva creada",
   lines: [{ ...EMPTY_LINE }],
 };
-const ESTADO_STYLES: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  "Nueva reserva creada": {
-    bg: "bg-blue-50 dark:bg-blue-950/40",
-    text: "text-blue-700 dark:text-blue-300 font-semibold",
-    border: "border-blue-300 dark:border-blue-800",
-    dot: "bg-blue-500",
-  },
-  "Cita confirmada": {
-    bg: "bg-emerald-50 dark:bg-emerald-950/40",
-    text: "text-emerald-700 dark:text-emerald-300 font-semibold",
-    border: "border-emerald-300 dark:border-emerald-800",
-    dot: "bg-emerald-500",
-  },
-  "Cita pagada": {
-    bg: "bg-purple-50 dark:bg-purple-950/40",
-    text: "text-purple-700 dark:text-purple-300 font-semibold",
-    border: "border-purple-300 dark:border-purple-800",
-    dot: "bg-purple-500",
-  },
-  "Cita cancelada": {
-    bg: "bg-rose-50 dark:bg-rose-950/40",
-    text: "text-rose-700 dark:text-rose-300 font-semibold",
-    border: "border-rose-300 dark:border-rose-800",
-    dot: "bg-rose-500",
-  },
-};
-/* =========================
-   HELPERS (CORRECCIÓN HORA LITERAL)
-========================= */
-/* =========================
-   HELPERS (CORRECCIÓN HORA LITERAL)
-========================= */
+
+const ESTADO_OPTIONS = [
+  { label: "Nueva reserva creada", value: "Nueva reserva creada", dot: "bg-amber-400" },
+  { label: "Cita confirmada", value: "Cita confirmada", dot: "bg-rose-500" },
+  { label: "Cita pagada", value: "Cita pagada", dot: "bg-emerald-500" },
+  { label: "Cita cancelada", value: "Cita cancelada", dot: "bg-zinc-400" },
+];
+
+const SEDE_OPTIONS = [
+  { label: "Santa Marta", value: "Santa Marta" },
+  { label: "Buga", value: "Buga" },
+  { label: "Marquetalia", value: "Marquetalia" },
+];
+
+/* =========================================================
+   🔹 HELPERS DE HORA (INTACTOS)
+========================================================= */
 function toDatetimeLocal(dateValue: any) {
   if (!dateValue) return "";
 
-  // 1. Si es un objeto Date (viene de un clic en un espacio vacío de la agenda)
-  // Aquí usamos los métodos locales porque la agenda ya nos da la hora local del clic.
   if (dateValue instanceof Date) {
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${dateValue.getFullYear()}-${pad(dateValue.getMonth() + 1)}-${pad(dateValue.getDate())}T${pad(dateValue.getHours())}:${pad(dateValue.getMinutes())}`;
   }
 
-  // 2. Si es un string (Viene de Supabase como '2026-01-18T19:00:00.000Z')
-  // Usamos Regex para extraer los números literalmente y descartar el resto.
   const dateString = String(dateValue);
   const match = dateString.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
   
   if (match) {
     const [_, y, m, d, hh, mm] = match;
-    // Retornamos solo los números. El input datetime-local verá '19:00' sin importar la 'Z'.
     return `${y}-${m}-${d}T${hh}:${mm}`;
   }
 
-  // Fallback simple: tomar los primeros 16 caracteres (YYYY-MM-DDTHH:mm)
   return dateString.substring(0, 16).replace(" ", "T");
 }
 
@@ -217,9 +290,10 @@ function localDateTimeToUTC(localDateTime: string) {
   if (!localDateTime) return "";
   return `${localDateTime}:00Z`;
 }
-/* =========================
-   COMPONENTE PRINCIPAL
-========================= */
+
+/* =========================================================
+   🔹 COMPONENTE PRINCIPAL
+========================================================= */
 export default function ReservationForm({
   appointmentData,
   associatedServices,
@@ -233,7 +307,7 @@ export default function ReservationForm({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [saveClient, setSaveClient] = useState(false);
-  const [notifyOnEdit, setNotifyOnEdit] = useState(false); // DESACTIVADO POR DEFECTO
+  const [notifyOnEdit, setNotifyOnEdit] = useState(false);
   const [specialists, setSpecialists] = useState<SpecialistItem[]>([]);
   const [loadingSpecialists, setLoadingSpecialists] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -264,9 +338,8 @@ export default function ReservationForm({
     return () => { mounted = false; };
   }, []);
 
-  /* PRECARGAR DATOS CON SOPORTE COMPLETO PARA MULTI-SERVICIOS */
+  /* PRECARGAR DATOS */
   useEffect(() => {
-    // 1. Si no hay datos de cita, reiniciamos el formulario
     if (!appointmentData) {
       setForm(EMPTY_FORM);
       return;
@@ -274,7 +347,6 @@ export default function ReservationForm({
 
     const raw = appointmentData.raw ?? {};
 
-    // 2. Si es una nueva cita que se está creando desde cero
     if (appointmentData.id === "new") {
       setForm({
         ...EMPTY_FORM,
@@ -291,7 +363,6 @@ export default function ReservationForm({
     const loadData = async () => {
       let linesData: ServiceLine[] = [];
 
-      // PASO A: Si el padre nos pasó la lista de servicios (asociados o del itinerario del día)
       if (associatedServices && associatedServices.length > 0) {
         linesData = associatedServices.map((l) => ({
           id: l.id,
@@ -303,7 +374,6 @@ export default function ReservationForm({
           appointment_at: toDatetimeLocal(l.appointment_at ?? l.appointment_at_local ?? appointmentData.start),
         }));
       } else {
-        // PASO B: Si no vienen en las props, buscamos por appointment_id en Supabase
         const groupId = raw.appointment_id;
 
         if (groupId) {
@@ -326,7 +396,6 @@ export default function ReservationForm({
           }
         }
 
-        // PASO C: Si tampoco hay grupo en BD, cargamos solo la cita seleccionada
         if (linesData.length === 0) {
           linesData = [{
             id: Number(appointmentData.id),
@@ -341,7 +410,6 @@ export default function ReservationForm({
         }
       }
 
-      // Cargar toda la información dentro del estado del formulario
       setForm({
         cliente: raw.cliente ?? appointmentData.cliente ?? "",
         celular: String(raw.celular ?? appointmentData.celular ?? ""),
@@ -432,13 +500,13 @@ export default function ReservationForm({
         const updatePromises = lines.map((l) => {
           const updates = {
             cliente: form.cliente.trim(),
-            celular: cleanPhone,             
+            celular: cleanPhone,             
             indicativo: form.indicativo,
             sede: form.sede,
             servicio: l.servicio,
             especialista: l.especialista,
             duration: l.duracion,
-            price: Number(l.precio), // GUARDAR PRECIO MANUAL
+            price: Number(l.precio),
             abono: Number(l.abono),
             appointment_at: localDateTimeToUTC(l.appointment_at),
             estado: form.estado,
@@ -463,7 +531,7 @@ export default function ReservationForm({
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                action: "EDITED", // <--- ESTO ES LO QUE FALTA
+                action: "EDITED",
                 appointmentId: appointmentData.id,
                 cliente: form.cliente.trim(),
                 celular: cleanPhone,
@@ -528,26 +596,27 @@ export default function ReservationForm({
     return lastLine && lastLine.servicio.trim() !== "" && lastLine.especialista.trim() !== "";
   }, [form.lines]);
 
-  /* =========================
-      RENDER PRINCIPAL
-  ========================= */
-  const currentEstadoStyle = ESTADO_STYLES[form.estado] || ESTADO_STYLES["Nueva reserva creada"];
+  const specialistOptions = useMemo(() => {
+    return specialists.map((s) => ({ label: s.name, value: s.name }));
+  }, [specialists]);
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-gray-50 dark:bg-zinc-950">
+    <div className="flex h-full w-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased">
       
       {/* PANEL IZQUIERDO: DETALLES DEL CLIENTE */}
       {showDetails && form.celular && (
-        <div className="w-full md:w-[450px] border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300">
-          <div className="sticky top-0 z-20 bg-white/80 p-4 backdrop-blur-md dark:bg-zinc-900/80">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Perfil del Cliente</h2>
-            <div className="flex p-1 bg-gray-100 dark:bg-zinc-800 rounded-lg">
+        <div className="w-full md:w-[450px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300 custom-scrollbar">
+          <div className="sticky top-0 z-20 bg-white/90 p-4 backdrop-blur-md dark:bg-zinc-900/90 border-b border-zinc-100 dark:border-zinc-800">
+            <h2 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 mb-2.5">
+              Perfil del Cliente
+            </h2>
+            <div className="flex p-1 bg-zinc-100 dark:bg-zinc-950 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
               <button 
                 type="button"
                 onClick={() => setActiveTab('fichas')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'fichas' ? 'bg-white shadow-sm text-indigo-600 dark:bg-zinc-700 dark:text-indigo-400' : 'text-gray-500'}`}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 text-[11px] font-extrabold rounded-xl transition-all cursor-pointer ${activeTab === 'fichas' ? 'bg-white shadow-xs text-rose-500 dark:bg-zinc-800 dark:text-rose-400' : 'text-zinc-400'}`}
               >
-                <ClipboardList size={16} /> Información del Cliente
+                <ClipboardList size={14} /> Ficha Técnica
               </button>
             </div>
           </div>
@@ -556,7 +625,7 @@ export default function ReservationForm({
             {activeTab === 'fichas' ? (
               <FichaTecnicaEditor celular={form.celular} />
             ) : (
-              <div className="text-center py-10 text-gray-500 text-sm">Historial de citas</div>
+              <div className="text-center py-10 text-zinc-400 text-xs font-bold uppercase">Historial de Citas</div>
             )}
           </div>
         </div>
@@ -569,45 +638,48 @@ export default function ReservationForm({
           <button
             type="button"
             onClick={() => setShowDetails(!showDetails)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-30 bg-indigo-600 text-white p-1.5 rounded-r-xl shadow-lg hover:bg-indigo-700 transition-all"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-30 bg-rose-500 text-white p-2 rounded-r-2xl shadow-md shadow-rose-500/20 hover:bg-rose-600 transition-all cursor-pointer"
             title={showDetails ? "Ocultar detalles" : "Ver detalles del cliente"}
           >
-            {showDetails ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+            {showDetails ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
           </button>
         )}
 
         <form ref={formRef} onSubmit={handleSubmit} className="flex h-full flex-col">
-          <div className="flex-1 space-y-8 overflow-y-auto p-6">
+          <div className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
             
-            {/* Información del Cliente */}
-            <section className="space-y-4 rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800/50 dark:ring-gray-700/50">
+            {/* 🌸 SECCIÓN 1: CLIENTE */}
+            <section className="space-y-3.5 rounded-3xl bg-white p-4 sm:p-5 shadow-2xs border border-zinc-200/80 dark:border-zinc-800 dark:bg-zinc-900/90">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Información del Cliente</h3>
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <User size={15} className="text-rose-500" />
+                  Cliente
+                </h3>
                 {form.celular && !showDetails && (
                   <button 
                     type="button"
                     onClick={() => setShowDetails(true)}
-                    className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1"
+                    className="text-[10px] font-black text-rose-500 hover:underline flex items-center gap-1 uppercase tracking-wider"
                   >
-                    <ClipboardList size={14} /> VER INFO DEL CLIENTE
+                    <ClipboardList size={12} /> Ver Ficha
                   </button>
                 )}
               </div>
               
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-400">Cliente</label>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Buscar Servicio o Cliente</label>
                 <div className="group relative">
-                  <User className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400 group-focus-within:text-indigo-500" />
+                  <User size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-rose-500 z-10" />
                   <AutocompleteInput<ClientItem>
-                    placeholder="Buscar por nombre o número..."
+                    placeholder="Buscar por nombre o celular..."
                     apiEndpoint="/api/autocomplete/clients"
                     initialValue={form.cliente}
                     getValue={(i) => i.nombre ?? ""}
                     getKey={(i) => String(i.celular)}
                     renderItem={(i) => (
                       <div className="flex flex-col">
-                        <span className="font-medium text-gray-900 dark:text-white">{i.nombre}</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">{i.celular}</span>
+                        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{i.nombre}</span>
+                        <span className="text-[10px] text-zinc-400 font-semibold">{i.celular}</span>
                       </div>
                     )}
                     onChange={(val) => updateField("cliente", val)}
@@ -619,21 +691,21 @@ export default function ReservationForm({
                         indicativo: i.indicador || p.indicativo,
                       }))
                     }
-                    inputClassName="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-indigo-500"
+                    inputClassName="w-full rounded-2xl border border-zinc-200/80 bg-white py-2 pl-10 pr-3 text-[11px] font-bold text-zinc-900 shadow-2xs focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="celular" className="text-sm font-medium text-gray-700 dark:text-gray-400">Celular</label>
+              <div className="space-y-1">
+                <label htmlFor="celular" className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Teléfono Móvil</label>
                 <div className="flex gap-2">
-                  <div className="relative w-28">
+                  <div className="relative w-24">
                     <input
                       type="text"
                       list="indicativos-list"
                       value={form.indicativo}
                       onChange={(e) => updateField("indicativo", e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white py-2 px-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white font-bold text-center"
+                      className="w-full rounded-2xl border border-zinc-200/80 bg-white py-2 px-2.5 text-[11px] font-black text-center shadow-2xs focus:border-rose-300 focus:outline-none dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
                       placeholder="+00"
                     />
                     <datalist id="indicativos-list">
@@ -644,254 +716,226 @@ export default function ReservationForm({
                   </div>
 
                   <div className="group relative flex-1">
-                    <Phone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400 group-focus-within:text-indigo-500" />
+                    <Phone size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-rose-500" />
                     <input
                       id="celular"
                       type="tel"
                       value={form.celular}
                       onChange={(e) => updateField("celular", e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      className="w-full rounded-2xl border border-zinc-200/80 bg-white py-2 pl-9 pr-3 text-[11px] font-bold shadow-2xs focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
                       placeholder="Ej: 3001234567"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center pt-2">
+              <div className="flex items-center pt-0.5">
                 <input
                   id="save-client"
                   type="checkbox"
                   checked={saveClient}
                   onChange={(e) => setSaveClient(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 dark:bg-gray-700 dark:border-gray-600"
+                  className="h-3.5 w-3.5 rounded border-zinc-300 text-rose-500 focus:ring-rose-400 dark:bg-zinc-950 dark:border-zinc-800 cursor-pointer"
                 />
-                <label htmlFor="save-client" className="ml-3 text-sm text-gray-700 dark:text-gray-300">Guardar este cliente para futuras citas</label>
+                <label htmlFor="save-client" className="ml-2 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 cursor-pointer">
+                  Guardar cliente en directorio
+                </label>
               </div>
             </section>
 
-            {/* Servicios */}
-            <section className="space-y-4">
+            {/* 🌸 SECCIÓN 2: SERVICIOS */}
+            <section className="space-y-3.5">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Servicios</h3>
-                  <button
-                    type="button"
-                    onClick={addLine}
-                    disabled={!isLastLineComplete}
-                    className="inline-flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/50 dark:text-indigo-300"
-                  >
-                    <Plus size={16} /> <span>Añadir</span>
-                  </button>
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Sparkles size={15} className="text-rose-500" />
+                  Servicios Solicitados
+                </h3>
+                <button
+                  type="button"
+                  onClick={addLine}
+                  disabled={!isLastLineComplete}
+                  className="inline-flex items-center gap-1.5 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-rose-500 hover:bg-rose-500/20 disabled:opacity-40 transition-all cursor-pointer"
+                >
+                  <Plus size={14} /> <span>Añadir</span>
+                </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3.5">
                 {form.lines.map((line, index) => (
-                  <div key={index} className="relative rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200/50 dark:bg-gray-800/50 dark:ring-gray-700/50">
+                  <div key={index} className="relative rounded-3xl bg-white p-4 sm:p-5 shadow-2xs border border-zinc-200/80 dark:border-zinc-800 dark:bg-zinc-900/90 space-y-3.5">
                     {form.lines.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeLine(index)}
-                        className="absolute -right-2 -top-2 rounded-full border-2 border-white bg-gray-200 p-1 text-gray-500 hover:bg-red-100 hover:text-red-600 dark:border-gray-800 dark:bg-gray-700"
+                        className="absolute -right-2 -top-2 rounded-full border border-zinc-200 bg-white p-1 text-zinc-400 hover:text-rose-500 hover:bg-rose-50 dark:border-zinc-800 dark:bg-zinc-900 transition-all cursor-pointer shadow-2xs"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={13} />
                       </button>
                     )}
 
-                    <div className="space-y-4">
-                      <AutocompleteInput<ServiceItem>
-                        label={form.lines.length > 1 ? `Servicio ${index + 1}` : "Servicio"}
-                        placeholder="Buscar servicio..."
-                        apiEndpoint="/api/autocomplete/services"
-                        initialValue={line.servicio}
-                        getValue={(i) => i.Servicio ?? ""}
-                        getKey={(i) => i.SKU}
-                        renderItem={(i) => (
-                          <div className="flex flex-col">
-                            <span className="font-medium text-gray-900 dark:text-white">{i.Servicio}</span>
-                            <span className="text-xs text-zinc-500">${Number(i.Precio ?? 0).toLocaleString("es-CO")} • {i.duracion} min</span>
-                          </div>
-                        )}
-                        onSelect={(i) => updateLine(index, {
-                          servicio: i.Servicio ?? "",
-                          precio: Number(i.Precio ?? 0),
-                          duracion: String(i.duracion ?? "60"),
-                        })}
-                        inputClassName="w-full rounded-md border border-gray-300 bg-white py-2 pl-3 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
-                      />
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-400">Especialista</label>
-                          <div className="group relative">
-                            <Users className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400 group-focus-within:text-indigo-500" />
-                            <select
-                              value={line.especialista}
-                              onChange={(e) => updateLine(index, { especialista: e.target.value })}
-                              className="w-full appearance-none rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
-                            >
-                              <option value="">{loadingSpecialists ? "Cargando..." : "Selecciona"}</option>
-                              {specialists.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
-                            </select>
-                          </div>
+                    {/* BUSCAR SERVICIO */}
+                    <AutocompleteInput<ServiceItem>
+                      label={form.lines.length > 1 ? `Servicio ${index + 1}` : "Buscar servicio..."}
+                      placeholder="Escribe para buscar un servicio..."
+                      apiEndpoint="/api/autocomplete/services"
+                      initialValue={line.servicio}
+                      getValue={(i) => i.Servicio ?? ""}
+                      getKey={(i) => i.SKU}
+                      renderItem={(i) => (
+                        <div className="flex flex-col">
+                          <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{i.Servicio}</span>
+                          <span className="text-[10px] text-zinc-400 font-semibold">${Number(i.Precio ?? 0).toLocaleString("es-CO")} • {i.duracion} min</span>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-400">Fecha y Hora</label>
-                          <div className="group relative">
-                            <Calendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400 group-focus-within:text-indigo-500" />
-                            <input
-                              type="datetime-local"
-                              value={line.appointment_at}
-                              onChange={(e) => updateLine(index, { appointment_at: e.target.value })}
-                              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
-                            />
-                          </div>
+                      )}
+                      onSelect={(i) => updateLine(index, {
+                        servicio: i.Servicio ?? "",
+                        precio: Number(i.Precio ?? 0),
+                        duracion: String(i.duracion ?? "60"),
+                      })}
+                      inputClassName="w-full rounded-2xl border border-zinc-200/80 bg-white py-2 px-3 text-[11px] font-bold text-zinc-900 shadow-2xs focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+                    />
+
+                    {/* SELECTOR DE ESPECIALISTA Y FECHA/HORA */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Especialista</label>
+                        <CustomSelect
+                          value={line.especialista}
+                          onChange={(val) => updateLine(index, { especialista: val })}
+                          options={specialistOptions}
+                          placeholder={loadingSpecialists ? "Cargando..." : "Seleccionar especialista..."}
+                          icon={Users}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Fecha y Hora</label>
+                        <div className="group relative">
+                          <Calendar size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-rose-500" />
+                          <input
+                            type="datetime-local"
+                            value={line.appointment_at}
+                            onChange={(e) => updateLine(index, { appointment_at: e.target.value })}
+                            className="w-full rounded-2xl border border-zinc-200/80 bg-white dark:bg-zinc-950 py-2 pl-9 pr-2.5 text-[11px] font-bold text-zinc-800 dark:text-zinc-100 shadow-2xs hover:border-rose-300 dark:hover:border-rose-900/50 focus:border-rose-400 focus:outline-none transition-all cursor-pointer"
+                          />
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-400">Duración (min)</label>
-                          <div className="group relative">
-                            <Clock className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" />
-                            <input
-                              type="number"
-                              min={5}
-                              value={Number(line.duracion || 60)}
-                              onChange={(e) => updateLine(index, { duracion: String(e.target.value) })}
-                              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-400">Precio</label>
-                          <div className="group relative">
-                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" />
-                            <input
-                              type="number"
-                              value={Number(line.precio || 0)}
-                              onChange={(e) => updateLine(index, { precio: Number(e.target.value) })}
-                              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white font-bold"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Abono</label>
-                          <div className="group relative">
-                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-emerald-400" />
-                            <input
-                              type="number"
-                              value={Number(line.abono || 0)}
-                              onChange={(e) => updateLine(index, { abono: Number(e.target.value) })}
-                              className="w-full rounded-md border border-emerald-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-emerald-500 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-white font-bold"
-                              placeholder="¿Hizo abono?"
-                            />
-                          </div>
-                        </div>                       
-                      </div>
+
                     </div>
+
+                    {/* DURACIÓN, PRECIO Y ABONO */}
+                    <div className="grid grid-cols-3 gap-2.5 pt-0.5">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Duración (m)</label>
+                        <div className="group relative">
+                          <Clock size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                          <input
+                            type="number"
+                            min={5}
+                            value={Number(line.duracion || 60)}
+                            onChange={(e) => updateLine(index, { duracion: String(e.target.value) })}
+                            className="w-full rounded-2xl border border-zinc-200 bg-white py-1.5 pl-7 pr-2 text-[11px] font-extrabold text-zinc-800 dark:text-zinc-100 shadow-2xs focus:border-rose-300 dark:border-zinc-800 dark:bg-zinc-950"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Precio</label>
+                        <div className="group relative">
+                          <DollarSign size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                          <input
+                            type="number"
+                            value={Number(line.precio || 0)}
+                            onChange={(e) => updateLine(index, { precio: Number(e.target.value) })}
+                            className="w-full rounded-2xl border border-zinc-200 bg-white py-1.5 pl-7 pr-2 text-[11px] font-extrabold text-zinc-800 dark:text-zinc-100 shadow-2xs focus:border-rose-300 dark:border-zinc-800 dark:bg-zinc-950"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-wider text-emerald-500">Abono</label>
+                        <div className="group relative">
+                          <DollarSign size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-500" />
+                          <input
+                            type="number"
+                            value={Number(line.abono || 0)}
+                            onChange={(e) => updateLine(index, { abono: Number(e.target.value) })}
+                            className="w-full rounded-2xl border border-emerald-300 dark:border-emerald-800/80 bg-emerald-50/50 dark:bg-emerald-950/20 py-1.5 pl-7 pr-2 text-[11px] font-black text-emerald-600 dark:text-emerald-400 shadow-2xs focus:border-emerald-500"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div> 
+                    </div>
+
                   </div>
                 ))}
               </div>
             </section>
 
-            <section className="space-y-4 rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200 dark:bg-gray-800/50 dark:ring-gray-700/50">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Detalles Adicionales</h3>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label htmlFor="estado" className="text-sm font-medium text-gray-700 dark:text-gray-400">Estado</label>
-                  <div className="group relative">
-                    {/* Punto indicador de color */}
-                    <span className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full ${currentEstadoStyle.dot}`} />
-                    
-                    <select
-                      id="estado"
-                      value={form.estado}
-                      onChange={(e) => updateField("estado", e.target.value)}
-                      className={`w-full appearance-none rounded-xl border py-2.5 pl-8 pr-10 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 ${currentEstadoStyle.bg} ${currentEstadoStyle.text} ${currentEstadoStyle.border}`}
-                    >
-                      <option value="Nueva reserva creada" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">🔵 Nueva reserva creada</option>
-                      <option value="Cita confirmada" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">🟢 Cita confirmada</option>
-                      <option value="Cita pagada" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">🟣 Cita pagada</option>
-                      <option value="Cita cancelada" className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white">🔴 Cita cancelada</option>
-                    </select>
-                    
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 dark:text-gray-400" />
-                  </div>
+            {/* 🌸 SECCIÓN 3: CONFIGURACIÓN CON SELECTORES PERSONALIZADOS */}
+            <section className="space-y-3.5 rounded-3xl bg-white p-4 sm:p-5 shadow-2xs border border-zinc-200/80 dark:border-zinc-800 dark:bg-zinc-900/90">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                <Tag size={15} className="text-rose-500" />
+                Configuración
+              </h3>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Estado de la Cita</label>
+                  <CustomSelect
+                    value={form.estado}
+                    onChange={(val) => updateField("estado", val)}
+                    options={ESTADO_OPTIONS}
+                  />
                 </div>
-                <div className="space-y-2">
-                  <label htmlFor="sede" className="text-sm font-medium text-gray-700 dark:text-gray-400">
-                    Sede
-                  </label>
-                  <div className="group relative">
-                    <Building className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-indigo-500 z-10" />
-                    
-                    <select
-                      id="sede"
-                      value={form.sede}
-                      onChange={(e) => updateField("sede", e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-10 text-sm font-medium text-gray-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white dark:focus:ring-indigo-900/40"
-                    >
-                      <option value="" disabled>
-                        Selecciona una sede
-                      </option>
-                      <option value="Santa Marta">Santa Marta</option>
-                      <option value="Buga">Buga</option>
-                      <option value="Marquetalia">Marquetalia</option>
-                    </select>
 
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-indigo-500 z-10" />
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Sede</label>
+                  <CustomSelect
+                    value={form.sede}
+                    onChange={(val) => updateField("sede", val)}
+                    options={SEDE_OPTIONS}
+                    icon={Building}
+                  />
                 </div>
-                {!isEditing && (
-                  <div className="space-y-2">
-                    <label htmlFor="cantidad" className="text-sm font-medium text-gray-700 dark:text-gray-400">Personas</label>
-                    <div className="group relative">
-                      <Users className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" />
-                      <input
-                        id="cantidad"
-                        type="number"
-                        min={1}
-                        value={form.cantidad}
-                        onChange={(e) => updateField("cantidad", Number(e.target.value))}
-                        className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700/80 dark:text-white"
-                      />
-                    </div>
-                  </div>
-                )}
+
               </div>
             </section>
           </div>
 
-          <div className="sticky bottom-0 z-10 mt-auto border-t border-gray-200 bg-white/95 p-4 backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/95">
-            <div className="mb-4 flex flex-col gap-4">
-                
-                {isEditing && (
-                  <button
-                    type="button"
-                    onClick={() => setNotifyOnEdit(!notifyOnEdit)}
-                    className={`flex items-center justify-between gap-2 p-3 rounded-xl border transition-all ${
-                        notifyOnEdit 
-                        ? "bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300" 
-                        : "bg-gray-50 border-gray-200 text-gray-500 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-500"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                        {notifyOnEdit ? <Bell size={18} /> : <BellOff size={18} />}
-                        <span className="text-xs font-bold uppercase tracking-wider">{notifyOnEdit ? "Notificación Activa" : "Notificación Desactivada"}</span>
-                    </div>
-                    <div className={`w-10 h-5 rounded-full relative transition-colors ${notifyOnEdit ? 'bg-indigo-600' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${notifyOnEdit ? 'left-6' : 'left-1'}`} />
-                    </div>
-                  </button>
-                )}
-
-                <div className="flex items-center justify-between rounded-xl bg-indigo-50 p-4 dark:bg-indigo-900/30">
-                  <span className="text-base font-semibold text-indigo-800 dark:text-indigo-200">Total Reserva</span>
-                  <span className="text-2xl font-bold text-indigo-900 dark:text-white">${Number(totalEstimado).toLocaleString("es-CO")}</span>
+          {/* PIE DEL FORMULARIO Y BOTÓN DE GUARDADO */}
+          <div className="sticky bottom-0 z-10 mt-auto border-t border-zinc-200/80 bg-white/95 p-4 backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-900/95 space-y-3">
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => setNotifyOnEdit(!notifyOnEdit)}
+                className={`w-full flex items-center justify-between p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                  notifyOnEdit 
+                    ? "bg-rose-500/10 border-rose-500/30 text-rose-500 dark:text-rose-400" 
+                    : "bg-zinc-100 dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800 text-zinc-400"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {notifyOnEdit ? <Bell size={15} /> : <BellOff size={15} />}
+                  <span className="text-[10px] font-black uppercase tracking-wider">{notifyOnEdit ? "Notificación Activa" : "Notificación Desactivada"}</span>
                 </div>
+                <div className={`w-8 h-4 rounded-full relative transition-colors ${notifyOnEdit ? 'bg-rose-500' : 'bg-zinc-300 dark:bg-zinc-800'}`}>
+                  <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${notifyOnEdit ? 'left-4.5' : 'left-0.5'}`} />
+                </div>
+              </button>
+            )}
+
+            <div className="flex items-center justify-between rounded-2xl bg-rose-500/10 border border-rose-500/20 p-3">
+              <span className="text-xs font-black uppercase tracking-wider text-rose-500">Total Reserva</span>
+              <span className="text-lg font-black text-rose-500">${Number(totalEstimado).toLocaleString("es-CO")} COP</span>
             </div>
 
             <button
               type="submit"
               disabled={saving}
-              className="w-full rounded-xl bg-indigo-600 px-4 py-4 text-base font-bold text-white shadow-lg transition-all hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+              className="w-full rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-rose-500/20 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
               {saving ? "Guardando..." : isEditing ? "Guardar Cambios" : "Crear Reserva"}
             </button>

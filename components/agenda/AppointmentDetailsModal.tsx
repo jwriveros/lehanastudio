@@ -1,4 +1,5 @@
 "use client";
+
 import {
   X,
   Pencil,
@@ -12,6 +13,7 @@ import {
   ClipboardList,
   DollarSign,
   Undo2,
+  Sparkles,
 } from "lucide-react";
 import FichaTecnicaModal from "../FichaTecnicaModal";
 import type { CalendarAppointment } from "./types";
@@ -21,18 +23,18 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 /* ==========================================================================
-   HELPERS FUERA DEL COMPONENTE (Para evitar pérdida de foco)
+   HELPERS Y MAPEO DE ESTADOS (Fuera del componente)
    ========================================================================== */
 
 const getStatusStyles = (status: string | undefined): string => {
-  const defaultStyles = "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  const defaultStyles = "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 font-bold";
   if (!status) return defaultStyles;
 
   const statusMap: { [key: string]: string } = {
-    "cita confirmada": "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-400",
-    "cita pagada": "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400",
-    "cita cancelada": "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400",
-    "nueva reserva creada": "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400",
+    "cita confirmada": "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30 font-extrabold",
+    "cita pagada": "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30 font-extrabold",
+    "cita cancelada": "bg-rose-50/60 dark:bg-rose-950/30 text-rose-500 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/20 font-bold",
+    "nueva reserva creada": "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30 font-extrabold",
   };
 
   return statusMap[status.toLowerCase()] || defaultStyles;
@@ -47,13 +49,13 @@ const DetailItem = ({
   label: string;
   children: React.ReactNode;
 }) => (
-  <div className="flex items-start gap-4">
-    <div className="mt-1 flex-shrink-0 text-zinc-500 dark:text-zinc-400">
+  <div className="flex items-start gap-3.5">
+    <div className="mt-0.5 flex-shrink-0 text-rose-500">
       {icon}
     </div>
-    <div>
-      <dt className="text-sm text-zinc-500 dark:text-zinc-400">{label}</dt>
-      <dd className="font-semibold text-zinc-800 dark:text-zinc-200">
+    <div className="flex-1 min-w-0">
+      <dt className="text-[10px] font-black uppercase text-zinc-400 tracking-wider mb-0.5">{label}</dt>
+      <dd className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
         {children}
       </dd>
     </div>
@@ -125,7 +127,6 @@ export default function AppointmentDetailsModal({
           servicio: appointment.title,
           especialista: appointment.raw.especialista,
           fecha: format(appointment.start, "PPP", { locale: es }),
-          // Cambio aplicado aquí para la notificación
           hora: format(appointment.start, "h:mm aa", { locale: es }),
           indicativo: (appointment.raw as any).indicativo || "+57"
         }),
@@ -195,30 +196,38 @@ export default function AppointmentDetailsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:border dark:border-zinc-800 dark:bg-zinc-900">
-        {/* HEADER */}
-        <div className="mb-6 flex items-start justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-            Detalle de la cita
-          </h2>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-md rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 font-sans antialiased animate-in zoom-in-95 duration-200">
+        
+        {/* ENCABEZADO */}
+        <div className="mb-6 flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/80 pb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-rose-500/10 text-rose-500 rounded-xl">
+              <Sparkles size={16} />
+            </div>
+            <h2 className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100">
+              Detalle de la Cita
+            </h2>
+          </div>
           <button
             onClick={onClose}
-            className="rounded-full p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            className="rounded-xl p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 cursor-pointer"
             aria-label="Cerrar"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        {/* CONTENIDO */}
-        <dl className="mb-8 space-y-4">
-          <DetailItem icon={<User size={18} />} label="Cliente">
-            <div className="flex items-center gap-2">
-              <span>{appointment.raw.cliente}</span>
+        {/* CONTENIDO PRINCIPAL DE DETALLES */}
+        <dl className="mb-6 space-y-4">
+          
+          {/* CLIENTE & FICHA TÉCNICA */}
+          <DetailItem icon={<User size={16} />} label="Cliente">
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate uppercase font-bold text-xs">{appointment.raw.cliente}</span>
               <button 
                 onClick={() => setShowFicha(true)}
-                className="flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400 rounded-md text-[10px] font-bold hover:bg-indigo-200 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 dark:bg-rose-950/40 text-rose-500 border border-rose-200/60 dark:border-rose-900/30 rounded-xl text-[10px] font-extrabold hover:bg-rose-100 transition-all cursor-pointer shrink-0"
               >
                 <ClipboardList size={12} />
                 INFO
@@ -226,94 +235,107 @@ export default function AppointmentDetailsModal({
             </div>
           </DetailItem>
 
-          <DetailItem icon={<DollarSign size={18} />} label="Servicios y Precios">
-            <div className="space-y-2 mt-2">
+          {/* SERVICIOS Y PRECIOS EDITABLES */}
+          <DetailItem icon={<DollarSign size={16} />} label="Servicios y Precios">
+            <div className="space-y-2 mt-1.5">
               {associatedServices.map((s) => (
-                <div key={s.id} className="flex items-center justify-between gap-4 bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800">
-                  <span className="text-xs font-bold text-zinc-600 dark:text-zinc-400 truncate flex-1">{s.servicio}</span>
+                <div key={s.id} className="flex items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-950/60 p-2.5 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
+                  <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 truncate flex-1">{s.servicio}</span>
                   {isEditingPrices ? (
-                    <div className="flex items-center bg-white dark:bg-zinc-900 border rounded-lg px-2 py-1 w-28">
-                      <span className="text-[10px] font-bold mr-1 text-zinc-400">$</span>
+                    <div className="flex items-center bg-white dark:bg-zinc-900 border border-rose-300 dark:border-rose-900/50 rounded-xl px-2 py-1 w-28 shadow-2xs">
+                      <span className="text-[10px] font-bold mr-1 text-rose-500">$</span>
                       <input 
                         type="text" 
                         inputMode="numeric"
                         value={s.price}
                         onChange={(e) => updatePriceLocal(s.id, e.target.value)}
-                        className="w-full bg-transparent text-xs font-black outline-none text-zinc-800 dark:text-zinc-100"
+                        className="w-full bg-transparent text-xs font-extrabold outline-none text-zinc-900 dark:text-zinc-100"
                         autoFocus={associatedServices[0].id === s.id}
                       />
                     </div>
                   ) : (
-                    <span className="text-sm font-black text-indigo-600">${Number(s.price).toLocaleString()}</span>
+                    <span className="text-xs font-extrabold text-rose-500">${Number(s.price).toLocaleString("es-CO")}</span>
                   )}
                 </div>
               ))}
               
-              <div className="flex justify-between items-center pt-2 border-t border-dashed dark:border-zinc-700">
-                <span className="text-[10px] font-black uppercase text-zinc-400">Total a pagar</span>
-                <span className="text-xl font-black text-emerald-600">${currentTotal.toLocaleString()}</span>
+              <div className="flex justify-between items-center pt-2 border-t border-dashed border-zinc-200 dark:border-zinc-800">
+                <span className="text-[10px] font-black uppercase text-zinc-400">Total a Pagar</span>
+                <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">${currentTotal.toLocaleString("es-CO")} COP</span>
               </div>
             </div>
           </DetailItem>
 
-          <DetailItem icon={<Scissors size={18} />} label="Especialista">
+          {/* ESPECIALISTA */}
+          <DetailItem icon={<Scissors size={16} />} label="Especialista">
             {appointment.raw.especialista}
           </DetailItem>
 
-          <DetailItem icon={<Tag size={18} />} label="Estado">
-            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${getStatusStyles(appointment.raw.estado)}`}>
+          {/* ESTADO */}
+          <DetailItem icon={<Tag size={16} />} label="Estado">
+            <span className={`inline-block rounded-full px-3 py-0.5 text-[10px] uppercase tracking-wider ${getStatusStyles(appointment.raw.estado)}`}>
               {appointment.raw.estado}
             </span>
           </DetailItem>
 
-          <DetailItem icon={<Calendar size={18} />} label="Fecha">
+          {/* FECHA */}
+          <DetailItem icon={<Calendar size={16} />} label="Fecha">
             {format(appointment.start, "PPP", { locale: es })}
           </DetailItem>
 
-          <DetailItem icon={<Clock size={18} />} label="Hora">
-            {/* Cambio aplicado aquí para la visualización del Modal */}
+          {/* HORA */}
+          <DetailItem icon={<Clock size={16} />} label="Hora">
             {format(appointment.start, "h:mm aa", { locale: es })} – {format(appointment.end, "h:mm aa", { locale: es })}
           </DetailItem>
         </dl>
 
-        {/* ACCIONES */}
-        <div className="flex items-center justify-between gap-3">
+        {/* ACCIONES Y BOTONES INFERIORES */}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80">
+          
+          {/* Eliminar Cita */}
           <button
             onClick={() => onDelete?.(appointment)}
-            className="inline-flex items-center gap-1.5 rounded-lg p-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100/60 dark:text-red-500 dark:hover:bg-red-900/30"
-            title="Eliminar cita"
+            className="p-2.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-2xl transition-all cursor-pointer"
+            title="Eliminar Cita"
           >
             <Trash2 size={16} />
           </button>
 
-          <div className="flex gap-3">
+          <div className="flex items-center gap-2">
+            
+            {/* Cancelar Cita */}
             <button
               onClick={handleCancelAction}
               disabled={isSubmitting || isPaid || isCancelled}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3.5 py-2.5 text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 active:scale-95 ${
                 isCancelled 
-                  ? "bg-red-50 text-red-400 border border-red-100" 
-                  : "text-zinc-800 hover:bg-zinc-100/60 dark:text-zinc-200 dark:hover:bg-zinc-800/30"
+                  ? "bg-rose-50 text-rose-400 border border-rose-200/50 dark:bg-rose-950/30 dark:border-rose-900/30" 
+                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700"
               }`}
             >
-              <Ban size={15} />
-              {isSubmitting ? "..." : isCancelled ? "Cancelada" : "Cancelar"}
+              <Ban size={14} />
+              <span>{isSubmitting ? "..." : isCancelled ? "Cancelada" : "Cancelar"}</span>
             </button>
 
+            {/* Marcar Pago / Anular Pago */}
             <button
               onClick={handleTogglePayment}
               disabled={isSubmitting}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                isPaid ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
+              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3.5 py-2.5 text-xs font-bold text-white shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 active:scale-95 ${
+                isPaid 
+                  ? "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20" 
+                  : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
               }`}
             >
-              {isPaid ? <Undo2 size={15} /> : <DollarSign size={15} />}
-              {isSubmitting ? "..." : isPaid ? "Anular Pago" : isEditingPrices ? "Confirmar" : "Marcar Pago"}
+              {isPaid ? <Undo2 size={14} /> : <DollarSign size={14} />}
+              <span>{isSubmitting ? "..." : isPaid ? "Anular Pago" : isEditingPrices ? "Confirmar" : "Marcar Pago"}</span>
             </button>
 
+            {/* Editar Cita */}
             <button
               onClick={() => onEdit?.(appointment)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 dark:border-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+              className="inline-flex items-center justify-center p-2.5 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white shadow-xs shadow-rose-500/20 transition-all active:scale-95 cursor-pointer"
+              title="Editar Cita"
             >
               <Pencil size={14} />
             </button>

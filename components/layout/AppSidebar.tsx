@@ -16,23 +16,25 @@ import {
   LogOut,
 } from "lucide-react";
 
-// Configuración de rutas y permisos por rol
+interface AppSidebarProps {
+  isCollapsed?: boolean;
+}
+
 const MENU_ITEMS = [
   { name: "Inicio", href: "/inicio", icon: Home, roles: ["admin"] },
   { name: "Agenda", href: "/agenda", icon: Calendar, roles: ["admin"] },
-  { name: "Bot", href: "/dashboard/bot", icon: Bot, roles: ["admin"] },
+  { name: "Bot", href: "/bot", icon: Bot, roles: ["admin"] },
   { name: "Negocio", href: "/business", icon: Briefcase, roles: ["admin"] },
   { name: "Informes", href: "/mis-informes", icon: BarChart2, roles: ["admin", "especialista"] },
   { name: "Finanzas", href: "/finanzas", icon: DollarSign, roles: ["admin"] },
   { name: "Ajustes", href: "/settings", icon: Settings, roles: ["admin", "especialista"] },
 ];
 
-export default function AppSidebar() {
+export default function AppSidebar({ isCollapsed = false }: AppSidebarProps) {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // Verificamos si la cuenta iniciada es la administradora principal
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -52,7 +54,6 @@ export default function AppSidebar() {
     setIsAdmin(esAdministrador);
   }, []);
 
-  // Función para cerrar sesión limpiando Zustand, Supabase y LocalStorage
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (isLoggingOut) return;
@@ -82,18 +83,16 @@ export default function AppSidebar() {
     }
   };
 
-  // Determinamos el rol actual ("admin" o "especialista")
   const currentRole = isAdmin ? "admin" : "especialista";
-
-  // Filtramos los ítems visibles según el rol del usuario
   const visibleMenuItems = MENU_ITEMS.filter((item) =>
     item.roles.includes(currentRole)
   );
 
   return (
-    <div className="flex flex-col justify-between h-full p-3 min-h-[calc(100vh-3.5rem)]">
-      {/* SECCIÓN SUPERIOR: Menú filtrado por rol */}
-      <nav className="flex flex-col gap-1">
+    <div className="flex flex-col justify-between h-full p-2 select-none">
+      
+      {/* NAVEGACIÓN COMPACTA Y MINIMALISTA */}
+      <nav className="flex flex-col gap-1 pt-1">
         {visibleMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
@@ -102,33 +101,57 @@ export default function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              title={isCollapsed ? item.name : undefined}
+              className={`group relative flex items-center gap-3 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all duration-300 cursor-pointer ${
                 isActive
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-bold"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800/60"
+                  ? "bg-rose-500 text-white shadow-xs shadow-rose-500/30"
+                  : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
               }`}
             >
-              <Icon size={20} className="flex-shrink-0" />
-              <span className="truncate">{item.name}</span>
+              {/* Ícono más pequeño (16px) y estilizado */}
+              <div className="flex items-center justify-center w-5 h-5 shrink-0">
+                <Icon 
+                  size={16} 
+                  className={`transition-transform duration-200 group-hover:scale-110 ${
+                    isActive ? "text-white" : "text-zinc-400 dark:text-zinc-400 group-hover:text-rose-500"
+                  }`} 
+                />
+              </div>
+
+              {/* Texto de la opción con desvanecimiento */}
+              <span
+                className={`truncate text-[11px] tracking-wide transition-all duration-300 ${
+                  isCollapsed ? "opacity-0 w-0 hidden" : "opacity-100"
+                }`}
+              >
+                {item.name}
+              </span>
             </Link>
           );
         })}
       </nav>
 
-      {/* SECCIÓN INFERIOR: Botón de Cierre de Sesión */}
-      <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
+      {/* BOTÓN CIERRE DE SESIÓN COMPACTO */}
+      <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60">
         <button
           type="button"
           onClick={handleLogout}
           disabled={isLoggingOut}
-          className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-all cursor-pointer disabled:opacity-50"
+          className="group flex w-full items-center gap-3 px-2.5 py-2 rounded-xl text-[11px] font-semibold text-rose-500 hover:bg-rose-500/10 transition-all duration-300 cursor-pointer disabled:opacity-50"
         >
-          <LogOut size={20} className="flex-shrink-0" />
-          <span className="truncate">
-            {isLoggingOut ? "Cerrando..." : "Cerrar sesión"}
+          <div className="flex items-center justify-center w-5 h-5 shrink-0">
+            <LogOut size={16} className="transition-transform duration-200 group-hover:rotate-12" />
+          </div>
+          <span
+            className={`truncate tracking-wide transition-all duration-300 ${
+              isCollapsed ? "opacity-0 w-0 hidden" : "opacity-100"
+            }`}
+          >
+            {isLoggingOut ? "..." : "Salir"}
           </span>
         </button>
       </div>
+
     </div>
   );
 }

@@ -114,7 +114,7 @@ export default function WeeklyAgendaGrid({
         
         {/* ENCABEZADO PEGAJOSO (Sticky Top) */}
         <div
-          className="sticky top-0 z-20 grid border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
+          className="sticky top-0 z-10 grid border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
           style={{
             gridTemplateColumns: `64px repeat(${days.length}, minmax(0, 1fr))`,
             minHeight: HEADER_HEIGHT,

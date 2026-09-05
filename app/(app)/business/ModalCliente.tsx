@@ -1,9 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Save, ClipboardList, History, User, MapPin } from "lucide-react";
-import { ClientePayload } from "./page";
+import { X, Save, User, MapPin, Sparkles, Building, ChevronDown, Check, CreditCard, Mail } from "lucide-react";
 import FichaTecnicaEditor from "@/components/reservations/FichaTecnicaEditor";
+
+export type ClientePayload = {
+  id?: number;
+  celular: string;
+  nombre: string;
+  tipo: string;
+  direccion?: string;
+  cumpleanos?: string;
+  identificacion?: string;
+  correo_electronico?: string;
+  estado: string;
+  genero?: string;
+  indicador: string;
+  departamento?: string;
+  municipio?: string;
+  BSUID?: string;
+  nombre_comercial?: string;
+  sede?: string;
+};
 
 type ModalClienteProps = {
   isOpen: boolean;
@@ -13,6 +31,8 @@ type ModalClienteProps = {
   onCreate: (data: ClientePayload) => void | Promise<void>;
   onUpdate: (data: ClientePayload) => void | Promise<void>;
 };
+
+const SEDES_OPCIONES = ["Marquetalia", "Buga", "Santa Marta"];
 
 const COUNTRIES = [
   { code: "+57", flag: "🇨🇴", name: "Colombia" },
@@ -72,6 +92,24 @@ const COUNTRIES = [
   { code: "+84", flag: "🇻🇳", name: "Vietnam" }
 ].sort((a, b) => a.name.localeCompare(b.name));
 
+const EMPTY_FORM: ClientePayload = {
+  nombre: "",
+  celular: "",
+  tipo: "Cliente",
+  estado: "Activo",
+  indicador: "+57",
+  correo_electronico: "",
+  identificacion: "",
+  genero: "",
+  direccion: "",
+  cumpleanos: "",
+  departamento: "",
+  municipio: "",
+  BSUID: "",
+  nombre_comercial: "",
+  sede: "Marquetalia",
+};
+
 export default function ModalCliente({
   isOpen,
   onClose,
@@ -81,31 +119,41 @@ export default function ModalCliente({
   onUpdate,
 }: ModalClienteProps) {
   const [activeTab, setActiveTab] = useState<"personal" | "ubicacion" | "ficha">("personal");
-  const [form, setForm] = useState<ClientePayload>(formData);
+  const [form, setForm] = useState<ClientePayload>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
 
+  // EFECTO CORREGIDO: Reinicia a valores vacíos si el modo es 'create'
   useEffect(() => {
     if (isOpen) {
-      setForm({
-        ...formData,
-        nombre: formData.nombre || "",
-        celular: formData.celular || "",
-        tipo: formData.tipo || "Cliente",
-        estado: formData.estado || "Activo",
-        indicador: formData.indicador || "+57",
-        correo_electronico: formData.correo_electronico || "",
-        identificacion: formData.identificacion || "",
-        genero: formData.genero || "",
-        direccion: formData.direccion || "",
-        cumpleanos: formData.cumpleanos || "",
-        departamento: formData.departamento || "",
-        municipio: formData.municipio || "",
-      });
-      
-      // Si el modo es 'view', abrimos directamente la ficha técnica
-      if (mode === "view") {
-        setActiveTab("ficha");
-      } else {
+      if (mode === "create") {
+        setForm({ ...EMPTY_FORM });
         setActiveTab("personal");
+      } else {
+        // Al editar o ver, cargamos los datos del cliente seleccionado preservando el ID
+        setForm({
+          id: formData.id,
+          nombre: formData.nombre || "",
+          celular: formData.celular || "",
+          tipo: formData.tipo || "Cliente",
+          estado: formData.estado || "Activo",
+          indicador: formData.indicador || "+57",
+          correo_electronico: formData.correo_electronico || "",
+          identificacion: formData.identificacion || "",
+          genero: formData.genero || "",
+          direccion: formData.direccion || "",
+          cumpleanos: formData.cumpleanos || "",
+          departamento: formData.departamento || "",
+          municipio: formData.municipio || "",
+          BSUID: formData.BSUID || "",
+          nombre_comercial: formData.nombre_comercial || "",
+          sede: formData.sede || "Marquetalia",
+        });
+
+        if (mode === "view") {
+          setActiveTab("ficha");
+        } else {
+          setActiveTab("personal");
+        }
       }
     }
   }, [formData, isOpen, mode]);
@@ -113,151 +161,337 @@ export default function ModalCliente({
   if (!isOpen) return null;
 
   const handleChange = (field: keyof ClientePayload, value: string) => {
-    setForm({ ...form, [field]: value });
+    setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.nombre.trim()) return alert("El nombre es obligatorio");
     if (!form.celular.trim()) return alert("El celular es obligatorio");
 
-    if (mode === "create") onCreate(form);
-    else onUpdate(form);
-    onClose();
+    setSaving(true);
+
+    try {
+      if (mode === "create") {
+        await onCreate(form);
+      } else {
+        await onUpdate(form);
+      }
+      onClose();
+    } catch (err: any) {
+      console.error("Error guardando cliente:", err);
+      alert("Error guardando cliente: " + (err.message || "Error desconocido"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 text-zinc-900 dark:text-zinc-100">
-      <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-2xl shadow-xl overflow-hidden border dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 text-zinc-100 font-sans antialiased">
+      <div className="w-full max-w-lg bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden border border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
         
         {/* HEADER */}
-        <div className="px-5 py-4 border-b dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-800/50">
-          <h2 className="text-sm font-bold uppercase italic tracking-tight">
-            {mode === "create" ? "Nuevo Cliente" : (mode === "view" ? "Expediente Cliente" : "Editar Cliente")}
-          </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors">
-            <X size={16} />
+        <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/60">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">
+              <User size={16} />
+            </div>
+            <div>
+              <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-zinc-100">
+                {mode === "create" ? "Nuevo Cliente" : (mode === "view" ? "Expediente del Cliente" : "Editar Cliente")}
+              </h2>
+              <p className="text-[10px] font-semibold text-zinc-400">
+                {mode === "create" ? "Ingresa la información del nuevo registro" : `Gestionando a ${form.nombre || "Cliente"}`}
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors cursor-pointer"
+          >
+            <X size={18} />
           </button>
         </div>
 
-        {/* TABS */}
-        <div className="flex border-b dark:border-zinc-800">
+        {/* TAB NAVEGACIÓN TIPO PILL */}
+        <div className="flex border-b border-zinc-800 bg-zinc-950/40 p-1.5 gap-1">
           <button 
             onClick={() => setActiveTab("personal")} 
-            className={`flex-1 py-3 text-[10px] font-black uppercase transition-all ${activeTab === "personal" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === "personal" 
+                ? "bg-zinc-800 text-rose-400 shadow-sm" 
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
           >
             Información
           </button>
           
-          {/* Mostramos pestaña de Ficha Técnica si el cliente ya existe */}
-          {form.celular && (
+          <button 
+            onClick={() => setActiveTab("ubicacion")} 
+            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === "ubicacion" 
+                ? "bg-zinc-800 text-rose-400 shadow-sm" 
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            Ubicación / Sede
+          </button>
+
+          {mode !== "create" && form.celular && (
             <button 
               onClick={() => setActiveTab("ficha")} 
-              className={`flex-1 py-3 text-[10px] font-black uppercase transition-all ${activeTab === "ficha" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === "ficha" 
+                  ? "bg-zinc-800 text-rose-400 shadow-sm" 
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
             >
               Ficha / Citas
             </button>
           )}
-
-          <button 
-            onClick={() => setActiveTab("ubicacion")} 
-            className={`flex-1 py-3 text-[10px] font-black uppercase transition-all ${activeTab === "ubicacion" ? "text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/10" : "text-zinc-400"}`}
-          >
-            Ubicación
-          </button>
         </div>
 
-        {/* CONTENIDO */}
-        <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+        {/* CONTENIDO DEL FORMULARIO */}
+        <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
+          
+          {/* PESTAÑA INFORMACIÓN PERSONAL */}
           {activeTab === "personal" && (
-            <div className="space-y-3 animate-in fade-in duration-200">
-              <div>
-                <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Nombre Completo *</label>
+            <div className="space-y-4 animate-in fade-in duration-200">
+              
+              {/* Nombre Completo */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                  Nombre Completo *
+                </label>
                 <input 
-                  className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-sm border border-transparent focus:border-indigo-500 font-bold" 
+                  type="text"
+                  placeholder="Ej. María Pérez"
+                  className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors" 
                   value={form.nombre} 
-                  onChange={e => handleChange("nombre", e.target.value)} 
+                  onChange={(e) => handleChange("nombre", e.target.value)} 
                 />
               </div>
 
-              <div>
-                <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Celular *</label>
-                <div className="flex gap-2">
-                  <div className="relative w-28">
-                    <select 
-                      className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl text-sm font-bold border border-transparent focus:border-indigo-500 outline-none appearance-none"
-                      value={form.indicador}
-                      onChange={(e) => handleChange("indicador", e.target.value)}
-                    >
-                      {COUNTRIES.map(c => (
-                        <option key={`${c.flag}-${c.code}`} value={c.code}>
-                          {c.flag} {c.code}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="absolute right-2 top-3 pointer-events-none text-[10px] opacity-30">▼</div>
-                  </div>
+              {/* Nombre Comercial y BSUID */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                    Nombre Comercial / Marca
+                  </label>
                   <input 
-                    type="tel"
-                    placeholder="Número"
-                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-sm border border-transparent focus:border-indigo-500 font-bold"
-                    value={form.celular}
-                    onChange={e => handleChange("celular", e.target.value)}
+                    type="text"
+                    placeholder="Ej. Estudio María"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors" 
+                    value={form.nombre_comercial || ""} 
+                    onChange={(e) => handleChange("nombre_comercial", e.target.value)} 
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                    BSUID (ID Único)
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Ej. CO.12345678"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold font-mono text-zinc-100 focus:border-rose-500 transition-colors" 
+                    value={form.BSUID || ""} 
+                    onChange={(e) => handleChange("BSUID", e.target.value)} 
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Tipo</label>
-                  <select className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl text-xs font-bold outline-none" value={form.tipo} onChange={e => handleChange("tipo", e.target.value)}>
-                    <option value="Cliente">Cliente</option>
-                    <option value="Contacto">Contacto</option>
-                    <option value="Proveedor">Proveedor</option>
-                  </select>
+              {/* Celular e Indicativo */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                  Celular / WhatsApp *
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative w-36">
+                    <select 
+                      className="w-full bg-zinc-950 border border-zinc-800 p-3 pr-8 rounded-2xl text-xs font-bold text-zinc-100 outline-none appearance-none focus:border-rose-500 transition-colors cursor-pointer"
+                      value={form.indicador}
+                      onChange={(e) => handleChange("indicador", e.target.value)}
+                    >
+                      {COUNTRIES.map((c) => (
+                        <option key={`${c.flag}-${c.code}-${c.name}`} value={c.code} className="bg-zinc-900 text-zinc-100">
+                          {c.flag} {c.code} ({c.name})
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-3.5 text-zinc-400 pointer-events-none" />
+                  </div>
+
+                  <input 
+                    type="tel"
+                    placeholder="3000000000"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors"
+                    value={form.celular}
+                    onChange={(e) => handleChange("celular", e.target.value)}
+                  />
                 </div>
-                <div>
-                  <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Estado</label>
-                  <select className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl text-xs font-bold outline-none" value={form.estado} onChange={e => handleChange("estado", e.target.value)}>
-                    <option value="Activo">Activo</option>
-                    <option value="Inactivo">Inactivo</option>
-                  </select>
+              </div>
+
+              {/* Correo e Identificación */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                    Cédula / Documento
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Número de documento"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors" 
+                    value={form.identificacion || ""} 
+                    onChange={(e) => handleChange("identificacion", e.target.value)} 
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                    Correo Electrónico
+                  </label>
+                  <input 
+                    type="email"
+                    placeholder="correo@ejemplo.com"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors" 
+                    value={form.correo_electronico || ""} 
+                    onChange={(e) => handleChange("correo_electronico", e.target.value)} 
+                  />
+                </div>
+              </div>
+
+              {/* Tipo y Estado */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">Tipo</label>
+                  <div className="relative">
+                    <select 
+                      className="w-full bg-zinc-950 border border-zinc-800 p-3 pr-8 rounded-2xl text-xs font-bold text-zinc-100 outline-none appearance-none focus:border-rose-500 transition-colors cursor-pointer" 
+                      value={form.tipo} 
+                      onChange={(e) => handleChange("tipo", e.target.value)}
+                    >
+                      <option value="Cliente" className="bg-zinc-900">Cliente</option>
+                      <option value="Contacto" className="bg-zinc-900">Contacto</option>
+                      <option value="Proveedor" className="bg-zinc-900">Proveedor</option>
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-3.5 text-zinc-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">Estado</label>
+                  <div className="relative">
+                    <select 
+                      className="w-full bg-zinc-950 border border-zinc-800 p-3 pr-8 rounded-2xl text-xs font-bold text-zinc-100 outline-none appearance-none focus:border-rose-500 transition-colors cursor-pointer" 
+                      value={form.estado} 
+                      onChange={(e) => handleChange("estado", e.target.value)}
+                    >
+                      <option value="Activo" className="bg-zinc-900">Activo</option>
+                      <option value="Inactivo" className="bg-zinc-900">Inactivo</option>
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-3.5 text-zinc-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {activeTab === "ficha" && form.celular && (
-            <div className="animate-in slide-in-from-bottom-2 duration-300">
-              <FichaTecnicaEditor celular={form.celular} />
-            </div>
-          )}
-
+          {/* PESTAÑA UBICACIÓN Y SEDE */}
           {activeTab === "ubicacion" && (
-            <div className="space-y-3 animate-in slide-in-from-right duration-200">
-              <div>
-                <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Dirección</label>
-                <input className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-sm" value={form.direccion || ""} onChange={e => handleChange("direccion", e.target.value)} placeholder="Calle..." />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Municipio</label>
-                  <input className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-xs" value={form.municipio || ""} onChange={e => handleChange("municipio", e.target.value)} />
+            <div className="space-y-4 animate-in fade-in duration-200">
+              
+              {/* Selector de Sede */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-rose-400 ml-1 block tracking-wider flex items-center gap-1">
+                  <MapPin size={12} /> Sede Principal Asignada
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {SEDES_OPCIONES.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleChange("sede", s)}
+                      className={`p-3 rounded-2xl text-xs font-bold transition-all cursor-pointer border ${
+                        form.sede === s
+                          ? "bg-rose-600 border-rose-600 text-white shadow-md shadow-rose-600/20"
+                          : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:bg-zinc-800"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <label className="text-[9px] font-bold uppercase text-zinc-500 mb-1 block">Identificación</label>
-                  <input className="w-full bg-zinc-100 dark:bg-zinc-800 p-2.5 rounded-xl outline-none text-xs" value={form.identificacion || ""} onChange={e => handleChange("identificacion", e.target.value)} />
+              </div>
+
+              {/* Municipio y Departamento */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                    Municipio / Ciudad
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Ej. Santa Marta"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors" 
+                    value={form.municipio || ""} 
+                    onChange={(e) => handleChange("municipio", e.target.value)} 
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                    Departamento
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Ej. Magdalena"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors" 
+                    value={form.departamento || ""} 
+                    onChange={(e) => handleChange("departamento", e.target.value)} 
+                  />
                 </div>
               </div>
+
+              {/* Dirección */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">
+                  Dirección Domicilio
+                </label>
+                <input 
+                  type="text"
+                  placeholder="Calle / Carrera / Barrio..."
+                  className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors" 
+                  value={form.direccion || ""} 
+                  onChange={(e) => handleChange("direccion", e.target.value)} 
+                />
+              </div>
+            </div>
+          )}
+
+          {/* PESTAÑA FICHA TÉCNICA (CON RECORTE DE ESTILOS AZULES A TONOS ZINC/ROSE) */}
+          {activeTab === "ficha" && form.celular && (
+            <div className="animate-in fade-in duration-200 bg-zinc-950/80 p-4 rounded-3xl border border-zinc-800 [&_a]:text-rose-400 [&_button]:border-zinc-700 [&_h1]:text-zinc-100 [&_h2]:text-zinc-100 [&_h3]:text-zinc-100 [&_label]:text-zinc-400 [&_p]:text-zinc-300 [&_span]:text-zinc-300">
+              <FichaTecnicaEditor celular={form.celular} />
             </div>
           )}
         </div>
 
-        {/* FOOTER: Solo se muestra si no estamos en la pestaña de Ficha Técnica */}
+        {/* FOOTER ACCIONES */}
         {activeTab !== "ficha" && (
-          <div className="p-4 border-t dark:border-zinc-800 flex gap-2">
-            <button onClick={onClose} className="flex-1 py-2.5 text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all">Cancelar</button>
-            <button onClick={handleSubmit} className="flex-[1.5] py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/20 active:scale-95 transition-all flex items-center justify-center gap-2">
-              <Save size={14} /> {mode === "create" ? "Registrar" : "Actualizar"}
+          <div className="p-4 border-t border-zinc-800 bg-zinc-950/60 flex gap-3">
+            <button 
+              onClick={onClose} 
+              className="flex-1 py-3 text-xs font-bold text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-2xl transition-all cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleSubmit} 
+              disabled={saving}
+              className="flex-[1.5] py-3 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white text-xs font-bold rounded-2xl shadow-lg shadow-rose-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <Save size={16} /> 
+              <span>{saving ? "Guardando..." : mode === "create" ? "Registrar Cliente" : "Guardar Cambios"}</span>
             </button>
           </div>
         )}

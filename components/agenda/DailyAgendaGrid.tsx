@@ -1,13 +1,14 @@
 "use client";
+
 import { differenceInMinutes, format, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { useEffect, useMemo, useState } from "react";
 import AgendaEventCard from "./AgendaEventCard";
 import type { CalendarAppointment } from "./types";
 
-/* =========================
-   CONFIGURACIÓN
-========================= */
+/* =========================================================
+   🔹 CONFIGURACIÓN DE PARÁMETROS
+========================================================= */
 const START_HOUR = 7;
 const END_HOUR = 22;
 const SLOT_MINUTES = 30;
@@ -15,7 +16,7 @@ const SLOT_HEIGHT = 42;
 const HEADER_HEIGHT = 56;
 const VISUAL_GAP = 0;
 
-// 1. Inclusión de la 4ª especialista: Andrea García
+// Inclusión de las 4 especialistas del estudio
 const SPECIALISTS = [
   "Leslie Gutierrez",
   "Nary Cabrales",
@@ -23,9 +24,9 @@ const SPECIALISTS = [
   "Andrea Garcia",
 ];
 
-/* =========================
-   OVERLAP HELPERS
-========================= */
+/* =========================================================
+   🔹 HELPERS PARA MANEJO DE COLISIONES (OVERLAP)
+========================================================= */
 type LayoutAppt = {
   appt: CalendarAppointment;
   col: number;
@@ -36,7 +37,6 @@ function makeLocalDate(y: number, m: number, d: number) {
   return new Date(y, m, d, 0, 0, 0, 0);
 }
 
-// Lógica de colisiones para renderizar citas superpuestas
 function computeOverlapLayout(appts: CalendarAppointment[]): LayoutAppt[] {
   const sorted = [...appts].sort(
     (a, b) => a.start.getTime() - b.start.getTime()
@@ -45,6 +45,7 @@ function computeOverlapLayout(appts: CalendarAppointment[]): LayoutAppt[] {
   const result: LayoutAppt[] = [];
   const colById = new Map<string, number>();
   let cluster: CalendarAppointment[] = [];
+
   const flushCluster = () => {
     if (!cluster.length) return;
     const maxCols =
@@ -77,9 +78,9 @@ function computeOverlapLayout(appts: CalendarAppointment[]): LayoutAppt[] {
   return result;
 }
 
-/* =========================
-   COMPONENTE PRINCIPAL
-========================= */
+/* =========================================================
+   🔹 COMPONENTE PRINCIPAL
+========================================================= */
 export default function DailyAgendaGrid({
   appointments,
   currentDate,
@@ -141,39 +142,40 @@ export default function DailyAgendaGrid({
   }, [bySpecialist]);
 
   return (
-    <div className="h-full bg-white dark:bg-gray-900 overflow-x-auto">
-      <div className="min-w-[700px] h-full">
-        {/* HEADER: Ajustado a 4 columnas de especialistas (grid-cols-[64px_repeat(4,1fr)]) */}
+    <div className="h-full w-full bg-zinc-50/50 dark:bg-zinc-950 overflow-x-auto text-zinc-900 dark:text-zinc-100 font-sans antialiased">
+      <div className="min-w-[700px] h-full flex flex-col">
+        
+        {/* ENCABEZADO DE ESPECIALISTAS */}
         <div
-          className="sticky top-0 z-40 grid grid-cols-[64px_repeat(4,1fr)] border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900"
+          className="sticky top-0 z-40 grid grid-cols-[64px_repeat(4,1fr)] border-b border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-2xs"
           style={{ height: HEADER_HEIGHT }}
         >
-          <div className="flex items-center justify-center text-xs font-bold text-gray-400">
-            HORA
+          <div className="flex items-center justify-center text-[10px] font-black uppercase text-zinc-400 tracking-wider">
+            Hora
           </div>
           {SPECIALISTS.map((s) => (
             <div
               key={s}
-              className="flex items-center justify-center border-l border-gray-200 text-xs sm:text-sm font-bold text-gray-700 dark:border-gray-700 dark:text-gray-300 text-center px-1"
+              className="flex items-center justify-center border-l border-zinc-200/80 dark:border-zinc-800 text-xs sm:text-xs font-extrabold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider text-center px-2"
             >
               {s}
             </div>
           ))}
         </div>
 
-        {/* BODY: Ajustado a 4 columnas de especialistas */}
+        {/* CUERPO DE LA AGENDA DIARIA */}
         <div
-          className="grid grid-cols-[64px_repeat(4,1fr)]"
+          className="grid grid-cols-[64px_repeat(4,1fr)] relative flex-1"
           style={{ height: `calc(100% - ${HEADER_HEIGHT}px)` }}
         >
           {/* COLUMNA DE HORAS */}
-          <div className="overflow-y-auto">
+          <div className="overflow-y-auto border-r border-zinc-200/40 dark:border-zinc-800/40">
             <div className="relative" style={{ height: totalHeight }}>
               {hours.map((h, i) => (
                 <div
                   key={i}
                   style={{ height: SLOT_HEIGHT }}
-                  className="flex items-start justify-end pr-2 pt-1 text-xs text-gray-500 dark:text-gray-400 font-medium"
+                  className="flex items-start justify-end pr-2.5 pt-1 text-[11px] font-bold text-zinc-400 dark:text-zinc-500"
                 >
                   {format(
                     new Date(0, 0, 0, Math.floor(h), (h % 1) * 60),
@@ -190,9 +192,9 @@ export default function DailyAgendaGrid({
             return (
               <div
                 key={spec}
-                className="relative border-l border-gray-200 dark:border-gray-700"
+                className="relative border-l border-zinc-200/80 dark:border-zinc-800/80 bg-white/40 dark:bg-zinc-900/40"
               >
-                {/* SLOTS VACÍOS PARA CREAR RESERVAS */}
+                {/* RANURAS VACÍAS (SLOTS DISPONIBLES) */}
                 <div
                   className="absolute inset-0 z-0"
                   style={{ height: totalHeight }}
@@ -211,10 +213,10 @@ export default function DailyAgendaGrid({
                           key={idx}
                           className={
                             onCreateFromSlot 
-                              ? "cursor-pointer transition-colors hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20" 
+                              ? "cursor-pointer transition-colors hover:bg-rose-500/5 dark:hover:bg-rose-500/10" 
                               : "cursor-default pointer-events-none"
                           }
-                          style={{ height: SLOT_HEIGHT, borderBottom: '1px solid rgba(0, 0, 0, 0.05)' }}
+                          style={{ height: SLOT_HEIGHT, borderBottom: '1px solid rgba(161, 161, 170, 0.12)' }}
                           onClick={() =>
                             onCreateFromSlot?.({
                               especialista: spec,
@@ -227,18 +229,18 @@ export default function DailyAgendaGrid({
                   </div>
                 </div>
 
-                {/* Línea marcadora de hora actual */}
+                {/* INDICADOR DE HORA ACTUAL (LÍNEA ROSE CON EFECTO BRIGHT) */}
                 {isSameDay(localCurrentDate, now) && nowTop > 0 && (
                   <div
                     className="absolute left-0 right-0 z-30 flex items-center pointer-events-none"
                     style={{ top: nowTop - 1 }}
                   >
-                    <div className="h-0.5 w-full bg-red-500" />
-                    <div className="-ml-1 h-2 w-2 rounded-full bg-red-500" />
+                    <div className="h-0.5 w-full bg-rose-500 shadow-xs shadow-rose-500/50" />
+                    <div className="-ml-1 h-2.5 w-2.5 rounded-full bg-rose-500 shadow-md shadow-rose-500/50 animate-pulse" />
                   </div>
                 )}
 
-                {/* TARJETAS DE CITAS */}
+                {/* TARJETAS DE CITAS SOBREPUESTAS */}
                 <div className="relative z-10 pointer-events-none" style={{ height: totalHeight }}>
                   {layouts.map(({ appt, col, colCount }) => {
                     const minutesFromStart = differenceInMinutes(
@@ -279,7 +281,7 @@ export default function DailyAgendaGrid({
                             height: '100%',
                             width: '100%',
                             left: 0,
-                            backgroundColor: appt.bg_color || "#6366f1",
+                            backgroundColor: appt.bg_color || "#f43f5e",
                           }}
                           onViewDetails={onViewDetails}
                         />

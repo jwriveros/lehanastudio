@@ -1,6 +1,6 @@
 {
   "name": "lehanastudio",
-  "version": "12.0.6",
+  "version": "13.0.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -49,7 +49,7 @@
     "@types/react-big-calendar": "^1.8.9",
     "@types/react-date-range": "^1.4.10",
     "@types/react-dom": "^19",
-    "baseline-browser-mapping": "^2.11.13",
+    "baseline-browser-mapping": "^2.11.21",
     "eslint": "^9",
     "eslint-config-next": "16.0.7",
     "tailwindcss": "^4",
