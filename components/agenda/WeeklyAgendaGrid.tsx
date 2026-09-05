@@ -30,7 +30,7 @@ const SLOT_HEIGHT = 52;
 const HEADER_HEIGHT = 72;
 const VISUAL_GAP = 2;
 
-// 1. Inclusión de la 4ª especialista (Andrea Garcia -> "A")
+// Inclusión de especialistas
 const ALL_SPECIALISTS = [
   "Leslie Gutierrez",
   "Yucelis Moscote",
@@ -49,7 +49,7 @@ export default function WeeklyAgendaGrid({
   onViewDetails,
   onCreateFromSlot,
   specialistFilter = [],
-  weekBlock = "block1", // Nueva propiedad opcional: "block1" (LUN-JUE) o "block2" (VIE-DOM)
+  weekBlock = "block1",
 }: {
   appointments: CalendarAppointment[];
   currentDate: Date;
@@ -74,7 +74,7 @@ export default function WeeklyAgendaGrid({
   const weekStart = startOfWeek(validCurrentDate, { weekStartsOn: 1 });
   const allDays = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
-  // 2. Segmentación de la semana según el bloque activo
+  // Segmentación de la semana según el bloque activo
   const days =
     weekBlock === "block1"
       ? allDays.slice(0, 4) // Lunes, Martes, Miércoles, Jueves
@@ -106,15 +106,15 @@ export default function WeeklyAgendaGrid({
   );
 
   return (
-    // 1. Contenedor principal con scroll horizontal
-    <div className="w-full overflow-x-auto pb-4">
+    /* 1. Contenedor principal con scroll horizontal */
+    <div className="w-full overflow-x-auto pb-4 font-sans antialiased">
       
       {/* 2. Contenedor unificado con scroll vertical */}
       <div className="w-full min-w-[750px] lg:min-w-full border border-gray-200 dark:border-gray-800 rounded-2xl bg-white dark:bg-gray-950 overflow-y-auto max-h-[calc(100vh-210px)]">
         
         {/* ENCABEZADO PEGAJOSO (Sticky Top) */}
         <div
-          className="sticky top-0 z-10 grid border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
+          className="sticky top-0 z-15 grid border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 shadow-sm"
           style={{
             gridTemplateColumns: `64px repeat(${days.length}, minmax(0, 1fr))`,
             minHeight: HEADER_HEIGHT,
@@ -139,7 +139,7 @@ export default function WeeklyAgendaGrid({
                   <div
                     className={`flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full text-[10px] sm:text-xs font-bold ${
                       isToday
-                        ? "bg-indigo-600 text-white"
+                        ? "bg-rose-500 text-white"
                         : "text-gray-800 dark:text-gray-200"
                     }`}
                   >
@@ -147,7 +147,7 @@ export default function WeeklyAgendaGrid({
                   </div>
                 </div>
 
-                {/* Subcolumnas de Especialistas (L, N, Y, A) */}
+                {/* Subcolumnas de Especialistas (Leslie, Yuce, Nary, Andrea) */}
                 <div
                   className="grid flex-1 w-full"
                   style={{
@@ -237,7 +237,7 @@ export default function WeeklyAgendaGrid({
                           return (
                             <div
                               key={idx}
-                              className="cursor-pointer transition-colors hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20"
+                              className="cursor-pointer transition-colors hover:bg-rose-50/50 dark:hover:bg-rose-950/20"
                               style={{ height: SLOT_HEIGHT }}
                               onClick={() =>
                                 onCreateFromSlot?.({
@@ -262,12 +262,12 @@ export default function WeeklyAgendaGrid({
                       transform: "translateY(-1px)",
                     }}
                   >
-                    <div className="h-0.5 w-full bg-red-500" />
-                    <div className="-ml-1 h-2 w-2 rounded-full bg-red-500" />
+                    <div className="h-0.5 w-full bg-rose-500" />
+                    <div className="-ml-1 h-2 w-2 rounded-full bg-rose-500" />
                   </div>
                 )}
 
-                {/* Tarjetas de citas */}
+                {/* Tarjetas de citas con Cascada Delimitada (Sin invadir la siguiente columna) */}
                 <div
                   className="relative z-10 pointer-events-none"
                   style={{ height: totalHeight }}
@@ -298,6 +298,7 @@ export default function WeeklyAgendaGrid({
                       (durationMinutes / SLOT_MINUTES) * SLOT_HEIGHT - VISUAL_GAP;
                     const height = isNaN(calculatedHeight) ? SLOT_HEIGHT : calculatedHeight;
 
+                    // 1. Citas en conflicto exacto dentro de la MISMA especialista
                     const collidingAppts = dayAppointments
                       .filter((a) => a.raw?.especialista === appt.raw?.especialista)
                       .filter((a) => appt.start < a.end && a.start < appt.end)
@@ -314,23 +315,33 @@ export default function WeeklyAgendaGrid({
                     );
                     const specialistIndex = Math.max(0, rawSpecialistIndex);
 
+                    // 2. Ancho base de una columna de especialista
                     const baseWidth = 100 / safeSpecialistCount;
                     const leftBase = specialistIndex * baseWidth;
-                    const offsetStep = 4;
+
+                    // 3. CASCADA CONTENIDA DENTRO DE LA MISMA COLUMNA
+                    // Si no hay colisión, toma el 96% de la columna. Si hay colisión, toma el 68%.
+                    const cardWidthPercent = totalCollisions > 1 
+                      ? baseWidth * 0.68 
+                      : baseWidth * 0.96;
+
+                    // Desplazamiento máximo controlado de 15% por cada colisión
+                    const offsetShift = totalCollisions > 1 
+                      ? Math.min(collisionIndex * (baseWidth * 0.15), baseWidth * 0.28) 
+                      : 0;
+
+                    const itemLeft = leftBase + offsetShift;
 
                     return (
                       <div
                         key={appt.id}
-                        className="absolute pointer-events-auto transition-all duration-200"
+                        className="absolute pointer-events-auto transition-all duration-200 hover:z-50 hover:scale-[1.02]"
                         style={{
                           top,
                           height,
-                          width: `calc(${baseWidth}% - ${
-                            totalCollisions > 1 ? 8 : 4
-                          }px)`,
-                          left: `calc(${leftBase}% + ${
-                            2 + collisionIndex * offsetStep
-                          }px)`,
+                          width: `${cardWidthPercent}%`,
+                          left: `calc(${itemLeft}% + 2px)`,
+                          maxWidth: `calc(${baseWidth}% - 4px)`,
                           zIndex: 10 + collisionIndex,
                         }}
                       >
@@ -342,10 +353,10 @@ export default function WeeklyAgendaGrid({
                             height: "100%",
                             width: "100%",
                             left: 0,
-                            backgroundColor: appt.bg_color || "#6366f1",
+                            backgroundColor: appt.bg_color || "#f43f5e",
                             boxShadow:
                               totalCollisions > 1
-                                ? " -2px 0 8px rgba(0,0,0,0.15)"
+                                ? "-3px 4px 10px rgba(0,0,0,0.2)"
                                 : "none",
                           }}
                         />
