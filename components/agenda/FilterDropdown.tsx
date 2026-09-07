@@ -16,7 +16,7 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
   options,
   selected,
   onChange,
-  align = "right",
+  align = "left", // Cambiado a "left" por defecto para mejor flujo natural
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -42,6 +42,13 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
   const hasSelection = selected.length > 0 && !selected.includes("Todas");
   const selectedCount = selected.filter((s) => s !== "Todas").length;
 
+  // Lógica de posición adaptable:
+  // En móviles previene salirse por la izquierda usando left-0. En escritorios respeta 'align'.
+  const alignmentClasses =
+    align === "right"
+      ? "left-0 sm:left-auto sm:right-0"
+      : "left-0";
+
   return (
     <div className="relative inline-block" ref={containerRef}>
       <button
@@ -65,12 +72,10 @@ export const FilterDropdown: React.FC<FilterDropdownProps> = ({
         />
       </button>
 
-      {/* 🔹 CAMBIO CLAVE: z-[200] garantiza que flote por encima de la grilla semanal */}
+      {/* Menú Desplegable con Posicionamiento Adaptable */}
       {isOpen && (
         <div
-          className={`absolute top-full mt-2 z-[200] min-w-[210px] w-auto max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-2.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-zinc-900 dark:text-zinc-100 ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
+          className={`absolute top-full mt-2 z-[200] min-w-[210px] w-auto max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-2.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-zinc-900 dark:text-zinc-100 ${alignmentClasses}`}
         >
           <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-3 py-1.5 border-b border-zinc-100 dark:border-zinc-800/80 mb-1">
             <span>Filtrar por {label}</span>

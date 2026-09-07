@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import ReservationForm from "./ReservationForm";
 import ReservationDetails from "./ReservationDetails";
 import { X, Sparkles } from "lucide-react";
@@ -20,24 +21,33 @@ const ReservationDrawer = ({
 }: ReservationDrawerProps) => {
   const [viewMode, setViewMode] = useState<"view" | "edit">("edit");
   const [servicesToEdit, setServicesToEdit] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  // Aseguramos que el componente solo intente renderizarse en el DOM del cliente
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Evaluamos estrictamente si la cita realmente existe en la base de datos
+  const isExistingAppointment = Boolean(
+    appointmentData?.id && 
+    appointmentData.id !== "" && 
+    appointmentData.id !== "new"
+  );
 
   /* =========================================================
-     🔹 DEFINIR MODO LECTURA O EDICIÓN Y LIMPIEZA
+      🔹 CONTROL DE MODO DE VISTA (EDICIÓN / LECTURA)
   ========================================================= */
   useEffect(() => {
-    if (!appointmentData) {
-      setViewMode("edit");
-      setServicesToEdit([]);
-      return;
-    }
-    // Si la cita ya existe en base de datos, ir a modo lectura ("view")
-    if (appointmentData?.id && appointmentData.id !== "new") {
+    if (!isOpen) return;
+
+    if (isExistingAppointment) {
       setViewMode("view"); 
     } else {
       setViewMode("edit");
       setServicesToEdit([]);
     }
-  }, [appointmentData, isOpen]);
+  }, [appointmentData, isOpen, isExistingAppointment]);
   
   const handleEdit = useCallback((associatedServices?: any[]) => {
     if (associatedServices && associatedServices.length > 0) {
@@ -54,25 +64,29 @@ const ReservationDrawer = ({
     onClose();
   }, [onClose]);
 
-  const title = appointmentData?.id
+  const title = isExistingAppointment
     ? viewMode === "edit"
       ? "Editar Reserva"
       : "Detalles de la Reserva"
     : "Nueva Reserva";
 
-  return (
+  // Si no está montado en el navegador o no está abierto, no renderizamos nada
+  if (!mounted) return null;
+
+  // Renderizado mediante React Portal directamente en document.body
+  return createPortal(
     <>
-      {/* 1. TELÓN DE FONDO (OVERLAY CON DESENFOQUE) */}
+      {/* 1. TELÓN DE FONDO (OVERLAY CON Z-INDEX ELEVADO z-[999]) */}
       <div
-        className={`fixed inset-0 z-[290] bg-black/60 backdrop-blur-xs transition-opacity duration-300 ease-in-out ${
+        className={`fixed inset-0 z-[999] bg-black/60 backdrop-blur-xs transition-opacity duration-300 ease-in-out ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={handleClose}
       />
       
-      {/* 2. PANEL LATERAL (DRAWER EN ZINC Y ROSE) */}
+      {/* 2. PANEL LATERAL (DRAWER CON Z-INDEX MÁXIMO z-[1000]) */}
       <div
-        className={`fixed right-0 top-0 z-[300] flex h-full w-full max-w-2xl transform flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased shadow-2xl transition-transform duration-300 ease-in-out border-l border-zinc-200/80 dark:border-zinc-800 ${
+        className={`fixed right-0 top-0 z-[1000] flex h-full w-full max-w-2xl transform flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased shadow-2xl transition-transform duration-300 ease-in-out border-l border-zinc-200/80 dark:border-zinc-800 ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!isOpen}
@@ -94,6 +108,7 @@ const ReservationDrawer = ({
           </div>
 
           <button
+            type="button"
             onClick={handleClose}
             className="rounded-2xl p-2 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-white cursor-pointer"
             aria-label="Cerrar panel"
@@ -124,7 +139,8 @@ const ReservationDrawer = ({
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 };
 

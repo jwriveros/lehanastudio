@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import AppSidebar from "./AppSidebar";
 import { ThemeToggleButton } from "./ThemeToggleButton";
 import { Menu, X, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
@@ -12,14 +12,44 @@ interface AppShellProps {
 
 export default function AppShell({ children }: AppShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(true); // Contraído por defecto
+  
+  // 1. Iniciamos el estado de colapso
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const { session } = useSessionStore();
+
+  // 2. Detección automática al cargar la página: Expandido en escritorio, contraído en móviles
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setIsCollapsed(true); // Oculto/Contraído en teléfonos
+      } else {
+        setIsCollapsed(false); // Expandido en escritorio
+      }
+    };
+
+    // Ejecutamos al montar el componente en el navegador
+    handleResize();
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const userInitial = session?.name ? session.name.charAt(0).toUpperCase() : "A";
 
   const toggleSidebarDesktop = () => {
     setIsCollapsed((prev) => !prev);
   };
+
+  // 3. Función para cerrar/contraer la barra lateral tras hacer clic en un enlace
+  const handleCloseSidebar = useCallback(() => {
+    // Si está en pantalla móvil, cerramos el drawer
+    setIsSidebarOpen(false);
+
+    // Si la pantalla es pequeña o móvil, contraemos la barra lateral de escritorio
+    if (window.innerWidth < 768) {
+      setIsCollapsed(true);
+    }
+  }, []);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased transition-colors duration-300">
@@ -32,7 +62,7 @@ export default function AppShell({ children }: AppShellProps) {
         />
       )}
 
-      {/* BARRA LATERAL DELGADA Y COMPACTA (md:w-16 contraída, md:w-52 expandida) */}
+      {/* BARRA LATERAL (md:w-16 contraída, md:w-52 expandida) */}
       <aside
         className={`fixed inset-y-0 left-0 z-[300] flex flex-col bg-white dark:bg-zinc-900/95 border-r border-zinc-200/80 dark:border-zinc-800 transition-all duration-300 ease-in-out md:static md:translate-x-0 overflow-hidden ${
           isSidebarOpen ? "translate-x-0 w-52 shadow-2xl" : "-translate-x-full md:translate-x-0"
@@ -65,12 +95,12 @@ export default function AppShell({ children }: AppShellProps) {
           </button>
         </div>
 
-        {/* MENÚ DE ENLACES */}
+        {/* MENÚ DE ENLACES CON AUTO-CIERRE */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
-          <AppSidebar isCollapsed={isCollapsed} />
+          <AppSidebar isCollapsed={isCollapsed} onClose={handleCloseSidebar} />
         </div>
 
-        {/* BOTÓN INFERIOR DELGADO */}
+        {/* BOTÓN INFERIOR DE EXPANDIR / CONTRAER */}
         <div className="hidden md:flex p-2 border-t border-zinc-200/80 dark:border-zinc-800/80 shrink-0">
           <button
             type="button"
