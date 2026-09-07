@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import * as XLSX from "xlsx"; // 🌸 Importamos la librería para generar archivos Excel .xlsx
 import ModalCliente from "./ModalCliente";
 import ModalEspecialista from "./ModalEspecialista";
 import ModalServicio, { ServicioPayload } from "./ModalServicio";
@@ -27,7 +28,8 @@ import {
   Tag,
   Clock,
   Layers,
-  Download
+  Download,
+  FileSpreadsheet
 } from "lucide-react";
 
 type TabKey = "clients" | "services" | "specialists";
@@ -280,75 +282,67 @@ export default function BusinessPage() {
   const totalPages = Math.ceil(totalRecords / ITEMS_PER_PAGE);
 
   /* =========================================================
-     🌸 FUNCIÓN: EXPORTAR TODOS LOS CLIENTES (SIN LÍMITE DE 1000)
+     🌸 HELPER: OBTENER TODOS LOS CLIENTES FILTRADOS SIN LÍMITE
+  ========================================================= */
+  const fetchAllFilteredClients = async () => {
+    let allClients: any[] = [];
+    let from = 0;
+    const CHUNK_SIZE = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      let query = supabase.from("clients").select("*");
+
+      if (sortState.column && sortState.direction) {
+        query = query.order(sortState.column, { ascending: sortState.direction === "asc" });
+      } else {
+        query = query.order("id", { ascending: false });
+      }
+
+      const rawTerm = search.trim();
+      if (rawTerm) {
+        query = query.or(
+          `celular.ilike.%${rawTerm}%,"BSUID".ilike.%${rawTerm}%,nombre.ilike.%${rawTerm}%,nombre_comercial.ilike.%${rawTerm}%`
+        );
+      }
+
+      if (filterSede) query = query.eq("sede", filterSede);
+      if (filterMunicipio.trim()) query = query.ilike("municipio", `%${filterMunicipio.trim()}%`);
+
+      const { data: chunk, error } = await query.range(from, from + CHUNK_SIZE - 1);
+
+      if (error) throw error;
+
+      if (chunk && chunk.length > 0) {
+        allClients = [...allClients, ...chunk];
+        from += CHUNK_SIZE;
+        if (chunk.length < CHUNK_SIZE) hasMore = false;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return allClients;
+  };
+
+  /* =========================================================
+     🌸 EXPORTAR CSV TRADICIONAL COMPLETO
   ========================================================= */
   const [exportingCSV, setExportingCSV] = useState(false);
 
   const exportClientsToCSV = async () => {
     try {
       setExportingCSV(true);
+      const allClients = await fetchAllFilteredClients();
 
-      let allFilteredClients: any[] = [];
-      let from = 0;
-      const CHUNK_SIZE = 1000;
-      let hasMore = true;
-
-      // 1. Bucle de paginación para superar el límite de 1000 de Supabase
-      while (hasMore) {
-        let query = supabase.from("clients").select("*");
-
-        // Aplicar ordenamiento
-        if (sortState.column && sortState.direction) {
-          query = query.order(sortState.column, { ascending: sortState.direction === "asc" });
-        } else {
-          query = query.order("id", { ascending: false });
-        }
-
-        // Aplicar filtro de búsqueda por texto
-        const rawTerm = search.trim();
-        if (rawTerm) {
-          query = query.or(
-            `celular.ilike.%${rawTerm}%,"BSUID".ilike.%${rawTerm}%,nombre.ilike.%${rawTerm}%,nombre_comercial.ilike.%${rawTerm}%`
-          );
-        }
-
-        // Aplicar filtros de Sede y Municipio
-        if (filterSede) query = query.eq("sede", filterSede);
-        if (filterMunicipio.trim()) query = query.ilike("municipio", `%${filterMunicipio.trim()}%`);
-
-        // Consultar el lote actual (ej: 0-999, 1000-1999...)
-        const { data: chunk, error } = await query.range(from, from + CHUNK_SIZE - 1);
-
-        if (error) {
-          alert("Error al obtener los datos para exportar: " + error.message);
-          setExportingCSV(false);
-          return;
-        }
-
-        if (chunk && chunk.length > 0) {
-          allFilteredClients = [...allFilteredClients, ...chunk];
-          from += CHUNK_SIZE;
-
-          // Si el bloque trae menos de 1000 elementos, llegamos al final
-          if (chunk.length < CHUNK_SIZE) {
-            hasMore = false;
-          }
-        } else {
-          hasMore = false;
-        }
-      }
-
-      if (allFilteredClients.length === 0) {
+      if (allClients.length === 0) {
         alert("No se encontraron registros para exportar con los filtros actuales.");
-        setExportingCSV(false);
         return;
       }
 
-      // 2. Encabezados del archivo CSV
       const headers = ["Identificacion", "Nombre", "Nombre Comercial", "Celular", "BSUID", "Municipio", "Sede"];
 
-      // 3. Transformación de los 1945+ registros a filas de texto
-      const rows = allFilteredClients.map((c) => {
+      const rows = allClients.map((c) => {
         const id = `"${(c.identificacion || "").toString().replace(/"/g, '""')}"`;
         const nombre = `"${(c.nombre || "").replace(/"/g, '""')}"`;
         const comercial = `"${(c.nombre_comercial || "").replace(/"/g, '""')}"`;
@@ -360,25 +354,75 @@ export default function BusinessPage() {
         return [id, nombre, comercial, celular, bsuid, municipio, sede].join(",");
       });
 
-      // 4. Creación del Blob con BOM UTF-8 (\uFEFF)
       const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
 
-      // 5. Descarga automática en el navegador
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `Clientes_Completo_LehanaStudio_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute("download", `Clientes_Completo_${new Date().toISOString().slice(0, 10)}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error al exportar CSV:", err);
-      alert("Ocurrió un error al generar el archivo.");
+      alert("Ocurrió un error al generar el archivo CSV.");
     } finally {
       setExportingCSV(false);
+    }
+  };
+
+ /* =========================================================
+     🌸 EXPORTAR EXCEL PLANTILLA YCLOUD (.xlsx
+  ========================================================= */
+  const [exportingYCloud, setExportingYCloud] = useState(false);
+
+  const exportClientsToYCloudExcel = async () => {
+    try {
+      setExportingYCloud(true);
+      const allClients = await fetchAllFilteredClients();
+
+      if (allClients.length === 0) {
+        alert("No se encontraron registros para exportar a YCloud con los filtros actuales.");
+        return;
+      }
+
+      // Transformar los datos de la columna 'numberc' al formato YCloud incluyendo el '+'
+      const dataForYCloud = allClients.map((c) => {
+        // 1. Obtener el texto del teléfono de la columna 'numberc' (o respaldos)
+        const rawPhone = (c.numberc || c.celular || c.telefono || "").toString().trim();
+        
+        // 2. Extraer solo los dígitos numéricos
+        const digitsOnly = rawPhone.replace(/\D/g, "");
+
+        // 3. Agregar el símbolo '+' al inicio si existen dígitos válidos
+        const phoneWithPlus = digitsOnly ? `+${digitsOnly}` : "";
+
+        return {
+          "phone ": phoneWithPlus, // Mantiene el símbolo '+' y el espacio final exigido por YCloud
+          name: c.nombre || "Cliente",
+          value1: "",
+        };
+      });
+
+      // 4. Crear el libro de trabajo con SheetJS (xlsx)
+      const worksheet = XLSX.utils.json_to_sheet(dataForYCloud);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Campaña YCloud");
+
+      // 5. Generar y descargar el archivo .xlsx
+      XLSX.writeFile(
+        workbook, 
+        `campaignTemplate_YCloud_${new Date().toISOString().slice(0, 10)}.xlsx`
+      );
+
+    } catch (err: any) {
+      console.error("Error al exportar a YCloud Excel:", err);
+      alert("Ocurrió un error al generar el archivo Excel para YCloud.");
+    } finally {
+      setExportingYCloud(false);
     }
   };
 
@@ -514,7 +558,7 @@ export default function BusinessPage() {
           </button>
         </div>
 
-        {/* FILTROS EXCLUSIVOS DE CLIENTES + BOTÓN EXPORTAR CSV */}
+        {/* FILTROS EXCLUSIVOS DE CLIENTES + BOTONES DE EXPORTACIÓN */}
         {activeTab === "clients" && (
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <div className="flex flex-wrap items-center gap-3">
@@ -552,16 +596,40 @@ export default function BusinessPage() {
               )}
             </div>
 
-            {/* 🌸 BOTÓN DESCARGAR CSV DE CLIENTES FILTRADOS */}
-            <button
-              type="button"
-              onClick={exportClientsToCSV}
-              className="flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-white font-extrabold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer shadow-xs active:scale-95 border-none outline-none"
-              title="Descargar clientes filtrados en Excel / CSV"
-            >
-              <Download size={14} className="text-rose-500" />
-              <span>Exportar CSV ({clients.length})</span>
-            </button>
+            {/* GRUPO DE BOTONES DE EXPORTACIÓN */}
+            <div className="flex items-center gap-2">
+              {/* 🌸 BOTÓN EXPORTAR YCLOUD (.xlsx) */}
+              <button
+                type="button"
+                disabled={exportingYCloud}
+                onClick={exportClientsToYCloudExcel}
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer shadow-xs active:scale-95 border-none outline-none disabled:opacity-50"
+                title="Descargar clientes filtrados en plantilla .xlsx para YCloud"
+              >
+                {exportingYCloud ? (
+                  <Loader2 size={14} className="animate-spin text-white" />
+                ) : (
+                  <FileSpreadsheet size={14} className="text-emerald-200" />
+                )}
+                <span>{exportingYCloud ? "Exportando..." : "YCloud (.xlsx)"}</span>
+              </button>
+
+              {/* BOTÓN EXPORTAR CSV TRADICIONAL */}
+              <button
+                type="button"
+                disabled={exportingCSV}
+                onClick={exportClientsToCSV}
+                className="flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-white font-extrabold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer shadow-xs active:scale-95 border-none outline-none disabled:opacity-50"
+                title="Descargar clientes filtrados en formato CSV"
+              >
+                {exportingCSV ? (
+                  <Loader2 size={14} className="animate-spin text-rose-500" />
+                ) : (
+                  <Download size={14} className="text-rose-500" />
+                )}
+                <span>{exportingCSV ? "Exportando..." : "CSV"}</span>
+              </button>
+            </div>
           </div>
         )}
 

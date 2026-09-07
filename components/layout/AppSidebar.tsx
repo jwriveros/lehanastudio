@@ -16,10 +16,9 @@ import {
   LogOut,
 } from "lucide-react";
 
-// 1. Agregamos onClose a las propiedades del componente
 interface AppSidebarProps {
   isCollapsed?: boolean;
-  onClose?: () => void; // 👈 Función para notificar el cierre al componente padre
+  onClose?: () => void;
 }
 
 const MENU_ITEMS = [
@@ -126,7 +125,6 @@ export default function AppSidebar({ isCollapsed = false, onClose }: AppSidebarP
     syncRoleAndPermissions();
   }, [session]);
 
-  // 2. Manejador para cerrar el menú cuando se hace clic en un ítem
   const handleItemClick = () => {
     if (typeof onClose === "function") {
       onClose();
@@ -163,7 +161,7 @@ export default function AppSidebar({ isCollapsed = false, onClose }: AppSidebarP
   return (
     <div className="flex flex-col justify-between h-full p-2 select-none font-sans antialiased">
       
-      {/* NAVEGACIÓN LATERAL */}
+      {/* NAVEGACIÓN LATERAL ADAPTABLE A MODO CLARO Y OSCURO */}
       <nav className="flex flex-col gap-1.5 pt-1 w-full">
         {!loadingPermissions && visibleMenuItems.map((item) => {
           const Icon = item.icon;
@@ -173,23 +171,29 @@ export default function AppSidebar({ isCollapsed = false, onClose }: AppSidebarP
             <Link
               key={item.href}
               href={item.href}
-              onClick={handleItemClick} // 👈 Cerramos el menú automáticamente al hacer clic
+              onClick={handleItemClick}
               className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer w-full ${
                 isActive
                   ? "bg-rose-500 text-white shadow-sm shadow-rose-500/30"
-                  : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
+                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60"
               }`}
             >
               <div className="flex items-center justify-center w-5 h-5 shrink-0">
                 <Icon 
                   size={18} 
                   className={`transition-transform duration-200 group-hover:scale-110 ${
-                    isActive ? "text-white" : "text-zinc-400 group-hover:text-rose-500"
+                    isActive 
+                      ? "text-white" 
+                      : "text-zinc-500 group-hover:text-rose-500 dark:text-zinc-400"
                   }`} 
                 />
               </div>
 
-              <span className="text-xs tracking-wide font-medium text-zinc-200 whitespace-nowrap">
+              <span className={`text-xs tracking-wide font-medium whitespace-nowrap ${
+                isActive 
+                  ? "text-white" 
+                  : "text-zinc-700 dark:text-zinc-200 group-hover:text-zinc-900 dark:group-hover:text-white"
+              }`}>
                 {item.name}
               </span>
             </Link>
@@ -198,7 +202,7 @@ export default function AppSidebar({ isCollapsed = false, onClose }: AppSidebarP
       </nav>
 
       {/* BOTÓN CIERRE DE SESIÓN */}
-      <div className="pt-2 border-t border-zinc-800/80 w-full">
+      <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/80 w-full">
         <button
           type="button"
           onClick={handleLogout}

@@ -1,6 +1,6 @@
 {
   "name": "lehanastudio",
-  "version": "13.0.6",
+  "version": "13.0.9",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -39,6 +39,7 @@
     "react-use": "^17.6.0",
     "recharts": "^3.7.0",
     "tailwind-merge": "^3.4.0",
+    "xlsx": "^0.18.5",
     "zustand": "^4.5.7"
   },
   "devDependencies": {

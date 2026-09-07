@@ -12,6 +12,11 @@ import {
   Award, 
   Star, 
   Lock, 
+  Mail,
+  Eye,
+  EyeOff,
+  Loader2,
+  ArrowRight,
   X, 
   MessageCircle, 
   GraduationCap, 
@@ -82,6 +87,7 @@ export default function HomePage() {
   const { login, error, isLoading } = useSessionStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   // Estados para el formulario de la Academia
@@ -156,7 +162,6 @@ export default function HomePage() {
           </nav>
 
           <div className="flex items-center gap-3">
-            {/* ENLACE GARANTIZADO A LA PÁGINA COMPLETA /reservar */}
             <Link
               href="/reservar"
               className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 px-5 py-2.5 text-xs font-extrabold text-white shadow-md shadow-rose-500/20 hover:from-rose-600 hover:to-pink-600 transition-all active:scale-95 cursor-pointer"
@@ -165,7 +170,6 @@ export default function HomePage() {
               <span>Agendar / Mi Perfil</span>
             </Link>
 
-            {/* BOTÓN INICIAR SESIÓN */}
             <button 
               type="button"
               onClick={() => setIsLoginOpen(true)}
@@ -460,68 +464,118 @@ export default function HomePage() {
 
       </main>
 
-      {/* 6. MODAL OSCURO DE INICIO DE SESIÓN PARA ESPECIALISTAS */}
+      {/* 6. MODAL OSCURO DE INICIO DE SESIÓN REDISEÑADO CON ESTILO CRM */}
       {isLoginOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900 p-6 sm:p-8 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900/95 p-6 sm:p-8 shadow-2xl space-y-6">
             
+            {/* BOTÓN DE CIERRE */}
             <button
               onClick={() => setIsLoginOpen(false)}
-              className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors p-1"
+              className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors p-1 cursor-pointer"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
 
-            <div className="flex justify-center mb-6">
-              <Image
-                src="/images/logo.png"
-                alt="Logo Lehana Studio"
-                width={150}
-                height={50}
-                style={{ height: "auto" }}
-                priority
-              />
+            {/* LOGO Y TÍTULO */}
+            <div className="text-center space-y-2">
+              <div className="flex justify-center mb-1">
+                <Image
+                  src="/images/logo.png"
+                  alt="Logo Lehana Studio"
+                  width={140}
+                  height={45}
+                  style={{ height: "auto" }}
+                  priority
+                />
+              </div>
+              <h2 className="text-base font-extrabold text-white tracking-tight">
+                Acceso al Personal
+              </h2>
+              <p className="text-[11px] font-medium text-zinc-400">
+                Ingresa con tu cuenta asignada para gestionar el CRM
+              </p>
             </div>
 
+            {/* ALERTA DE ERROR DE AUTENTICACIÓN */}
+            {error && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl animate-in fade-in duration-150">
+                <p className="text-xs font-bold text-rose-400 text-center leading-snug">
+                  {error}
+                </p>
+              </div>
+            )}
+
+            {/* FORMULARIO DE ACCESO */}
             <form onSubmit={handleLogin} className="space-y-4">
-              <h2 className="text-center text-lg font-bold text-white mb-2">Lehana Studio</h2>
               
-              <div>
-                <input
-                  type="email"
-                  placeholder="Email"
-                  autoComplete="email"
-                  className="w-full p-3 text-xs rounded-xl border border-zinc-800 bg-zinc-950 text-white outline-none focus:border-indigo-600 transition-colors"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <input
-                  type="password"
-                  placeholder="Contraseña"
-                  autoComplete="current-password"
-                  className="w-full p-3 text-xs rounded-xl border border-zinc-800 bg-zinc-950 text-white outline-none focus:border-indigo-600 transition-colors"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-
-              {error && (
-                <div className="p-2.5 bg-red-900/30 border border-red-800/50 rounded-xl">
-                  <p className="text-xs text-red-400 font-bold text-center">{error}</p>
+              {/* CAMPO CORREO */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">
+                  Correo Electrónico
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
+                    <Mail size={15} />
+                  </div>
+                  <input
+                    type="email"
+                    placeholder="ejemplo@lehanastudio.com"
+                    autoComplete="email"
+                    className="w-full pl-10 pr-3.5 py-3 text-xs font-medium rounded-2xl border border-zinc-800 bg-zinc-950 text-white outline-none focus:border-rose-500 transition-colors placeholder:text-zinc-600"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
                 </div>
-              )}
+              </div>
 
+              {/* CAMPO CONTRASEÑA */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">
+                  Contraseña
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
+                    <Lock size={15} />
+                  </div>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    className="w-full pl-10 pr-10 py-3 text-xs font-medium rounded-2xl border border-zinc-800 bg-zinc-950 text-white outline-none focus:border-rose-500 transition-colors placeholder:text-zinc-600"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* BOTÓN SUBMIT CON ESTILO ROSE CRM */}
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full rounded-xl bg-indigo-600 py-3.5 text-xs font-bold text-white hover:bg-indigo-500 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="w-full mt-2 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 py-3.5 text-xs font-extrabold text-white shadow-md shadow-rose-500/20 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
               >
-                {isLoading ? "Validando..." : "Acceder"}
+                {isLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin text-white" />
+                    <span>Iniciando sesión...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Acceder al Panel</span>
+                    <ArrowRight size={15} />
+                  </>
+                )}
               </button>
             </form>
           </div>
