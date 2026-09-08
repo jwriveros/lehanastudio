@@ -30,16 +30,17 @@ import {
   BellOff,
   Sparkles,
   Check,
+  Search,
 } from "lucide-react";
 
 /* =========================================================
-   🔹 TIPOS DE DATOS (INTACTOS)
+   🔹 TIPOS DE DATOS
 ========================================================= */
 type ClientItem = {
   nombre: string | null;
-  celular: number;
+  celular: number | string;
   numberc?: string | null;
-  indicador?: string | null;
+  indicador?: string | number | null;
 };
 
 type ServiceItem = {
@@ -80,6 +81,16 @@ interface ReservationFormProps {
   appointmentData?: any | null;
   associatedServices?: any[];
   onSuccess?: () => void;
+}
+
+/* =========================================================
+   🔹 HELPER: NORMALIZAR INDICATIVO SIN EL SIGNO "+"
+========================================================= */
+function formatIndicativo(val: any): string {
+  if (val === undefined || val === null || val === "") return "57";
+  const str = String(val).trim();
+  const digits = str.replace(/\D/g, "");
+  return digits || "57";
 }
 
 /* =========================================================
@@ -172,65 +183,319 @@ function CustomSelect({
 }
 
 /* =========================================================
-   🔹 LISTA DE PAÍSES (INTACTA)
+   🔹 LISTA COMPLETA DE MÁS DE 190 PAÍSES CON BANDERAS
 ========================================================= */
 const COUNTRIES = [
-  { code: "+57", flag: "🇨🇴", name: "Colombia" },
-  { code: "+1", flag: "🇺🇸", name: "Estados Unidos" },
-  { code: "+34", flag: "🇪🇸", name: "España" },
-  { code: "+52", flag: "🇲🇽", name: "México" },
-  { code: "+54", flag: "🇦🇷", name: "Argentina" },
-  { code: "+56", flag: "🇨🇱", name: "Chile" },
-  { code: "+51", flag: "🇵🇪", name: "Perú" },
-  { code: "+58", flag: "🇻🇪", name: "Venezuela" },
-  { code: "+593", flag: "🇪🇨", name: "Ecuador" },
-  { code: "+502", flag: "🇬🇹", name: "Guatemala" },
-  { code: "+53", flag: "🇨🇺", name: "Cuba" },
-  { code: "+591", flag: "🇧🇴", name: "Bolivia" },
-  { code: "+506", flag: "🇨🇷", name: "Costa Rica" },
-  { code: "+1", flag: "🇩🇴", name: "Rep. Dominicana" },
-  { code: "+503", flag: "🇸🇻", name: "El Salvador" },
-  { code: "+504", flag: "🇭🇳", name: "Honduras" },
-  { code: "+505", flag: "🇳🇮", name: "Nicaragua" },
-  { code: "+507", flag: "🇵🇦", name: "Panamá" },
-  { code: "+595", flag: "🇵🇾", name: "Paraguay" },
-  { code: "+598", flag: "🇺🇾", name: "Uruguay" },
-  { code: "+1", flag: "🇵🇷", name: "Puerto Rico" },
-  { code: "+55", flag: "🇧🇷", name: "Brasil" },
-  { code: "+33", flag: "🇫🇷", name: "Francia" },
-  { code: "+39", flag: "🇮🇹", name: "Italia" },
-  { code: "+49", flag: "🇩🇪", name: "Alemania" },
-  { code: "+44", flag: "🇬🇧", name: "Reino Unido" },
-  { code: "+351", flag: "🇵🇹", name: "Portugal" },
-  { code: "+41", flag: "🇨🇭", name: "Suiza" },
-  { code: "+32", flag: "🇧🇪", name: "Bélgica" },
-  { code: "+31", flag: "🇳🇱", name: "Países Bajos" },
-  { code: "+43", flag: "🇦🇹", name: "Austria" },
-  { code: "+46", flag: "🇸🇪", name: "Suecia" },
-  { code: "+47", flag: "🇳🇴", name: "Noruega" },
-  { code: "+45", flag: "🇩🇰", name: "Dinamarca" },
-  { code: "+358", flag: "🇫🇮", name: "Finlandia" },
-  { code: "+30", flag: "🇬🇷", name: "Grecia" },
-  { code: "+353", flag: "🇮🇪", name: "Irlanda" },
-  { code: "+7", flag: "🇷🇺", name: "Rusia" },
-  { code: "+86", flag: "🇨🇳", name: "China" },
-  { code: "+81", flag: "🇯🇵", name: "Japón" },
-  { code: "+82", flag: "🇰🇷", name: "Corea del Sur" },
-  { code: "+91", flag: "🇮🇳", name: "India" },
-  { code: "+61", flag: "🇦🇺", name: "Australia" },
-  { code: "+64", flag: "🇳🇿", name: "Nueva Zelanda" },
-  { code: "+27", flag: "🇿🇦", name: "Sudáfrica" },
-  { code: "+20", flag: "🇪🇬", name: "Egipto" },
-  { code: "+971", flag: "🇦🇪", name: "Emiratos Árabes" },
-  { code: "+972", flag: "🇮🇱", name: "Israel" },
-  { code: "+90", flag: "🇹🇷", name: "Turquía" },
-  { code: "+63", flag: "🇵🇭", name: "Filipinas" },
-  { code: "+66", flag: "🇹🇭", name: "Tailandia" },
-  { code: "+65", flag: "🇸🇬", name: "Singapur" },
-  { code: "+60", flag: "🇲🇾", name: "Malasia" },
-  { code: "+62", flag: "🇮🇩", name: "Indonesia" },
-  { code: "+84", flag: "🇻🇳", name: "Vietnam" }
+  { code: "93", flag: "🇦🇫", name: "Afganistán" },
+  { code: "355", flag: "🇦🇱", name: "Albania" },
+  { code: "49", flag: "🇩🇪", name: "Alemania" },
+  { code: "376", flag: "🇦🇩", name: "Andorra" },
+  { code: "244", flag: "🇦🇴", name: "Angola" },
+  { code: "1264", flag: "🇦🇮", name: "Anguila" },
+  { code: "1268", flag: "🇦🇬", name: "Antigua y Barbuda" },
+  { code: "966", flag: "🇸🇦", name: "Arabia Saudita" },
+  { code: "213", flag: "🇩🇿", name: "Argelia" },
+  { code: "54", flag: "🇦🇷", name: "Argentina" },
+  { code: "374", flag: "🇦🇲", name: "Armenia" },
+  { code: "297", flag: "🇦🇼", name: "Aruba" },
+  { code: "61", flag: "🇦🇺", name: "Australia" },
+  { code: "43", flag: "🇦🇹", name: "Austria" },
+  { code: "994", flag: "🇦🇿", name: "Azerbaiyán" },
+  { code: "1242", flag: "🇧🇸", name: "Bahamas" },
+  { code: "973", flag: "🇧🇭", name: "Bahréin" },
+  { code: "880", flag: "🇧🇩", name: "Bangladés" },
+  { code: "1246", flag: "🇧🇧", name: "Barbados" },
+  { code: "32", flag: "🇧🇪", name: "Bélgica" },
+  { code: "501", flag: "🇧🇿", name: "Belice" },
+  { code: "229", flag: "🇧🇯", name: "Benín" },
+  { code: "1441", flag: "🇧🇲", name: "Bermudas" },
+  { code: "375", flag: "🇧🇾", name: "Bielorrusia" },
+  { code: "591", flag: "🇧🇴", name: "Bolivia" },
+  { code: "387", flag: "🇧🇦", name: "Bosnia y Herzegovina" },
+  { code: "267", flag: "🇧🇼", name: "Botsuana" },
+  { code: "55", flag: "🇧🇷", name: "Brasil" },
+  { code: "673", flag: "🇧🇳", name: "Brunéi" },
+  { code: "359", flag: "🇧🇬", name: "Bulgaria" },
+  { code: "226", flag: "🇧🇫", name: "Burkina Faso" },
+  { code: "257", flag: "🇧🇮", name: "Burundi" },
+  { code: "975", flag: "🇧🇹", name: "Bután" },
+  { code: "238", flag: "🇨🇻", name: "Cabo Verde" },
+  { code: "855", flag: "🇰🇭", name: "Camboya" },
+  { code: "237", flag: "🇨🇲", name: "Camerún" },
+  { code: "1", flag: "🇨🇦", name: "Canadá" },
+  { code: "974", flag: "🇶🇦", name: "Catar" },
+  { code: "235", flag: "🇹🇩", name: "Chad" },
+  { code: "56", flag: "🇨🇱", name: "Chile" },
+  { code: "86", flag: "🇨🇳", name: "China" },
+  { code: "357", flag: "🇨🇾", name: "Chipre" },
+  { code: "57", flag: "🇨🇴", name: "Colombia" },
+  { code: "269", flag: "🇰🇲", name: "Comoras" },
+  { code: "242", flag: "🇨🇬", name: "Congo" },
+  { code: "82", flag: "🇰🇷", name: "Corea del Sur" },
+  { code: "225", flag: "🇨🇮", name: "Costa de Marfil" },
+  { code: "506", flag: "🇨🇷", name: "Costa Rica" },
+  { code: "385", flag: "🇭🇷", name: "Croacia" },
+  { code: "53", flag: "🇨🇺", name: "Cuba" },
+  { code: "599", flag: "🇨🇼", name: "Curazao" },
+  { code: "45", flag: "🇩🇰", name: "Dinamarca" },
+  { code: "253", flag: "🇩🇯", name: "Yibuti" },
+  { code: "1767", flag: "🇩🇲", name: "Dominica" },
+  { code: "593", flag: "🇪🇨", name: "Ecuador" },
+  { code: "20", flag: "🇪🇬", name: "Egipto" },
+  { code: "503", flag: "🇸🇻", name: "El Salvador" },
+  { code: "971", flag: "🇦🇪", name: "Emiratos Árabes Unidos" },
+  { code: "291", flag: "🇪🇷", name: "Eritrea" },
+  { code: "421", flag: "🇸🇰", name: "Eslovaquia" },
+  { code: "386", flag: "🇸🇮", name: "Eslovenia" },
+  { code: "34", flag: "🇪🇸", name: "España" },
+  { code: "1", flag: "🇺🇸", name: "Estados Unidos" },
+  { code: "372", flag: "🇪🇪", name: "Estonia" },
+  { code: "251", flag: "🇪🇹", name: "Etiopía" },
+  { code: "679", flag: "🇫🇯", name: "Fiyi" },
+  { code: "63", flag: "🇵🇭", name: "Filipinas" },
+  { code: "358", flag: "🇫🇮", name: "Finlandia" },
+  { code: "33", flag: "🇫🇷", name: "Francia" },
+  { code: "241", flag: "🇬🇦", name: "Gabón" },
+  { code: "220", flag: "🇬🇲", name: "Gambia" },
+  { code: "995", flag: "🇬🇪", name: "Georgia" },
+  { code: "233", flag: "🇬🇭", name: "Ghana" },
+  { code: "350", flag: "🇬🇮", name: "Gibraltar" },
+  { code: "1473", flag: "🇬🇩", name: "Granada" },
+  { code: "30", flag: "🇬🇷", name: "Grecia" },
+  { code: "299", flag: "🇬🇱", name: "Groenlandia" },
+  { code: "590", flag: "🇬🇵", name: "Guadalupe" },
+  { code: "1671", flag: "🇬🇺", name: "Guam" },
+  { code: "502", flag: "🇬🇹", name: "Guatemala" },
+  { code: "594", flag: "🇬🇫", name: "Guayana Francesa" },
+  { code: "224", flag: "🇬🇳", name: "Guinea" },
+  { code: "245", flag: "🇬🇼", name: "Guinea-Bisáu" },
+  { code: "240", flag: "🇬🇶", name: "Guinea Ecuatorial" },
+  { code: "592", flag: "🇬🇾", name: "Guyana" },
+  { code: "509", flag: "🇭🇹", name: "Haití" },
+  { code: "504", flag: "🇭🇳", name: "Honduras" },
+  { code: "852", flag: "🇭🇰", name: "Hong Kong" },
+  { code: "36", flag: "🇭🇺", name: "Hungría" },
+  { code: "91", flag: "🇮🇳", name: "India" },
+  { code: "62", flag: "🇮🇩", name: "Indonesia" },
+  { code: "964", flag: "🇮🇶", name: "Irak" },
+  { code: "98", flag: "🇮🇷", name: "Irán" },
+  { code: "353", flag: "🇮🇪", name: "Irlanda" },
+  { code: "354", flag: "🇮🇸", name: "Islandia" },
+  { code: "1345", flag: "🇰🇾", name: "Islas Caimán" },
+  { code: "682", flag: "🇨🇰", name: "Islas Cook" },
+  { code: "298", flag: "🇫🇴", name: "Islas Feroe" },
+  { code: "48", flag: "🇵🇱", name: "Polonia" },
+  { code: "677", flag: "🇸🇧", name: "Islas Salomón" },
+  { code: "972", flag: "🇮🇱", name: "Israel" },
+  { code: "39", flag: "🇮🇹", name: "Italia" },
+  { code: "1876", flag: "🇯🇲", name: "Jamaica" },
+  { code: "81", flag: "🇯🇵", name: "Japón" },
+  { code: "962", flag: "🇯🇴", name: "Jordania" },
+  { code: "7", flag: "🇰🇿", name: "Kazajistán" },
+  { code: "254", flag: "🇰🇪", name: "Kenia" },
+  { code: "996", flag: "🇰🇬", name: "Kirguistán" },
+  { code: "686", flag: "🇰🇮", name: "Kiribati" },
+  { code: "965", flag: "🇰🇼", name: "Kuwait" },
+  { code: "856", flag: "🇱🇦", name: "Laos" },
+  { code: "266", flag: "🇱🇸", name: "Lesoto" },
+  { code: "371", flag: "🇱🇻", name: "Letonia" },
+  { code: "961", flag: "🇱🇧", name: "Líbano" },
+  { code: "231", flag: "🇱🇷", name: "Liberia" },
+  { code: "218", flag: "🇱🇾", name: "Libia" },
+  { code: "423", flag: "🇱🇮", name: "Liechtenstein" },
+  { code: "370", flag: "🇱🇹", name: "Lituania" },
+  { code: "352", flag: "🇱🇺", name: "Luxemburgo" },
+  { code: "853", flag: "🇲🇴", name: "Macao" },
+  { code: "389", flag: "🇲🇰", name: "Macedonia del Norte" },
+  { code: "261", flag: "🇲🇬", name: "Madagascar" },
+  { code: "60", flag: "🇲🇾", name: "Malasia" },
+  { code: "265", flag: "🇲🇼", name: "Malaui" },
+  { code: "960", flag: "🇲🇻", name: "Maldivas" },
+  { code: "223", flag: "🇲🇱", name: "Malí" },
+  { code: "356", flag: "🇲🇹", name: "Malta" },
+  { code: "212", flag: "🇲🇦", name: "Marruecos" },
+  { code: "596", flag: "🇲🇶", name: "Martinica" },
+  { code: "230", flag: "🇲🇺", name: "Mauricio" },
+  { code: "222", flag: "🇲🇷", name: "Mauritania" },
+  { code: "52", flag: "🇲🇽", name: "México" },
+  { code: "691", flag: "🇫🇲", name: "Micronesia" },
+  { code: "373", flag: "🇲🇩", name: "Moldavia" },
+  { code: "377", flag: "🇲🇨", name: "Mónaco" },
+  { code: "976", flag: "🇲🇳", name: "Mongolia" },
+  { code: "382", flag: "🇲🇪", name: "Montenegro" },
+  { code: "1664", flag: "🇲🇸", name: "Montserrat" },
+  { code: "258", flag: "🇲🇿", name: "Mozambique" },
+  { code: "95", flag: "🇲🇲", name: "Myanmar" },
+  { code: "264", flag: "🇳🇦", name: "Namibia" },
+  { code: "977", flag: "🇳🇵", name: "Nepal" },
+  { code: "505", flag: "🇳🇮", name: "Nicaragua" },
+  { code: "227", flag: "🇳🇪", name: "Níger" },
+  { code: "234", flag: "🇳🇬", name: "Nigeria" },
+  { code: "47", flag: "🇳🇴", name: "Noruega" },
+  { code: "687", flag: "🇳🇨", name: "Nueva Caledonia" },
+  { code: "64", flag: "🇳🇿", name: "Nueva Zelanda" },
+  { code: "968", flag: "🇴🇲", name: "Omán" },
+  { code: "31", flag: "🇳🇱", name: "Países Bajos" },
+  { code: "92", flag: "🇵🇰", name: "Pakistán" },
+  { code: "680", flag: "🇵🇼", name: "Palaos" },
+  { code: "970", flag: "🇵🇸", name: "Palestina" },
+  { code: "507", flag: "🇵🇦", name: "Panamá" },
+  { code: "675", flag: "🇵🇬", name: "Papúa Nueva Guinea" },
+  { code: "595", flag: "🇵🇾", name: "Paraguay" },
+  { code: "51", flag: "🇵🇪", name: "Perú" },
+  { code: "689", flag: "🇵🇫", name: "Polinesia Francesa" },
+  { code: "48", flag: "🇵🇱", name: "Polonia" },
+  { code: "351", flag: "🇵🇹", name: "Portugal" },
+  { code: "1", flag: "🇵🇷", name: "Puerto Rico" },
+  { code: "44", flag: "🇬🇧", name: "Reino Unido" },
+  { code: "236", flag: "🇨🇫", name: "República Centroafricana" },
+  { code: "420", flag: "🇨🇿", name: "República Checa" },
+  { code: "1809", flag: "🇩🇴", name: "República Dominicana" },
+  { code: "262", flag: "🇷🇪", name: "Reunión" },
+  { code: "40", flag: "🇷🇴", name: "Rumania" },
+  { code: "250", flag: "🇷🇼", name: "Ruanda" },
+  { code: "7", flag: "🇷🇺", name: "Rusia" },
+  { code: "685", flag: "🇼🇸", name: "Samoa" },
+  { code: "1758", flag: "🇱🇨", name: "Santa Lucía" },
+  { code: "239", flag: "🇸🇹", name: "Santo Tomé y Príncipe" },
+  { code: "221", flag: "🇸🇳", name: "Senegal" },
+  { code: "381", flag: "🇷🇸", name: "Serbia" },
+  { code: "248", flag: "🇸🇨", name: "Seychelles" },
+  { code: "232", flag: "🇸🇱", name: "Sierra Leona" },
+  { code: "65", flag: "🇸🇬", name: "Singapur" },
+  { code: "963", flag: "🇸🇾", name: "Siria" },
+  { code: "252", flag: "🇸🇴", name: "Somalia" },
+  { code: "94", flag: "🇱🇰", name: "Sri Lanka" },
+  { code: "27", flag: "🇿🇦", name: "Sudáfrica" },
+  { code: "249", flag: "🇸🇩", name: "Sudán" },
+  { code: "46", flag: "🇸🇪", name: "Suecia" },
+  { code: "41", flag: "🇨🇭", name: "Suiza" },
+  { code: "597", flag: "🇸🇷", name: "Surinam" },
+  { code: "66", flag: "🇹🇭", name: "Tailandia" },
+  { code: "886", flag: "🇹🇼", name: "Taiwán" },
+  { code: "255", flag: "🇹🇿", name: "Tanzania" },
+  { code: "992", flag: "🇹🇯", name: "Tayikistán" },
+  { code: "670", flag: "🇹🇱", name: "Timor Oriental" },
+  { code: "228", flag: "🇹🇬", name: "Togo" },
+  { code: "676", flag: "🇹🇴", name: "Tonga" },
+  { code: "1868", flag: "🇹🇹", name: "Trinidad y Tobago" },
+  { code: "216", flag: "🇹🇳", name: "Túnez" },
+  { code: "993", flag: "🇹🇲", name: "Turkmenistán" },
+  { code: "90", flag: "🇹🇷", name: "Turquía" },
+  { code: "380", flag: "🇺🇦", name: "Ucrania" },
+  { code: "256", flag: "🇺🇬", name: "Uganda" },
+  { code: "598", flag: "🇺🇾", name: "Uruguay" },
+  { code: "998", flag: "🇺🇿", name: "Uzbekistán" },
+  { code: "58", flag: "🇻🇪", name: "Venezuela" },
+  { code: "84", flag: "🇻🇳", name: "Vietnam" },
+  { code: "260", flag: "🇿🇲", name: "Zambia" },
+  { code: "263", flag: "🇿🇼", name: "Zimbabue" }
 ].sort((a, b) => a.name.localeCompare(b.name));
+
+/* =========================================================
+   🔹 SUB-COMPONENTE: SELECTOR DE PAÍSES INTERACTIVO
+========================================================= */
+function CountrySelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const cleanValue = formatIndicativo(value);
+  const selectedCountry = COUNTRIES.find((c) => c.code === cleanValue) || {
+    flag: "🌐",
+    code: cleanValue,
+    name: "Otro",
+  };
+
+  const filteredCountries = COUNTRIES.filter(
+    (c) =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.code.includes(search)
+  );
+
+  return (
+    <div className="relative w-28" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between rounded-2xl border border-zinc-200/80 bg-white py-2 px-2.5 text-[11px] font-black shadow-2xs hover:border-rose-300 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 transition-all cursor-pointer"
+      >
+        <span className="flex items-center gap-1">
+          <span>{selectedCountry.flag}</span>
+          <span>{selectedCountry.code}</span>
+        </span>
+        <ChevronDown
+          size={12}
+          className={`text-zinc-400 transition-transform ${
+            open ? "rotate-180 text-rose-500" : ""
+          }`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full mt-2 w-64 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="relative mb-1">
+            <Search
+              size={12}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400"
+            />
+            <input
+              type="text"
+              placeholder="Buscar país o código..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-7 pr-2 py-1.5 text-[10px] font-bold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-100 outline-none focus:border-rose-400"
+              autoFocus
+            />
+          </div>
+
+          <div className="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
+            {filteredCountries.map((c) => (
+              <button
+                key={`${c.name}-${c.code}`}
+                type="button"
+                onClick={() => {
+                  onChange(c.code);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer ${
+                  c.code === cleanValue
+                    ? "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400"
+                    : "text-zinc-700 dark:text-zinc-300 hover:bg-rose-500/10 hover:text-rose-500"
+                }`}
+              >
+                <span className="flex items-center gap-1.5 truncate">
+                  <span>{c.flag}</span>
+                  <span className="truncate">{c.name}</span>
+                </span>
+                <span className="font-mono text-zinc-400 font-bold shrink-0">
+                  {c.code}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const EMPTY_LINE: ServiceLine = {
   servicio: "",
@@ -244,7 +509,7 @@ const EMPTY_LINE: ServiceLine = {
 const EMPTY_FORM: FormState = {
   cliente: "",
   celular: "",
-  indicativo: "+57",
+  indicativo: "57",
   sede: "Marquetalia",
   cantidad: 1,
   estado: "Nueva reserva creada",
@@ -265,7 +530,7 @@ const SEDE_OPTIONS = [
 ];
 
 /* =========================================================
-   🔹 HELPERS DE HORA (INTACTOS)
+   🔹 HELPERS DE HORA
 ========================================================= */
 function toDatetimeLocal(dateValue: any) {
   if (!dateValue) return "";
@@ -338,7 +603,7 @@ export default function ReservationForm({
     return () => { mounted = false; };
   }, []);
 
-  /* PRECARGAR DATOS */
+  /* PRECARGAR DATOS CON DEDUCCIÓN INTELIGENTE DEL INDICATIVO */
   useEffect(() => {
     if (!appointmentData) {
       setForm(EMPTY_FORM);
@@ -410,10 +675,33 @@ export default function ReservationForm({
         }
       }
 
+      // EXTRAER E INDICAR EL CÓDIGO REAL DEL PAÍS DESDE CLIENTES
+      const cleanPhone = String(raw.celular ?? appointmentData.celular ?? "").replace(/\D/g, "");
+      let detectedIndicativo = raw.indicador ?? raw.indicativo ?? appointmentData.indicador ?? appointmentData.indicativo;
+
+      if ((!detectedIndicativo || detectedIndicativo === "57") && cleanPhone) {
+        const { data: clientData } = await supabase
+          .from("clients")
+          .select("indicador, numberc")
+          .eq("celular", cleanPhone)
+          .maybeSingle();
+
+        if (clientData) {
+          if (clientData.indicador) {
+            detectedIndicativo = clientData.indicador;
+          } else if (clientData.numberc) {
+            const cleanNumberc = String(clientData.numberc).replace(/\D/g, "");
+            if (cleanNumberc.endsWith(cleanPhone)) {
+              detectedIndicativo = cleanNumberc.slice(0, cleanNumberc.length - cleanPhone.length);
+            }
+          }
+        }
+      }
+
       setForm({
         cliente: raw.cliente ?? appointmentData.cliente ?? "",
-        celular: String(raw.celular ?? appointmentData.celular ?? ""),
-        indicativo: raw.indicativo ?? "+57",
+        celular: cleanPhone,
+        indicativo: formatIndicativo(detectedIndicativo),
         sede: raw.sede ?? "Marquetalia",
         cantidad: 1,
         estado: raw.estado ?? "Nueva reserva creada",
@@ -474,7 +762,7 @@ export default function ReservationForm({
     return sum * (Number(form.cantidad) || 1);
   }, [form.lines, form.cantidad]);
 
-  /* ENVÍO DE DATOS */
+  /* ENVÍO DE DATOS SIN EL SIGNO "+" EN EL FORMATO */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.cliente.trim() || !form.celular.trim()) { alert("Faltan datos obligatorios"); return; }
@@ -482,12 +770,17 @@ export default function ReservationForm({
     try {
       const lines = form.lines.filter((l) => l.servicio.trim());
       const cleanPhone = String(form.celular).replace(/\D/g, "");
-      const cleanIndicativo = String(form.indicativo).replace(/\D/g, "");
-      const fullPhone = `+${cleanIndicativo}${cleanPhone}`;
+      const cleanIndicativo = formatIndicativo(form.indicativo);
+      const fullPhone = `${cleanIndicativo}${cleanPhone}`;
 
       if (saveClient) {
         await supabase.from("clients").upsert(
-          { nombre: form.cliente.trim(), celular: cleanPhone, indicador: form.indicativo },
+          { 
+            nombre: form.cliente.trim(), 
+            celular: cleanPhone, 
+            indicador: cleanIndicativo,
+            numberc: fullPhone 
+          },
           { onConflict: "celular" }
         );
       }
@@ -501,7 +794,7 @@ export default function ReservationForm({
           const updates = {
             cliente: form.cliente.trim(),
             celular: cleanPhone,             
-            indicativo: form.indicativo,
+            indicativo: cleanIndicativo,
             sede: form.sede,
             servicio: l.servicio,
             especialista: l.especialista,
@@ -535,7 +828,8 @@ export default function ReservationForm({
                 appointmentId: appointmentData.id,
                 cliente: form.cliente.trim(),
                 celular: cleanPhone,
-                indicativo: form.indicativo,
+                indicativo: cleanIndicativo,
+                fullPhone: fullPhone,
                 sede: form.sede,
                 servicio: l.servicio,
                 especialista: l.especialista,
@@ -560,7 +854,7 @@ export default function ReservationForm({
         action: "CREATE",
         cliente: form.cliente.trim(),
         celular: cleanPhone,
-        indicativo: form.indicativo,
+        indicativo: cleanIndicativo,
         fullPhone: fullPhone,
         sede: form.sede,
         cantidad: String(form.cantidad),
@@ -679,7 +973,9 @@ export default function ReservationForm({
                     renderItem={(i) => (
                       <div className="flex flex-col">
                         <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{i.nombre}</span>
-                        <span className="text-[10px] text-zinc-400 font-semibold">{i.celular}</span>
+                        <span className="text-[10px] text-zinc-400 font-semibold">
+                          +{formatIndicativo(i.indicador)} {i.celular}
+                        </span>
                       </div>
                     )}
                     onChange={(val) => updateField("cliente", val)}
@@ -687,8 +983,8 @@ export default function ReservationForm({
                       setForm((p) => ({
                         ...p,
                         cliente: i.nombre ?? "",
-                        celular: String(i.celular ?? ""),
-                        indicativo: i.indicador || p.indicativo,
+                        celular: String(i.celular ?? "").replace(/\D/g, ""),
+                        indicativo: formatIndicativo(i.indicador),
                       }))
                     }
                     inputClassName="w-full rounded-2xl border border-zinc-200/80 bg-white py-2 pl-10 pr-3 text-[11px] font-bold text-zinc-900 shadow-2xs focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
@@ -696,24 +992,14 @@ export default function ReservationForm({
                 </div>
               </div>
 
+              {/* CAMPO DE TELÉFONO MÓVIL CON SELECTOR DE PAÍS INTERACTIVO */}
               <div className="space-y-1">
                 <label htmlFor="celular" className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Teléfono Móvil</label>
                 <div className="flex gap-2">
-                  <div className="relative w-24">
-                    <input
-                      type="text"
-                      list="indicativos-list"
-                      value={form.indicativo}
-                      onChange={(e) => updateField("indicativo", e.target.value)}
-                      className="w-full rounded-2xl border border-zinc-200/80 bg-white py-2 px-2.5 text-[11px] font-black text-center shadow-2xs focus:border-rose-300 focus:outline-none dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
-                      placeholder="+00"
-                    />
-                    <datalist id="indicativos-list">
-                      {COUNTRIES.map((c) => (
-                        <option key={`${c.name}-${c.code}`} value={c.code}>{c.flag} {c.name}</option>
-                      ))}
-                    </datalist>
-                  </div>
+                  <CountrySelect
+                    value={form.indicativo}
+                    onChange={(val) => updateField("indicativo", val)}
+                  />
 
                   <div className="group relative flex-1">
                     <Phone size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-rose-500" />
@@ -721,9 +1007,9 @@ export default function ReservationForm({
                       id="celular"
                       type="tel"
                       value={form.celular}
-                      onChange={(e) => updateField("celular", e.target.value)}
+                      onChange={(e) => updateField("celular", e.target.value.replace(/\D/g, ""))}
                       className="w-full rounded-2xl border border-zinc-200/80 bg-white py-2 pl-9 pr-3 text-[11px] font-bold shadow-2xs focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
-                      placeholder="Ej: 3001234567"
+                      placeholder="Ej: 1000000000"
                     />
                   </div>
                 </div>
@@ -802,7 +1088,7 @@ export default function ReservationForm({
                         <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Especialista</label>
                         <CustomSelect
                           value={line.especialista}
-                          onChange={(val) => updateLine(index, { especialista: val })}
+                          onChange={(val: string) => updateLine(index, { especialista: val })}
                           options={specialistOptions}
                           placeholder={loadingSpecialists ? "Cargando..." : "Seleccionar especialista..."}
                           icon={Users}
@@ -886,7 +1172,7 @@ export default function ReservationForm({
                   <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Estado de la Cita</label>
                   <CustomSelect
                     value={form.estado}
-                    onChange={(val) => updateField("estado", val)}
+                    onChange={(val: string) => updateField("estado", val)}
                     options={ESTADO_OPTIONS}
                   />
                 </div>
@@ -895,7 +1181,7 @@ export default function ReservationForm({
                   <label className="text-[9px] font-black uppercase tracking-wider text-zinc-400">Sede</label>
                   <CustomSelect
                     value={form.sede}
-                    onChange={(val) => updateField("sede", val)}
+                    onChange={(val: string) => updateField("sede", val)}
                     options={SEDE_OPTIONS}
                     icon={Building}
                   />
