@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
 
-// 1. Definición de interfaces para tipar los objetos y evitar errores de 'any'
+// Interfaces para tipado seguro en TypeScript
 interface Appointment {
   idx?: number;
   id?: number;
@@ -27,7 +27,7 @@ interface FichaTecnica {
   [key: string]: unknown;
 }
 
-// 2. Función auxiliar para normalizar búsquedas telefónicas
+// Función auxiliar para normalizar búsquedas telefónicas
 function normalizePhone(input: string) {
   const clean = input.replace(/\D/g, '');
   
@@ -111,13 +111,12 @@ export async function GET(request: NextRequest) {
         .or(`telefono.eq.${phoneVars.full_phone},telefono.eq.${phoneVars.celular}`)
     ]);
 
-    // Procesar información con parámetros tipados explícitamente
+    // Procesamiento de datos de citas
     const totalReservas = appointments?.length || 0;
     const especialistaCount: Record<string, number> = {};
     const serviciosFrecuentes: string[] = [];
     const sedesUsadas: Record<string, number> = {};
 
-    // Solución al error de 'app' con tipo explícito (app: Appointment)
     (appointments as Appointment[] | null)?.forEach((app: Appointment) => {
       if (app.especialista) {
         especialistaCount[app.especialista] = (especialistaCount[app.especialista] || 0) + 1;
@@ -130,30 +129,51 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    const especialistaFavorita = Object.entries(especialistaCount).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-    const sedeHabitual = Object.entries(sedesUsadas).sort((a, b) => b[1] - a[1])[0]?.[0] || clientData?.sede || 'Marquetalia';
+    const especialistaFavorita = Object.entries(especialistaCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+    const sedeHabitual = Object.entries(sedesUsadas).sort((a, b) => b[1] - a[1])[0]?.[0] || clientData?.sede || 'N/A';
 
+    // 1. Estructura garantizada del cliente (Con valores "N/A" si no existe)
+    const clienteEstructurado = clientData ? {
+      ...clientData,
+      nombre: clientData.nombre || appointments?.[0]?.cliente || 'N/A',
+      celular: clientData.celular || phoneVars.celular || 'N/A',
+      full_phone: clientData.numberc || phoneVars.full_phone || 'N/A',
+      sede: clientData.sede || sedeHabitual,
+      estado: clientData.estado || 'N/A',
+      tipo: clientData.tipo || 'N/A',
+    } : {
+      id: 'N/A',
+      nombre: appointments?.[0]?.cliente || 'N/A',
+      celular: phoneVars.celular || 'N/A',
+      full_phone: phoneVars.full_phone || 'N/A',
+      sede: 'N/A',
+      estado: 'Cliente Nuevo',
+      tipo: 'N/A',
+      BSUID: phoneVars.bsuid || 'N/A',
+      correo_electronico: 'N/A',
+      direccion: 'N/A',
+      municipio: 'N/A',
+      notas: 'N/A'
+    };
+
+    // 2. Respuesta limpia y predecible
     return NextResponse.json({
       success: true,
       search_identifiers_used: phoneVars,
-      cliente: clientData || {
-        nombre: appointments?.[0]?.cliente || 'Cliente no registrado',
-        celular: phoneVars.celular,
-        full_phone: phoneVars.full_phone,
-        sede_principal: sedeHabitual,
-      },
+      cliente: clienteEstructurado,
       insights_ia: {
         total_citas: totalReservas,
         especialista_favorita: especialistaFavorita,
         sede_habitual: sedeHabitual,
-        servicios_realizados: [...new Set(serviciosFrecuentes)],
-        // Solución al error de 'f' con tipo explícito (f: FichaTecnica)
-        observaciones_tecnicas: (fichas as FichaTecnica[] | null)?.map((f: FichaTecnica) => ({
-          trabajo: f.job,
-          notas: f.observaciones
-        })) || [],
-        ultimo_seguimiento: seguimientos?.[0] || null,
-        ultima_encuesta: encuestas?.[0] || null,
+        servicios_realizados: serviciosFrecuentes.length > 0 ? [...new Set(serviciosFrecuentes)] : ['N/A'],
+        observaciones_tecnicas: (fichas && fichas.length > 0)
+          ? (fichas as FichaTecnica[]).map((f: FichaTecnica) => ({
+              trabajo: f.job || 'N/A',
+              notas: f.observaciones || 'N/A'
+            }))
+          : [],
+        ultimo_seguimiento: seguimientos?.[0] || 'N/A',
+        ultima_encuesta: encuestas?.[0] || 'N/A',
       },
       historial_completo: {
         reservas: appointments || [],
