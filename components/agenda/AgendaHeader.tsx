@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { FilterDropdown } from "./FilterDropdown";
 import CreateBookingDrawer from "./CreateBookingDrawer";
+import UnpaidBookingsModal from "./UnpaidBookingsModal";
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,6 +15,7 @@ import {
   Plus,
   Calendar as CalendarIcon,
   Sparkles,
+  DollarSign,
 } from "lucide-react";
 
 interface Props {
@@ -57,6 +59,25 @@ export function AgendaHeader({
 }: Props) {
   const [showPicker, setShowPicker] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [unpaidModalOpen, setUnpaidModalOpen] = useState(false);
+  const [unpaidCount, setUnpaidCount] = useState(0);
+
+  // Cargar el conteo de citas pendientes por pagar de ayer hacia atrás
+  const fetchUnpaidCount = async () => {
+    try {
+      const res = await fetch("/api/bookings/unpaid-past");
+      const json = await res.json();
+      if (json.ok) {
+        setUnpaidCount(json.total_unpaid || 0);
+      }
+    } catch (err) {
+      console.error("Error obteniendo el conteo de citas por pagar:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchUnpaidCount();
+  }, []);
 
   const label = useMemo(() => {
     if (view === "day") {
@@ -93,7 +114,7 @@ export function AgendaHeader({
     <>
       <header className="relative z-50 flex flex-col gap-3 border-b border-zinc-200/80 bg-white p-3 sm:p-4 dark:border-zinc-800 dark:bg-zinc-900/90 backdrop-blur-md font-sans text-zinc-900 dark:text-zinc-100">
         
-        {/* FILA SUPERIOR: Controles principales y filtros */}
+        {/* FILA SUPERIOR: Controles principales, sección Por Pagar y filtros */}
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
             
@@ -118,7 +139,23 @@ export function AgendaHeader({
               <span>Hoy</span>
             </button>
 
-            {/* 3. Selector de Fecha y Navegación Flechas */}
+            {/* 3. Botón Por Pagar (Ayer hacia atrás no pagadas) */}
+            <button
+              type="button"
+              onClick={() => setUnpaidModalOpen(true)}
+              className="relative flex h-9 items-center gap-1.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 px-3.5 text-xs font-extrabold text-rose-500 hover:bg-rose-500/20 transition-all active:scale-95 cursor-pointer flex-shrink-0"
+              title="Ver citas de ayer hacia atrás pendientes por pagar"
+            >
+              <DollarSign size={14} />
+              <span>Por pagar</span>
+              {unpaidCount > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black shadow-xs">
+                  {unpaidCount}
+                </span>
+              )}
+            </button>
+
+            {/* 4. Selector de Fecha y Navegación Flechas */}
             <div className="flex h-9 items-center rounded-2xl bg-zinc-100/80 dark:bg-zinc-950 border border-zinc-200/60 dark:border-zinc-800/80 p-0.5 flex-shrink-0">
               <button
                 type="button"
@@ -189,7 +226,7 @@ export function AgendaHeader({
               </button>
             </div>
 
-            {/* 4. Selector de Vista (DÍA / SEM / MES) */}
+            {/* 5. Selector de Vista (DÍA / SEM / MES) */}
             <div className="flex h-9 overflow-hidden rounded-2xl border border-zinc-200/80 bg-zinc-100/80 p-0.5 text-xs dark:border-zinc-800 dark:bg-zinc-950 flex-shrink-0">
               {(["day", "week", "month"] as const).map((v) => (
                 <button
@@ -280,9 +317,22 @@ export function AgendaHeader({
         )}
       </header>
 
+      {/* DRAWER DE CREACIÓN DE RESERVAS */}
       <CreateBookingDrawer
         open={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
+      />
+
+      {/* MODAL DE CITAS POR PAGAR (AYER HACIA ATRÁS) */}
+      <UnpaidBookingsModal
+        isOpen={unpaidModalOpen}
+        onClose={() => {
+          setUnpaidModalOpen(false);
+          fetchUnpaidCount(); // Re-consultar el contador al cerrar por si se marcó alguna como pagada
+        }}
+        onSelectBookingDate={(selectedDate) => {
+          onDateChange?.(selectedDate);
+        }}
       />
     </>
   );

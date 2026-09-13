@@ -10,6 +10,16 @@ function toUTCTimestamp(localDateTime: string) {
   return new Date(localDateTime).toISOString();
 }
 
+/* =========================
+   🔹 HELPER CÁLCULO PRECIO FINAL
+========================= */
+function calculatePriceFinal(basePrice: number, discountPercentage: number): number {
+  const safeBase = Math.max(0, Number(basePrice) || 0);
+  const safePercent = Math.min(100, Math.max(0, Number(discountPercentage) || 0));
+  const discountAmount = Math.round((safeBase * safePercent) / 100);
+  return Math.max(0, safeBase - discountAmount);
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createSupabaseServerClient();
@@ -67,12 +77,18 @@ export async function POST(req: Request) {
     }
 
     /* =========================
-       2️⃣ CONSTRUIR FILAS (ROWS)
+       2️⃣ CONSTRUIR FILAS (ROWS) CON DESCUENTO Y PRICE_FINAL
     ========================= */
     const rows: any[] = [];
     for (let personIndex = 0; personIndex < peopleCount; personIndex++) {
       const isPrimary = personIndex === 0;
       for (const s of items) {
+        const basePrice = Number(s.price || 0);
+        const discountPct = Number(s.descuento || 0);
+        const finalPrice = s.price_final !== undefined 
+          ? Number(s.price_final) 
+          : calculatePriceFinal(basePrice, discountPct);
+
         rows.push({
           cliente: isPrimary ? cliente : `Acompañante de ${cliente}`,
           servicio: s.servicio,
@@ -82,7 +98,9 @@ export async function POST(req: Request) {
           celular: isPrimary ? normalizedCelular : null,
           sede,
           cantidad: peopleCount,
-          price: s.price ?? 0,
+          price: basePrice,
+          descuento: discountPct,        // Guarda el entero del porcentaje (ej. 10 o 0)
+          price_final: finalPrice,        // Guarda el valor en pesos tras aplicar el porcentaje
           indicativo: isPrimary ? indicativo : null,
           is_primary_client: isPrimary,
           primary_client_name: cliente,
@@ -116,13 +134,14 @@ export async function POST(req: Request) {
       ]);
     }
 
+    // El total de la reserva se calcula sumando el price_final
     const total = inserted.reduce(
-      (acc: number, r: any) => acc + Number(r.price || 0),
+      (acc: number, r: any) => acc + Number(r.price_final !== undefined ? r.price_final : r.price || 0),
       0
     );
 
     /* =========================
-       5️⃣ NOTIFICAR A N8N (ENVÍO ÚNICO)
+       5️⃣ NOTIFICAR A N8N (ENVÍO ÚNICO CON PRECIO FINAL)
     ========================= */
     if (process.env.N8N_WEBHOOK_URL && inserted && inserted.length > 0) {
       // Tomamos el primer servicio del cliente principal como referencia
@@ -145,7 +164,7 @@ export async function POST(req: Request) {
           sede: firstRow.sede,
           servicio: displayService,
           especialista: firstRow.especialista,
-          price: total, // Enviamos el total de la reserva
+          price: total, // Enviamos el total real con descuento de la reserva
           appointment_at: firstRow.appointment_at, // Hora de inicio del primer servicio
           appointmentGroupId: firstRow.appointment_id,
           totalServices: items.length,
