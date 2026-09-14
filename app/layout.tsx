@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { VhFixer } from "../components/utils/VhFixer";
 import Script from "next/script";
+import { Toaster } from "sonner"; // 👈 Importamos Toaster de sonner
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -61,7 +62,27 @@ export default function RootLayout({
       >
         <VhFixer />
         {/* Providers envuelve la aplicación permitiendo el cambio de tema global */}
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+
+          {/* 🎯 CONTENEDOR GLOBAL DE NOTIFICACIONES ESTILIZADAS */}
+          <Toaster
+            theme="dark"
+            position="top-center"
+            richColors
+            closeButton
+            toastOptions={{
+              style: {
+                background: "#18181b", // Fondo oscuro (zinc-900)
+                border: "1px solid #27272a", // Borde sutil (zinc-800)
+                color: "#f4f4f5",
+                borderRadius: "1.25rem", // Bordes redondeados estilizados
+                fontSize: "0.8rem",
+                fontWeight: "bold",
+              },
+            }}
+          />
+        </Providers>
       </body>
     </html>
   );

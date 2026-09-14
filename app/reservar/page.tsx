@@ -2,11 +2,10 @@
 
 import React, { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import Link from "next/link";
-import LocationSearch from "@/components/LocationSearch";
-
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner"; // 👈 Importamos toast
 import {
   Phone,
   Calendar as CalendarIcon,
@@ -28,31 +27,41 @@ import {
   Loader2,
   Mail,
   Edit3,
+  MessageCircle,
+  AlertCircle,
 } from "lucide-react";
 
 /* =========================================================
-   1. SEDES DE LEHANA STUDIO
+   1. CONFIGURACIÓN DE SOPORTE DIRECTO WHATSAPP (LESLIE)
+========================================================= */
+const LESLIE_WHATSAPP_NUMBER = "573058633774";
+
+/* =========================================================
+   2. SEDES DE LEHANA STUDIO
 ========================================================= */
 const SEDES_INFO = [
   {
     name: "Marquetalia",
     address: "Marquetalia, Palomino, La Guajira",
     mapUrl: "https://maps.app.goo.gl/Ynt2Zaak3trXt2KL8",
+    isMain: true,
   },
   {
     name: "Buga",
     address: "Carrera 14 # 6-32, Buga, Valle del Cauca",
     mapUrl: "https://www.google.com/maps?q=3.899355,-76.3000322&z=17&hl=es",
+    isMain: false,
   },
   {
     name: "Santa Marta",
     address: "Carrera 3 # 18-20, Centro Histórico, Santa Marta",
     mapUrl: "https://maps.app.goo.gl/UXPCcoGLmCpedVRx6",
+    isMain: false,
   },
 ];
 
 /* =========================================================
-   2. ORDEN DE CATEGORÍAS PÚBLICAS Y EXCLUSIONES
+   3. ORDEN DE CATEGORÍAS PÚBLICAS Y EXCLUSIONES
 ========================================================= */
 const CATEGORIAS_ORDEN = [
   "Todos",
@@ -63,15 +72,8 @@ const CATEGORIAS_ORDEN = [
   "Depilación",
 ];
 
-const CATEGORIAS_EXCLUIDAS = [
-  "retoques de pestañas",
-  "refuerzo de color micropigmentación",
-  "retoque",
-  "refuerzo",
-];
-
 /* =========================================================
-   3. CATÁLOGO BASE DE RESPALDO (FALLBACK SEGURO)
+   4. CATÁLOGO BASE DE RESPALDO (FALLBACK SEGURO)
 ========================================================= */
 const INITIAL_PUBLIC_SERVICES: ServiceItem[] = [
   {
@@ -107,7 +109,7 @@ const INITIAL_PUBLIC_SERVICES: ServiceItem[] = [
 ];
 
 /* =========================================================
-   4. PAÍSES Y SELECTOR CON COLOMBIA (+57)
+   5. PAÍSES Y SELECTOR CON COLOMBIA (+57)
 ========================================================= */
 const RAW_COUNTRIES = [
   { code: "57", flag: "🇨🇴", name: "Colombia" },
@@ -284,7 +286,7 @@ function formatTime12h(time24: string): string {
 }
 
 /* =========================================================
-   5. COMPONENTE PRINCIPAL DE RESERVAS
+   6. COMPONENTE PRINCIPAL DE RESERVAS
 ========================================================= */
 function BookingContent() {
   const [bookingSubStep, setBookingSubStep] = useState<number>(1);
@@ -300,8 +302,16 @@ function BookingContent() {
   const [clientFound, setClientFound] = useState<boolean | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
 
-  // Sedes y Catálogo
+  // Sedes y Disponibilidad de Agendas Regionales
   const [selectedSede, setSelectedSede] = useState(SEDES_INFO[0]);
+  const [sedesAvailabilityMap, setSedesAvailabilityMap] = useState<Record<string, boolean>>({
+    Marquetalia: true,
+    Buga: false,
+    "Santa Marta": false,
+  });
+  const [checkingSedesAvailability, setCheckingSedesAvailability] = useState(true);
+
+  // Catálogo
   const [allServices, setAllServices] = useState<ServiceItem[]>(INITIAL_PUBLIC_SERVICES);
   const [selectedCategory, setSelectedCategory] = useState<string>("Todos");
   const [loadingServices, setLoadingServices] = useState(false);
@@ -337,7 +347,44 @@ function BookingContent() {
 
   useEffect(() => {
     fetchServicesFromSupabase();
+    fetchSedesAvailability();
   }, []);
+
+  /* 🔹 VALIDAR FECHAS PROGRAMADAS EN SUPABASE PARA BUGA Y SANTA MARTA */
+  const fetchSedesAvailability = async () => {
+    setCheckingSedesAvailability(true);
+    try {
+      const todayStr = new Date().toISOString().split("T")[0];
+
+      const { data, error } = await supabase
+        .from("specialist_overrides")
+        .select("sede")
+        .eq("type", "assigned_sede")
+        .gte("date", todayStr);
+
+      const activeSedes: Record<string, boolean> = {
+        Marquetalia: true,
+        Buga: false,
+        "Santa Marta": false,
+      };
+
+      if (!error && data) {
+        data.forEach((row: any) => {
+          if (row.sede) {
+            const normalized = row.sede.trim();
+            if (normalized.toLowerCase() === "buga") activeSedes["Buga"] = true;
+            if (normalized.toLowerCase() === "santa marta") activeSedes["Santa Marta"] = true;
+          }
+        });
+      }
+
+      setSedesAvailabilityMap(activeSedes);
+    } catch (err) {
+      console.error("Error verificando disponibilidad de sedes:", err);
+    } finally {
+      setCheckingSedesAvailability(false);
+    }
+  };
 
   // CARGA DE SERVICIOS
   const fetchServicesFromSupabase = async () => {
@@ -421,6 +468,7 @@ function BookingContent() {
           if (emailFound) setClientEmail(emailFound);
           setClientFound(true);
           setIsEditingName(false);
+          toast.success(`¡Te hemos reconocido, ${nameFound}!`);
         } else {
           setClientFound(false);
           setClientName("");
@@ -556,6 +604,35 @@ function BookingContent() {
     return clientName.trim() ? clientName.trim() : "Para mí";
   };
 
+  /* 🎯 GENERAR ENLACE DIRECTO DE WHATSAPP PARA LESLIE */
+  const getWhatsAppHelpLink = () => {
+    const serviceName = selectedService?.Servicio || cartItems[0]?.service.Servicio || "un servicio";
+    let message = "";
+
+    if (selectedDate) {
+      message = `Hola Leslie, quiero agendar ${serviceName} para el día ${selectedDate} pero no encontré ninguna hora que me sirva en la página web, me ayudas por favor.`;
+    } else {
+      message = `Hola Leslie, quiero agendar ${serviceName} pero no encontré ninguna hora que me sirva en la página web, me ayudas por favor.`;
+    }
+
+    return `https://wa.me/${LESLIE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+  };
+
+  /* 🎯 SELECCIÓN DE SEDE CON NOTIFICACIÓN ESTILIZADA (REEMPLAZO DE ALERT) */
+  const handleSelectSede = (sedeObj: (typeof SEDES_INFO)[0]) => {
+    const hasAvailableDates = sedesAvailabilityMap[sedeObj.name] ?? false;
+
+    if (!hasAvailableDates) {
+      toast.error(`Sin agenda disponible en ${sedeObj.name}`, {
+        description: `Actualmente no hay fechas programadas para esta sede. Por favor selecciona Marquetalia o escríbenos por WhatsApp.`,
+        duration: 5000,
+      });
+      return;
+    }
+
+    setSelectedSede(sedeObj);
+  };
+
   /* 🔹 SELECCIÓN DE SERVICIO AISLADO */
   const toggleSelectService = (service: ServiceItem) => {
     const isComp = isAddingCompanion;
@@ -649,15 +726,15 @@ function BookingContent() {
     return cartItems.reduce((acc, item) => acc + item.service.duracion, 0);
   };
 
-  /* 🔹 CONFIRMAR RESERVA EVITANDO QUE EL BACKEND MULTIPLIQUE LOS REGISTROS */
+  /* 🔹 CONFIRMAR RESERVA */
   const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cartItems.length === 0) {
-      alert("Por favor selecciona al menos un servicio.");
+      toast.warning("Por favor selecciona al menos un servicio.");
       return;
     }
     if (!clientName.trim() || !clientPhone.trim()) {
-      alert("Por favor completa tu nombre completo y número de celular.");
+      toast.warning("Por favor completa tu nombre y celular de contacto.");
       return;
     }
 
@@ -668,9 +745,6 @@ function BookingContent() {
       const cleanIndicativo = formatIndicativo(indicativo);
       const fullPhone = `${cleanIndicativo}${cleanPhone}`;
 
-      // 🎯 SOLUCIÓN AL MULTIPLICADOR DEL BACKEND:
-      // Construimos cada objeto de ítem asociando explícitamente el nombre de la persona correspondiente.
-      // Enviamos `cantidad: 1` para que el ciclo 'for' de la API no duplique el arreglo.
       const itemsPayload = cartItems.map((item) => {
         let nombreCita = clientName.trim();
         if (item.isCompanion) {
@@ -701,7 +775,7 @@ function BookingContent() {
           fullPhone: fullPhone,
           correo: clientEmail.trim() || null,
           sede: selectedSede.name,
-          cantidad: 1, // 👈 Fijamos cantidad en 1 para que el ciclo 'for' del backend no multiplique las citas
+          cantidad: 1,
           items: itemsPayload,
         }),
       });
@@ -712,9 +786,10 @@ function BookingContent() {
       }
 
       setBookingSuccess(true);
+      toast.success("¡Reserva confirmada con éxito!");
     } catch (err: any) {
       console.error("Error al agendar:", err);
-      alert(`No se pudo procesar la reserva: ${err.message}`);
+      toast.error(`No se pudo procesar la reserva: ${err.message}`);
     } finally {
       setBookingLoading(false);
     }
@@ -756,7 +831,7 @@ function BookingContent() {
   const handleNextStep = () => {
     if (bookingSubStep === 1) {
       if (cartItems.length === 0) {
-        alert("Por favor selecciona al menos un servicio para continuar.");
+        toast.warning("Por favor selecciona al menos un servicio para continuar.");
         return;
       }
       if (serviceToConfigure) {
@@ -769,7 +844,7 @@ function BookingContent() {
       setBookingSubStep(3);
     } else if (bookingSubStep === 3) {
       if (!selectedDate || !selectedTime) {
-        alert("Por favor selecciona la fecha y la hora de tu cita.");
+        toast.warning("Por favor selecciona la fecha y la hora de tu cita.");
         return;
       }
       handleAddCurrentServiceToCart();
@@ -834,7 +909,7 @@ function BookingContent() {
                 </span>
                 <ChevronRight size={12} className="text-zinc-400" />
                 <span className={bookingSubStep >= 4 ? "text-rose-500 font-extrabold" : "text-zinc-400"}>
-                  4. Confirmar
+                  4. Tus Datos
                 </span>
               </div>
 
@@ -974,7 +1049,7 @@ function BookingContent() {
                 </div>
               )}
 
-              {/* PASO 2: PROFESIONAL Y SEDE CON FILTRADO DE ESPECIALISTAS */}
+              {/* PASO 2: PROFESIONAL Y SEDE CON FILTRADO DE ESPECIALISTAS Y REGLAS DE SEDE */}
               {bookingSubStep === 2 && (selectedService || cartItems.length > 0) && (
                 <div className="space-y-6 animate-in fade-in">
                   <div className="flex items-center justify-between">
@@ -994,61 +1069,82 @@ function BookingContent() {
                     </button>
                   </div>
 
-                  {/* Selección de Sede */}
+                  {/* Selección de Sede con Validación en Tiempo Real */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-zinc-400">Sedes Disponibles</label>
-                    <LocationSearch
-                      onSedeSeleccionada={(sedeMasCercana) => {
-                        setSelectedSede(sedeMasCercana);
-                      }}
-                    />
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      
-                      {SEDES_INFO.map((s) => {
-                        const isSelected = selectedSede.name === s.name;
-                        return (
-                          <div
-                            key={s.name}
-                            onClick={() => setSelectedSede(s)}
-                            className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col justify-between ${
-                              isSelected
-                                ? "border-rose-500 bg-rose-50/50 dark:bg-rose-950/20 text-rose-600 shadow-2xs"
-                                : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-zinc-300"
-                            }`}
-                          >
-                            <div>
-                              <div className="flex items-center justify-between">
-                                <span className="font-extrabold text-xs block">{s.name}</span>
-                                {isSelected && <CheckCircle2 size={14} className="text-rose-500" />}
-                              </div>
-                              <span className="text-[10px] text-zinc-400 block mt-0.5 leading-tight">{s.address}</span>
-                            </div>
+                    <label className="text-[10px] font-black uppercase text-zinc-400">
+                      Sedes Disponibles
+                    </label>
 
-                            <a
-                              href={s.mapUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="mt-3 inline-flex items-center gap-1 text-[10px] font-extrabold text-rose-500 hover:text-rose-700 hover:underline pt-2 border-t border-zinc-100 dark:border-zinc-800"
+                    {checkingSedesAvailability ? (
+                      <div className="py-4 text-xs font-bold text-rose-500 flex items-center gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>Verificando fechas de atención por sede...</span>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {SEDES_INFO.map((s) => {
+                          const isSelected = selectedSede.name === s.name;
+                          const hasAvailableDates = sedesAvailabilityMap[s.name] ?? false;
+
+                          return (
+                            <div
+                              key={s.name}
+                              onClick={() => handleSelectSede(s)}
+                              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                                !hasAvailableDates
+                                  ? "opacity-60 bg-zinc-100 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-800 cursor-not-allowed"
+                                  : isSelected
+                                  ? "border-rose-500 bg-rose-50/50 dark:bg-rose-950/20 text-rose-600 shadow-2xs cursor-pointer"
+                                  : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-zinc-300 cursor-pointer"
+                              }`}
                             >
-                              <MapPin size={11} />
-                              <span>Ver en Google Maps</span>
-                              <ExternalLink size={10} />
-                            </a>
-                          </div>
-                        );
-                      })}
-                    </div>
+                              <div>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="font-extrabold text-xs block">{s.name}</span>
+                                  {isSelected && hasAvailableDates && (
+                                    <CheckCircle2 size={14} className="text-rose-500 shrink-0" />
+                                  )}
+                                  {!hasAvailableDates && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-zinc-200 dark:bg-zinc-800 text-zinc-500">
+                                      Sin agenda
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-zinc-400 block mt-0.5 leading-tight">
+                                  {s.address}
+                                </span>
+                              </div>
+
+                              <a
+                                href={s.mapUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-3 inline-flex items-center gap-1 text-[10px] font-extrabold text-rose-500 hover:text-rose-700 hover:underline pt-2 border-t border-zinc-100 dark:border-zinc-800"
+                              >
+                                <MapPin size={11} />
+                                <span>Ver en Google Maps</span>
+                                <ExternalLink size={10} />
+                              </a>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Selección de Profesional */}
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-zinc-400">Profesional Capacitado</label>
+                    <label className="text-[10px] font-black uppercase text-zinc-400">
+                      Profesional Capacitado
+                    </label>
                     
                     <div
                       onClick={() => setSelectedSpecialist("")}
                       className={`flex items-center justify-between p-4 rounded-3xl border bg-white dark:bg-zinc-900 cursor-pointer transition-all ${
-                        selectedSpecialist === "" ? "border-rose-500 ring-2 ring-rose-500/20 shadow-xs" : "border-zinc-200 dark:border-zinc-800"
+                        selectedSpecialist === ""
+                          ? "border-rose-500 ring-2 ring-rose-500/20 shadow-xs"
+                          : "border-zinc-200 dark:border-zinc-800"
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -1056,7 +1152,9 @@ function BookingContent() {
                           <Shuffle size={18} />
                         </div>
                         <div>
-                          <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-50">Cualquier profesional</h4>
+                          <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-50">
+                            Cualquier profesional
+                          </h4>
                           <p className="text-[10px] text-zinc-400">Máxima disponibilidad de horarios</p>
                         </div>
                       </div>
@@ -1070,7 +1168,9 @@ function BookingContent() {
                           key={spec}
                           onClick={() => setSelectedSpecialist(spec)}
                           className={`flex items-center justify-between p-4 rounded-3xl border bg-white dark:bg-zinc-900 cursor-pointer transition-all ${
-                            isSelected ? "border-rose-500 ring-2 ring-rose-500/20 shadow-xs" : "border-zinc-200 dark:border-zinc-800"
+                            isSelected
+                              ? "border-rose-500 ring-2 ring-rose-500/20 shadow-xs"
+                              : "border-zinc-200 dark:border-zinc-800"
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -1165,6 +1265,29 @@ function BookingContent() {
                     </div>
                   )}
 
+                  {/* TARJETA DE SOPORTE DIRECTO POR WHATSAPP */}
+                  <div className="p-4 rounded-3xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-xs text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5">
+                        <MessageCircle size={16} className="text-emerald-600 dark:text-emerald-400" />
+                        ¿No encontraste un horario conveniente?
+                      </h4>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                        Escríbenos directamente a WhatsApp y te ayudamos a acomodar tu cita personalizada.
+                      </p>
+                    </div>
+
+                    <a
+                      href={getWhatsAppHelpLink()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-md shadow-emerald-600/20"
+                    >
+                      <MessageCircle size={15} />
+                      <span>Escribir a Leslie por WhatsApp</span>
+                    </a>
+                  </div>
+
                   {selectedDate && selectedTime && (
                     <button
                       type="button"
@@ -1172,7 +1295,7 @@ function BookingContent() {
                       className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/20 hover:from-rose-600 hover:to-pink-600 transition-all cursor-pointer flex items-center justify-center gap-2"
                     >
                       <Plus size={18} />
-                      <span>Confirmar reserva</span>
+                      <span>Confirmar horario y continuar a Tus Datos</span>
                     </button>
                   )}
                 </div>

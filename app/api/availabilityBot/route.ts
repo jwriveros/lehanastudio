@@ -11,21 +11,32 @@ interface DateAvailability {
   date: string;
   day_name: string;
   slots: SlotDetail[];
+  alternative_specialists_slots?: SlotDetail[];
 }
 
-// 🎯 HELPER 1: Obtiene la fecha y hora actual en la zona horaria oficial de Colombia (America/Bogota)
+// 🎯 HELPER 1: Obtiene la fecha actual en la zona horaria oficial de Colombia (America/Bogota)
 function getColombiaNow(): Date {
   const now = new Date();
   const colStr = now.toLocaleString("en-US", { timeZone: "America/Bogota" });
   return new Date(colStr);
 }
 
-// 🎯 HELPER 2: Formatea un objeto Date a YYYY-MM-DD en hora local de Colombia
+// 🎯 HELPER 2: Formatea un objeto Date a YYYY-MM-DD local de Colombia
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+// 🎯 HELPER 3: Normaliza texto eliminando acentos, símbolos y espacios para comparaciones exactas
+function cleanText(text: string): string {
+  if (!text) return "";
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Elimina tildes
+    .replace(/[^a-z0-9]/g, "");     // Elimina espacios y símbolos
 }
 
 // Desempaqueta el horario base semanal
@@ -64,9 +75,17 @@ function timeToMinutes(timeStr: string): number {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const serviceId = searchParams.get("service_id");
+
+  // Captura flexible del servicio por nombre ('Servicio'), SKU o ID
+  const rawServiceInput =
+    searchParams.get("servicio") ||
+    searchParams.get("service_name") ||
+    searchParams.get("service_id") ||
+    searchParams.get("sku") ||
+    "";
+
   const sede = searchParams.get("sede") || "Marquetalia";
-  
+
   let explicitSpecialist = searchParams.get("specialist");
   if (
     explicitSpecialist === "undefined" ||
@@ -79,29 +98,56 @@ export async function GET(request: NextRequest) {
 
   const filterDate = searchParams.get("date");
   const jornada = searchParams.get("jornada");
+  const searchMode = searchParams.get("search_mode") === "broad" ? "broad" : "strict";
 
-  const customStartDate = searchParams.get("start_date");
-  const customEndDate = searchParams.get("end_date");
-  const daysAhead = parseInt(searchParams.get("days_ahead") || "30", 10);
-
-  if (!serviceId) {
+  if (!rawServiceInput.trim()) {
     return NextResponse.json(
-      { error: "El parámetro service_id es requerido." },
+      { ok: false, error: "El parámetro de servicio (servicio, service_name, service_id o sku) es requerido." },
       { status: 400 }
     );
   }
 
   try {
-    // 1. Obtener la información del servicio
-    const { data: service, error: serviceError } = await supabase
+    // 🎯 1. CONSULTA DE SERVICIOS Y BÚSQUEDA POR LA COLUMNA 'Servicio'
+    const { data: allServices, error: allServicesError } = await supabase
       .from("services")
-      .select("*")
-      .or(`id.eq.${serviceId},SKU.eq.${serviceId}`)
-      .single();
+      .select("*");
 
-    if (serviceError || !service) {
+    if (allServicesError || !allServices || allServices.length === 0) {
       return NextResponse.json(
-        { error: "Servicio no encontrado." },
+        { ok: false, error: "Error al acceder a la tabla de servicios en Supabase." },
+        { status: 500 }
+      );
+    }
+
+    // Búsqueda insensible a tildes, paréntesis o mayúsculas
+    const targetClean = cleanText(rawServiceInput);
+
+    const service = allServices.find((s) => {
+      const nameClean = cleanText(s.Servicio || s.servicio || "");
+      const skuClean = cleanText(s.SKU || "");
+      const idClean = cleanText(s.id || "");
+
+      return (
+        nameClean === targetClean ||
+        skuClean === targetClean ||
+        idClean === targetClean ||
+        nameClean.includes(targetClean) ||
+        targetClean.includes(nameClean)
+      );
+    });
+
+    if (!service) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Servicio '${rawServiceInput}' no encontrado.`,
+          bot_instructions: {
+            summary: `El servicio '${rawServiceInput}' no existe. Por favor verifica la lista oficial de servicios.`,
+            has_primary_availability: false,
+            has_alternative_options: false,
+          },
+        },
         { status: 404 }
       );
     }
@@ -120,31 +166,38 @@ export async function GET(request: NextRequest) {
       serviceEspecialistas = service.especialistas;
     }
 
-    // 2. Obtener especialistas desde app_users
+    // Obtener especialistas calificadas desde app_users
     const { data: specialists } = await supabase
       .from("app_users")
       .select("id, name, horario_semanal");
 
-    let qualifiedSpecialists = (specialists || []).filter((sp) =>
+    const allQualifiedSpecialists = (specialists || []).filter((sp) =>
       serviceEspecialistas.includes(sp.name)
     );
 
+    let targetSpecialists = allQualifiedSpecialists;
+
     if (explicitSpecialist) {
-      qualifiedSpecialists = qualifiedSpecialists.filter(
+      targetSpecialists = allQualifiedSpecialists.filter(
         (sp) => sp.name.toLowerCase() === explicitSpecialist.toLowerCase()
       );
     }
 
-    if (qualifiedSpecialists.length === 0) {
+    if (allQualifiedSpecialists.length === 0) {
       return NextResponse.json({
+        ok: false,
         service: service.Servicio,
-        duration,
+        duration_minutes: duration,
         available_dates: [],
-        message: "No hay especialistas habilitadas para este servicio.",
+        bot_instructions: {
+          summary: "No hay especialistas habilitadas para este servicio.",
+          has_primary_availability: false,
+          has_alternative_options: false,
+        },
       });
     }
 
-    // 3. DEFINICIÓN DEL RANGO DE FECHAS (RESPECTANDO ZONA HORARIA DE COLOMBIA UTC-5)
+    // 🎯 2. DEFINICIÓN DEL RANGO DE FECHAS (RESPECTANDO UTC-5 COLOMBIA)
     let startDate: Date;
     let endDate: Date;
 
@@ -154,32 +207,27 @@ export async function GET(request: NextRequest) {
       const [fY, fM, fD] = filterDate.split("-").map(Number);
       startDate = new Date(fY, fM - 1, fD, 0, 0, 0);
       endDate = new Date(fY, fM - 1, fD, 23, 59, 59);
-    } else if (customStartDate && customEndDate) {
-      const [sY, sM, sD] = customStartDate.split("-").map(Number);
-      const [eY, eM, eD] = customEndDate.split("-").map(Number);
-      startDate = new Date(sY, sM - 1, sD, 0, 0, 0);
-      endDate = new Date(eY, eM - 1, eD, 23, 59, 59);
     } else {
+      // 🎯 SI NO HAY FECHA, TOMA LOS PRÓXIMOS 3 DÍAS A PARTIR DE MAÑANA (HORA COLOMBIA)
       startDate = new Date(colombiaToday);
       startDate.setDate(colombiaToday.getDate() + 1);
       startDate.setHours(0, 0, 0, 0);
 
       endDate = new Date(colombiaToday);
-      endDate.setDate(colombiaToday.getDate() + daysAhead);
+      endDate.setDate(colombiaToday.getDate() + 3);
       endDate.setHours(23, 59, 59, 999);
     }
 
     const startDateStr = formatLocalDate(startDate);
     const endDateStr = formatLocalDate(endDate);
 
-    // 4. Consultar reglas en specialist_overrides
+    // Consultar specialist_overrides y citas activas en la sede
     const { data: overrides } = await supabase
       .from("specialist_overrides")
       .select("*")
       .gte("date", startDateStr)
       .lte("date", endDateStr);
 
-    // 5. Consultar citas activas en appointments para la sede
     const { data: existingAppts } = await supabase
       .from("appointments")
       .select("appointment_at, duration, especialista, sede, estado")
@@ -213,11 +261,12 @@ export async function GET(request: NextRequest) {
     const availableDates: DateAvailability[] = [];
     const isMainSede = sede.toLowerCase() === "marquetalia";
 
-    // 6. Recorrer día a día
+    // Recorrer el rango día por día
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
       const dateStr = formatLocalDate(d);
       const dayName = daysOfWeekEs[d.getDay()];
       const daySlots: SlotDetail[] = [];
+      const alternativeSlots: SlotDetail[] = [];
 
       const dayAppts = (existingAppts || []).filter((appt) => {
         const normalizedApptAt = (appt.appointment_at || "").replace(" ", "T");
@@ -244,9 +293,13 @@ export async function GET(request: NextRequest) {
       for (const slot of candidateSlots) {
         const slotStartMin = timeToMinutes(slot);
         const slotEndMin = slotStartMin + duration;
-        const freeSpecialistsForSlot: string[] = [];
 
-        for (const sp of qualifiedSpecialists) {
+        const freeTargetSpecialists: string[] = [];
+        const freeAlternativeSpecialists: string[] = [];
+
+        for (const sp of allQualifiedSpecialists) {
+          const isTarget = targetSpecialists.some((t) => t.id === sp.id);
+
           const spOverrides = (overrides || []).filter((b) => {
             const isSameSp = b.specialist_id === sp.id || b.especialista === sp.name;
             return isSameSp && b.date === dateStr;
@@ -254,7 +307,6 @@ export async function GET(request: NextRequest) {
 
           let isAvailableInSede = false;
 
-          /* REGLA DE SEDES */
           if (isMainSede) {
             const scheduleObj = safeParseSchedule(sp.horario_semanal);
             const dayConfig = scheduleObj[dayName];
@@ -274,7 +326,6 @@ export async function GET(request: NextRequest) {
               const inTimeRange = slotStartMin < bEndMin && slotEndMin > bStartMin;
 
               if (!inTimeRange) return false;
-
               if (rule.type === "blocked") return true;
               if (rule.type === "assigned_sede" && rule.sede?.toLowerCase() !== "marquetalia") return true;
 
@@ -288,7 +339,6 @@ export async function GET(request: NextRequest) {
               if (rule.type !== "assigned_sede") return false;
               if (!rule.sede || rule.sede.toLowerCase() !== sede.toLowerCase()) return false;
 
-              // 🎯 DECLARACIÓN DE VARIABLES CORREGIDA
               const bStartMin = timeToMinutes(rule.start_time || "00:00");
               const bEndMin = timeToMinutes(rule.end_time || "23:59");
 
@@ -305,9 +355,7 @@ export async function GET(request: NextRequest) {
                   assignedSedeOverride.allowed_services.includes(serviceSku) ||
                   assignedSedeOverride.allowed_services.includes(service.id);
 
-                if (isServiceAllowed) {
-                  isAvailableInSede = true;
-                }
+                if (isServiceAllowed) isAvailableInSede = true;
               } else {
                 isAvailableInSede = true;
               }
@@ -317,106 +365,130 @@ export async function GET(request: NextRequest) {
           if (!isAvailableInSede) continue;
 
           const spAppts = apptsBySpecialist[sp.name] || [];
-          
           const isOccupied = spAppts.some(
             (appt) => slotStartMin < appt.end && slotEndMin > appt.start
           );
 
           if (isOccupied) continue;
 
-          /* REGLAS DE NEGOCIO Y DISPONIBILIDAD */
-          if (!hasAnyApptInDay) {
-            freeSpecialistsForSlot.push(sp.name);
-            continue;
-          }
+          // REGLAS DE DISPONIBILIDAD PARA EL BOT
+          let isSlotValid = false;
 
-          const spHasApptsToday = spAppts.length > 0;
+          if (searchMode === "broad" || !hasAnyApptInDay) {
+            isSlotValid = true;
+          } else {
+            const spHasApptsToday = spAppts.length > 0;
 
-          if (explicitSpecialist) {
-            if (!spHasApptsToday) {
-              const isStartOfShift = slotStartMin === 9 * 60 || slotStartMin === 14 * 60;
-              if (isStartOfShift) {
-                freeSpecialistsForSlot.push(sp.name);
-              }
-            } else {
-              const isAllowedAnchor = spAppts.some((appt) => {
-                const isRightAfter = appt.end === slotStartMin;
-                const isRightBefore = slotEndMin === appt.start;
-                const isOneHourAfter = slotStartMin === appt.end + 60;
-                return isRightAfter || isRightBefore || isOneHourAfter;
-              });
-
-              if (isAllowedAnchor) {
-                freeSpecialistsForSlot.push(sp.name);
-              }
-            }
-          } 
-          else {
-            if (spHasApptsToday) {
-              const isMorningSlot = slotStartMin >= 9 * 60 && slotStartMin < 13 * 60;
-              const isAfternoonSlot = slotStartMin >= 13 * 60 && slotStartMin <= 18 * 60;
-
-              const hasApptInMorning = spAppts.some((a) => a.start < 13 * 60);
-              const hasApptInAfternoon = spAppts.some((a) => a.end > 13 * 60);
-
-              if (
-                (isMorningSlot && hasApptInMorning) ||
-                (isAfternoonSlot && hasApptInAfternoon)
-              ) {
-                freeSpecialistsForSlot.push(sp.name);
+            if (explicitSpecialist && isTarget) {
+              if (!spHasApptsToday) {
+                isSlotValid = slotStartMin === 9 * 60 || slotStartMin === 14 * 60;
               } else {
-                const isAllowedAnchor = spAppts.some((appt) => {
+                isSlotValid = spAppts.some((appt) => {
                   const isRightAfter = appt.end === slotStartMin;
                   const isRightBefore = slotEndMin === appt.start;
                   const isOneHourAfter = slotStartMin === appt.end + 60;
                   return isRightAfter || isRightBefore || isOneHourAfter;
                 });
-
-                if (isAllowedAnchor) {
-                  freeSpecialistsForSlot.push(sp.name);
-                }
               }
             } else {
-              const isStartOfShift = slotStartMin === 9 * 60 || slotStartMin === 14 * 60;
-              if (isStartOfShift) {
-                freeSpecialistsForSlot.push(sp.name);
+              if (spHasApptsToday) {
+                const isMorningSlot = slotStartMin >= 9 * 60 && slotStartMin < 13 * 60;
+                const isAfternoonSlot = slotStartMin >= 13 * 60 && slotStartMin <= 18 * 60;
+
+                const hasApptInMorning = spAppts.some((a) => a.start < 13 * 60);
+                const hasApptInAfternoon = spAppts.some((a) => a.end > 13 * 60);
+
+                if ((isMorningSlot && hasApptInMorning) || (isAfternoonSlot && hasApptInAfternoon)) {
+                  isSlotValid = true;
+                } else {
+                  isSlotValid = spAppts.some((appt) => {
+                    const isRightAfter = appt.end === slotStartMin;
+                    const isRightBefore = slotEndMin === appt.start;
+                    const isOneHourAfter = slotStartMin === appt.end + 60;
+                    return isRightAfter || isRightBefore || isOneHourAfter;
+                  });
+                }
+              } else {
+                isSlotValid = slotStartMin === 9 * 60 || slotStartMin === 14 * 60;
               }
+            }
+          }
+
+          if (isSlotValid) {
+            if (isTarget) {
+              freeTargetSpecialists.push(sp.name);
+            } else {
+              freeAlternativeSpecialists.push(sp.name);
             }
           }
         }
 
-        if (freeSpecialistsForSlot.length > 0) {
+        if (freeTargetSpecialists.length > 0) {
           daySlots.push({
             time: slot,
-            assigned_specialist: freeSpecialistsForSlot[0],
-            available_specialists: freeSpecialistsForSlot,
+            assigned_specialist: freeTargetSpecialists[0],
+            available_specialists: freeTargetSpecialists,
+          });
+        } else if (freeAlternativeSpecialists.length > 0) {
+          alternativeSlots.push({
+            time: slot,
+            assigned_specialist: freeAlternativeSpecialists[0],
+            available_specialists: freeAlternativeSpecialists,
           });
         }
       }
 
-      if (daySlots.length > 0) {
+      if (daySlots.length > 0 || alternativeSlots.length > 0) {
         availableDates.push({
           date: dateStr,
           day_name: dayName,
           slots: daySlots,
+          ...(explicitSpecialist && alternativeSlots.length > 0
+            ? { alternative_specialists_slots: alternativeSlots }
+            : {}),
         });
       }
     }
 
+    // 🎯 ESTRUCTURA MASTICADA PARA EL AGENTE DE IA
+    const botSummaryLines: string[] = [];
+    if (availableDates.length > 0) {
+      availableDates.forEach((d) => {
+        const primaryTimes = d.slots.map((s) => s.time).join(", ");
+        let line = `Fecha ${d.date} (${d.day_name}): Horarios libres con especialista principal: [${primaryTimes || "Ninguno"}]`;
+
+        if (d.alternative_specialists_slots && d.alternative_specialists_slots.length > 0) {
+          const altTimes = d.alternative_specialists_slots
+            .map((s) => `${s.time} (con ${s.assigned_specialist})`)
+            .join(", ");
+          line += ` | Opciones alternativas con otras especialistas: [${altTimes}]`;
+        }
+
+        botSummaryLines.push(line);
+      });
+    } else {
+      botSummaryLines.push("No hay horarios disponibles en el rango consultado.");
+    }
+
     return NextResponse.json({
+      ok: true,
       service: service.Servicio,
-      duration,
-      query_filters: {
-        sede,
-        date: filterDate || "Rango general",
-        jornada: jornada || "Completa",
-        search_mode: "strict_enhanced",
-      },
+      duration_minutes: duration,
+      sede: sede,
+      search_mode: searchMode,
+      explicit_specialist: explicitSpecialist || "Cualquier profesional",
       available_dates: availableDates,
+      bot_instructions: {
+        summary: botSummaryLines.join("\n"),
+        has_primary_availability: availableDates.some((d) => d.slots.length > 0),
+        has_alternative_options: availableDates.some(
+          (d) => d.alternative_specialists_slots && d.alternative_specialists_slots.length > 0
+        ),
+      },
     });
   } catch (error: any) {
     return NextResponse.json(
-      { error: "Error procesando disponibilidad", details: error.message },
+      { ok: false, error: "Error procesando disponibilidad", details: error.message },
       { status: 500 }
     );
   }
