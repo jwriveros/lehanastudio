@@ -5,6 +5,7 @@ import Link from "next/link";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { supabase } from "@/lib/supabaseClient";
+import LocationSearch from "@/components/LocationSearch";
 import { toast } from "sonner"; // 👈 Importamos toast
 import {
   Phone,
@@ -1074,7 +1075,30 @@ function BookingContent() {
                     <label className="text-[10px] font-black uppercase text-zinc-400">
                       Sedes Disponibles
                     </label>
+                    <LocationSearch
+                      onSedeSeleccionada={(sedeMasCercana) => {
+                        // 🎯 1. Obtenemos el nombre retornado por el componente
+                        const nombreBuscado = (sedeMasCercana?.name || "").toLowerCase();
 
+                        // 🎯 2. Buscamos la coincidencia exacta en SEDES_INFO
+                        const sedeEncontrada = SEDES_INFO.find(
+                          (s) => s.name.toLowerCase() === nombreBuscado
+                        );
+
+                        if (sedeEncontrada) {
+                          // Asignación directa con el objeto completo (incluye 'isMain')
+                          setSelectedSede(sedeEncontrada);
+                        } else {
+                          // Fallback seguro si la sede devuelta no coincide exactamente
+                          setSelectedSede({
+                            name: sedeMasCercana?.name || "Marquetalia",
+                            address: sedeMasCercana?.address || "",
+                            mapUrl: sedeMasCercana?.mapUrl || "",
+                            isMain: (sedeMasCercana?.name || "") === "Marquetalia",
+                          });
+                        }
+                      }}
+                    />
                     {checkingSedesAvailability ? (
                       <div className="py-4 text-xs font-bold text-rose-500 flex items-center gap-2">
                         <Loader2 size={16} className="animate-spin" />
