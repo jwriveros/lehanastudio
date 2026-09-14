@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import React, { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import Link from "next/link";
+import LocationSearch from "@/components/LocationSearch";
+
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { supabase } from "@/lib/supabaseClient";
@@ -13,27 +14,30 @@ import {
   CheckCircle2,
   Sparkles,
   Search,
-  History,
-  ArrowLeft,
   X,
-  AlertCircle,
   Clock,
-  UserCheck,
   User,
   MapPin,
   Check,
-  ShieldCheck,
   ExternalLink,
   Trash2,
-  UserPlus,
-  Users,
+  Shuffle,
+  ChevronRight,
+  ChevronLeft,
+  ChevronDown,
+  Loader2,
+  Mail,
+  Edit3,
 } from "lucide-react";
 
+/* =========================================================
+   1. SEDES DE LEHANA STUDIO
+========================================================= */
 const SEDES_INFO = [
   {
     name: "Marquetalia",
     address: "Marquetalia, Palomino, La Guajira",
-    mapUrl: "https://maps.app.goo.gl/hubKPjEnApSYAxrv6",
+    mapUrl: "https://maps.app.goo.gl/Ynt2Zaak3trXt2KL8",
   },
   {
     name: "Buga",
@@ -43,17 +47,200 @@ const SEDES_INFO = [
   {
     name: "Santa Marta",
     address: "Carrera 3 # 18-20, Centro Histórico, Santa Marta",
-    mapUrl: "https://maps.app.goo.gl/azMUpzjVAGRGapez6",
+    mapUrl: "https://maps.app.goo.gl/UXPCcoGLmCpedVRx6",
   },
 ];
 
+/* =========================================================
+   2. ORDEN DE CATEGORÍAS PÚBLICAS Y EXCLUSIONES
+========================================================= */
+const CATEGORIAS_ORDEN = [
+  "Todos",
+  "Micropigmentación",
+  "Cejas",
+  "Pestañas",
+  "Limpieza facial",
+  "Depilación",
+];
+
+const CATEGORIAS_EXCLUIDAS = [
+  "retoques de pestañas",
+  "refuerzo de color micropigmentación",
+  "retoque",
+  "refuerzo",
+];
+
+/* =========================================================
+   3. CATÁLOGO BASE DE RESPALDO (FALLBACK SEGURO)
+========================================================= */
+const INITIAL_PUBLIC_SERVICES: ServiceItem[] = [
+  {
+    id: "micro_cejas_sombra",
+    SKU: "micro_cejas_sombra",
+    Servicio: "Micropigmentación de cejas efecto SOMBRA",
+    Precio: 350000,
+    duracion: 180,
+    category: "Micropigmentación",
+    especialistas: ["Leslie Gutierrez"],
+    descripcion: "Técnica semipermanente que logra un efecto sombreado tipo maquillaje con acabado elegante y duradero.",
+  },
+  {
+    id: "cejas_sombreado",
+    SKU: "cejas_sombreado",
+    Servicio: "Diseño, Depilación y sombreado de cejas",
+    Precio: 35000,
+    duracion: 45,
+    category: "Cejas",
+    especialistas: ["Nary Cabrales", "Yucelis Moscote", "Leslie Gutierrez"],
+    descripcion: "Diseño con visagismo según tus facciones, epilación con cera suave y pigmentación semipermanente.",
+  },
+  {
+    id: "lash_clasicas",
+    SKU: "lash_clasicas",
+    Servicio: "Pestañas pelo a pelo CLASICAS NATURAL",
+    Precio: 90000,
+    duracion: 120,
+    category: "Pestañas",
+    especialistas: ["Yucelis Moscote", "Leslie Gutierrez"],
+    descripcion: "Una extensión individual adherida a cada pestaña natural para un efecto rímel impecable.",
+  },
+];
+
+/* =========================================================
+   4. PAÍSES Y SELECTOR CON COLOMBIA (+57)
+========================================================= */
+const RAW_COUNTRIES = [
+  { code: "57", flag: "🇨🇴", name: "Colombia" },
+  { code: "1", flag: "🇺🇸", name: "Estados Unidos" },
+  { code: "34", flag: "🇪🇸", name: "España" },
+  { code: "52", flag: "🇲🇽", name: "México" },
+  { code: "54", flag: "🇦🇷", name: "Argentina" },
+  { code: "56", flag: "🇨🇱", name: "Chile" },
+  { code: "51", flag: "🇵🇪", name: "Perú" },
+  { code: "58", flag: "🇻🇪", name: "Venezuela" },
+];
+
+const COUNTRIES = Array.from(
+  new Map(RAW_COUNTRIES.map((c) => [`${c.name}-${c.code}`, c])).values()
+).sort((a, b) => a.name.localeCompare(b.name));
+
+function formatIndicativo(val: any): string {
+  if (!val) return "57";
+  const digits = String(val).replace(/\D/g, "");
+  return digits || "57";
+}
+
+function CountrySelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const cleanValue = formatIndicativo(value);
+  const selectedCountry = COUNTRIES.find((c) => c.code === cleanValue) || {
+    flag: "🇨🇴",
+    code: "57",
+    name: "Colombia",
+  };
+
+  const filteredCountries = COUNTRIES.filter(
+    (c) =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.code.includes(search)
+  );
+
+  return (
+    <div className="relative w-28 shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 py-3 px-2.5 text-xs font-black hover:border-rose-300 transition-all cursor-pointer"
+      >
+        <span className="flex items-center gap-1">
+          <span>{selectedCountry.flag}</span>
+          <span>+{selectedCountry.code}</span>
+        </span>
+        <ChevronDown
+          size={12}
+          className={`text-zinc-400 transition-transform ${
+            open ? "rotate-180 text-rose-500" : ""
+          }`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full mt-2 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-2 shadow-2xl animate-in fade-in duration-150">
+          <div className="relative mb-1">
+            <Search
+              size={12}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400"
+            />
+            <input
+              type="text"
+              placeholder="Buscar país..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-7 pr-2 py-1.5 text-[10px] font-bold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 outline-none focus:border-rose-400"
+              autoFocus
+            />
+          </div>
+
+          <div className="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
+            {filteredCountries.map((c, idx) => (
+              <button
+                key={`${c.code}-${c.name}-${idx}`}
+                type="button"
+                onClick={() => {
+                  onChange(c.code);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer ${
+                  c.code === cleanValue
+                    ? "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400"
+                    : "text-zinc-700 dark:text-zinc-300 hover:bg-rose-500/10 hover:text-rose-500"
+                }`}
+              >
+                <span className="flex items-center gap-1.5 truncate">
+                  <span>{c.flag}</span>
+                  <span className="truncate">{c.name}</span>
+                </span>
+                <span className="font-mono text-zinc-400 font-bold shrink-0">
+                  +{c.code}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ServiceItem {
   id: string;
+  SKU?: string;
   Servicio: string;
   Precio: number;
   duracion: number;
   category: string;
-  especialistas: string | string[];
+  especialistas?: string[] | string;
+  descripcion?: string;
 }
 
 interface SlotDetail {
@@ -70,8 +257,8 @@ interface DateAvailability {
 
 interface BookingCartItem {
   id: string;
-  attendeeName: string;
   isCompanion: boolean;
+  companionName?: string;
   service: ServiceItem;
   date: string;
   time: string;
@@ -79,7 +266,6 @@ interface BookingCartItem {
   sede: string;
 }
 
-// Convierte hora de 24h a 12h (AM/PM)
 function formatTime12h(time24: string): string {
   if (!time24) return "";
   const [hStr, mStr] = time24.split(":");
@@ -97,58 +283,48 @@ function formatTime12h(time24: string): string {
   return `${formattedHours}:${minutes} ${modifier}`;
 }
 
-// 1. COMPONENTE INTERNO QUE UTILIZA useSearchParams()
+/* =========================================================
+   5. COMPONENTE PRINCIPAL DE RESERVAS
+========================================================= */
 function BookingContent() {
-  const searchParams = useSearchParams();
-  const phoneParam = searchParams.get("phone");
-  const [step, setStep] = useState<"identify" | "register" | "profile" | "booking" | "summary">("identify");
-  const [phoneSearch, setPhoneSearch] = useState("");
-  const [searching, setSearching] = useState(false);
+  const [bookingSubStep, setBookingSubStep] = useState<number>(1);
 
-  // Datos del Cliente Principal
-  const [clientId, setClientId] = useState<number | null>(null);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [gender, setGenero] = useState("Femenino");
-  const [city, setMunicipio] = useState("");
-  const [address, setDireccion] = useState("");
+  // Datos del Cliente
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [indicativo, setIndicativo] = useState("57");
+
+  // Estado de Búsqueda de Cliente
+  const [checkingClient, setCheckingClient] = useState(false);
+  const [clientFound, setClientFound] = useState<boolean | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+
+  // Sedes y Catálogo
   const [selectedSede, setSelectedSede] = useState(SEDES_INFO[0]);
+  const [allServices, setAllServices] = useState<ServiceItem[]>(INITIAL_PUBLIC_SERVICES);
+  const [selectedCategory, setSelectedCategory] = useState<string>("Todos");
+  const [loadingServices, setLoadingServices] = useState(false);
 
-  // Historial y Catálogo
-  const [pastAppointments, setPastAppointments] = useState<any[]>([]);
-  const [allServices, setAllServices] = useState<ServiceItem[]>([]);
-
-  // Carrito de Servicios Agregados
+  // Carrito Multi-servicio
   const [cartItems, setCartItems] = useState<BookingCartItem[]>([]);
 
-  // Beneficiario del servicio actual
-  const [currentAttendeeName, setCurrentAttendeeName] = useState("");
+  // Beneficiario del servicio activo
   const [isAddingCompanion, setIsAddingCompanion] = useState(false);
   const [companionNameInput, setCompanionNameInput] = useState("");
 
-  // Búsqueda de Servicio Actual
-  const [serviceQuery, setServiceSearchTerm] = useState("");
+  // Configuración del servicio en edición
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const [selectedSpecialist, setSelectedSpecialist] = useState<string>("");
 
-  // Especialistas calificadas
-  const [serviceQualifiedSpecialists, setServiceQualifiedSpecialists] = useState<string[]>([]);
-  const [preferredSpecialistFilter, setPreferredSpecialistFilter] = useState<string>("");
-
-  // Disponibilidad de la API
+  // Disponibilidad de Horarios
   const [availabilityData, setAvailabilityData] = useState<DateAvailability[]>([]);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
-
-  // Selección de Cita Actual
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState("");
-  const [selectedSpecialist, setSelectedSpecialist] = useState("");
-  const [currentSlotSpecialists, setCurrentSlotSpecialists] = useState<string[]>([]);
   const [availableSlotsForDate, setAvailableSlotsForDate] = useState<SlotDetail[]>([]);
-  const [dateError, setDateError] = useState("");
 
+  // Confirmación
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
@@ -160,129 +336,258 @@ function BookingContent() {
   };
 
   useEffect(() => {
-    if (phoneParam) {
-      const cleanPhone = phoneParam.replace(/\D/g, "");
-      setPhoneSearch(cleanPhone);
-      autoIdentifyFromWhatsApp(cleanPhone);
-    }
-  }, [phoneParam]);
+    fetchServicesFromSupabase();
+  }, []);
 
-  const autoIdentifyFromWhatsApp = async (cleanPhone: string) => {
-    setSearching(true);
+  // CARGA DE SERVICIOS
+  const fetchServicesFromSupabase = async () => {
+    setLoadingServices(true);
     try {
-      const { data: clientRes } = await supabase
-        .from("clients")
-        .select("*")
-        .or(`celular.eq.${cleanPhone},telefono.eq.${cleanPhone}`)
-        .limit(1);
+      const { data, error } = await supabase.from("services").select("*");
 
-      if (clientRes && clientRes.length > 0) {
-        const c = clientRes[0];
-        setClientId(c.id);
-        const nameParts = (c.nombre || "").split(" ");
-        setFirstName(nameParts[0] || "");
-        setLastName(nameParts.slice(1).join(" ") || "");
-        setEmail(c.correo_electronico || "");
-        setMunicipio(c.municipio || "");
-        setDireccion(c.direccion || "");
-        setGenero(c.genero || "Femenino");
+      if (!error && data && data.length > 0) {
+        const loaded = data
+          .map((s: any) => {
+            const name = s.Servicio || s.servicio || "Servicio Lehana";
+            const cat = s.category || s.categoria || "General";
+            let specs: string[] = [];
 
-        const { data: appts } = await supabase
-          .from("appointments")
+            if (Array.isArray(s.especialistas)) {
+              specs = s.especialistas;
+            } else if (typeof s.especialistas === "string") {
+              try {
+                specs = JSON.parse(s.especialistas);
+              } catch {
+                specs = [s.especialistas];
+              }
+            }
+
+            return {
+              id: s.id || s.SKU || Math.random().toString(),
+              SKU: s.SKU || s.id,
+              Servicio: name,
+              Precio: Number(s.Precio || s.precio || s.price || 35000),
+              duracion: Number(s.duracion || s.duration || 45),
+              category: cat,
+              especialistas: specs,
+              descripcion: s.descripcion || "Procedimiento profesional realizado en Lehana Studio.",
+            };
+          })
+          .filter((s: ServiceItem) => {
+            const catLower = (s.category || "").toLowerCase();
+            const nameLower = (s.Servicio || "").toLowerCase();
+            return (
+              !catLower.includes("retoque") &&
+              !catLower.includes("refuerzo") &&
+              !nameLower.includes("retoque") &&
+              !nameLower.includes("refuerzo")
+            );
+          });
+
+        if (loaded.length > 0) {
+          setAllServices(loaded);
+        }
+      }
+    } catch (e) {
+      console.error("Usando catálogo estático por defecto:", e);
+    } finally {
+      setLoadingServices(false);
+    }
+  };
+
+  /* 🔹 BÚSQUEDA DE CLIENTE POR 'full_phone' */
+  const handlePhoneChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawVal = e.target.value.replace(/\D/g, "");
+    setClientPhone(rawVal);
+
+    if (rawVal.length === 10) {
+      setCheckingClient(true);
+      try {
+        const cleanIndicativo = formatIndicativo(indicativo);
+        const fullPhoneQuery = `${cleanIndicativo}${rawVal}`;
+
+        const { data, error } = await supabase
+          .from("clientes")
           .select("*")
-          .eq("celular", cleanPhone)
-          .order("appointment_at", { ascending: false });
+          .eq("full_phone", fullPhoneQuery)
+          .limit(1);
 
-        setPastAppointments(appts || []);
-        setStep("profile");
-      } else {
-        setStep("register");
+        if (!error && data && data.length > 0) {
+          const clientRecord = data[0];
+          const nameFound = clientRecord.nombre || clientRecord.cliente || clientRecord.name || "";
+          const emailFound = clientRecord.correo || clientRecord.email || "";
+
+          setClientName(nameFound);
+          if (emailFound) setClientEmail(emailFound);
+          setClientFound(true);
+          setIsEditingName(false);
+        } else {
+          setClientFound(false);
+          setClientName("");
+          setIsEditingName(true);
+        }
+      } catch (err) {
+        console.error("Error buscando cliente en la tabla clientes:", err);
+        setClientFound(false);
+      } finally {
+        setCheckingClient(false);
       }
-    } catch (err) {
-      console.error("Error identificando desde WhatsApp:", err);
-    } finally {
-      setSearching(false);
+    } else {
+      setClientFound(null);
     }
   };
 
-  useEffect(() => {
-    fetchServices();
-  }, []);
+  /* 🔹 FILTRADO DINÁMICO DE ESPECIALISTAS CALIFICADAS */
+  const qualifiedSpecialistsForSelectedService = useMemo(() => {
+    const targetService = selectedService || (cartItems.length > 0 ? cartItems[0].service : null);
+    if (!targetService || !targetService.especialistas) {
+      return ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote", "Andrea Garcia"];
+    }
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
+    let specs: string[] = [];
+    if (Array.isArray(targetService.especialistas)) {
+      specs = targetService.especialistas;
+    } else if (typeof targetService.especialistas === "string") {
+      try {
+        specs = JSON.parse(targetService.especialistas);
+      } catch {
+        specs = [targetService.especialistas];
       }
+    }
+
+    return specs.length > 0
+      ? specs
+      : ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote", "Andrea Garcia"];
+  }, [selectedService, cartItems]);
+
+  /* 🔹 CONSULTA DE DISPONIBILIDAD */
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadAvailability() {
+      if (!selectedService || bookingSubStep !== 3) return;
+
+      setLoadingAvailability(true);
+
+      try {
+        const serviceIdParam = selectedService.id || selectedService.SKU || "";
+        const skuParam = selectedService.SKU || selectedService.id || "";
+        const serviceNameParam = selectedService.Servicio || "";
+
+        let url = `/api/availability?service_id=${encodeURIComponent(
+          serviceIdParam
+        )}&sku=${encodeURIComponent(skuParam)}&servicio=${encodeURIComponent(
+          serviceNameParam
+        )}&sede=${encodeURIComponent(selectedSede.name)}`;
+
+        if (selectedSpecialist && selectedSpecialist !== "Cualquier profesional") {
+          url += `&specialist=${encodeURIComponent(selectedSpecialist)}&search_mode=strict`;
+        } else {
+          url += `&search_mode=strict`;
+        }
+
+        const res = await fetch(url, { signal: controller.signal });
+        const data = await res.json();
+
+        if (res.ok && Array.isArray(data.available_dates)) {
+          setAvailabilityData(data.available_dates);
+
+          if (selectedDate) {
+            const matchDay = data.available_dates.find((d: any) => d.date === selectedDate);
+            if (matchDay) {
+              setAvailableSlotsForDate(matchDay.slots || []);
+            }
+          }
+        } else {
+          setAvailabilityData([]);
+        }
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          console.error("Error obteniendo disponibilidad:", err);
+          setAvailabilityData([]);
+        }
+      } finally {
+        setLoadingAvailability(false);
+      }
+    }
+
+    loadAvailability();
+
+    return () => {
+      controller.abort();
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [selectedService, selectedSede, selectedSpecialist, bookingSubStep]);
 
-  useEffect(() => {
-    if (selectedService) {
-      fetchAvailability(selectedService.id, selectedSede.name, preferredSpecialistFilter);
+  // CATEGORÍAS ORDENADAS
+  const categories = useMemo(() => {
+    const presentCats = new Set<string>();
+    allServices.forEach((s) => {
+      if (s.category) presentCats.add(s.category);
+    });
+
+    const ordered = CATEGORIAS_ORDEN.filter(
+      (c) => c === "Todos" || presentCats.has(c)
+    );
+
+    presentCats.forEach((c) => {
+      if (!ordered.includes(c)) ordered.push(c);
+    });
+
+    return ordered;
+  }, [allServices]);
+
+  const filteredServices = useMemo(() => {
+    return allServices.filter((s) => {
+      if (selectedCategory === "Todos") return true;
+      return (
+        s.category &&
+        s.category.toLowerCase().trim() === selectedCategory.toLowerCase().trim()
+      );
+    });
+  }, [allServices, selectedCategory]);
+
+  /* 🔹 OBTENER ETIQUETA VISUAL DEL BENEFICIARIO */
+  const getDisplayAttendeeName = (item: BookingCartItem) => {
+    if (item.isCompanion) {
+      return item.companionName?.trim()
+        ? item.companionName.trim()
+        : "Acompañante";
     }
-  }, [selectedService, selectedSede, preferredSpecialistFilter]);
-
-  const fetchServices = async () => {
-    const { data, error } = await supabase
-      .from("services")
-      .select("id, Servicio, Precio, duracion, category, especialistas")
-      .order("category", { ascending: true })
-      .order("Servicio", { ascending: true });
-
-    if (!error && data) {
-      setAllServices(data);
-    }
+    return clientName.trim() ? clientName.trim() : "Para mí";
   };
 
-  const fetchAvailability = async (serviceId: string, sedeName: string, specialistName?: string) => {
-    setLoadingAvailability(true);
-    setDateError("");
-    setSelectedDate("");
-    setSelectedTime("");
-    setSelectedSpecialist("");
-    setAvailableSlotsForDate([]);
-    setCurrentSlotSpecialists([]);
+  /* 🔹 SELECCIÓN DE SERVICIO AISLADO */
+  const toggleSelectService = (service: ServiceItem) => {
+    const isComp = isAddingCompanion;
+    const compName = companionNameInput.trim();
 
-    try {
-      let url = `/api/availability?service_id=${serviceId}&sede=${encodeURIComponent(sedeName)}`;
-      if (specialistName) {
-        url += `&specialist=${encodeURIComponent(specialistName)}`;
-      }
+    setCartItems((prevItems) => {
+      const existingIndex = prevItems.findIndex(
+        (item) =>
+          (item.service.SKU === service.SKU || item.service.id === service.id) &&
+          item.isCompanion === isComp &&
+          (!isComp || item.companionName === compName)
+      );
 
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (res.ok && data.available_dates) {
-        setAvailabilityData(data.available_dates);
+      if (existingIndex >= 0) {
+        return prevItems.filter((_, idx) => idx !== existingIndex);
       } else {
-        setAvailabilityData([]);
-        setDateError("No se encontró disponibilidad para las opciones seleccionadas.");
+        const uniqueInstanceId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const newItem: BookingCartItem = {
+          id: uniqueInstanceId,
+          isCompanion: isComp,
+          companionName: isComp ? compName : undefined,
+          service: service,
+          date: "",
+          time: "",
+          specialist: "Cualquier profesional",
+          sede: selectedSede.name,
+        };
+        return [...prevItems, newItem];
       }
-    } catch (err) {
-      console.error("Error cargando disponibilidad:", err);
-      setAvailabilityData([]);
-    } finally {
-      setLoadingAvailability(false);
-    }
-  };
+    });
 
-  const isTileDisabled = ({ date, view }: { date: Date; view: string }) => {
-    if (view === "month") {
-      const tomorrow = getTomorrowDate();
-      if (date < tomorrow) return true;
-
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      const formattedDate = `${year}-${month}-${day}`;
-
-      const isAvailable = availabilityData.some((item) => item.date === formattedDate);
-      return !isAvailable;
-    }
-    return false;
+    setSelectedService(service);
   };
 
   const handleCalendarSelect = (value: any) => {
@@ -295,13 +600,10 @@ function BookingContent() {
 
     setSelectedDate(dateStr);
     setSelectedTime("");
-    setSelectedSpecialist("");
-    setCurrentSlotSpecialists([]);
-    setDateError("");
 
     const matchDay = availabilityData.find((d) => d.date === dateStr);
     if (matchDay) {
-      setAvailableSlotsForDate(matchDay.slots);
+      setAvailableSlotsForDate(matchDay.slots || []);
     } else {
       setAvailableSlotsForDate([]);
     }
@@ -309,828 +611,362 @@ function BookingContent() {
 
   const handleTimeSelect = (timeValue: string) => {
     setSelectedTime(timeValue);
-    setSelectedSpecialist("");
-
     const slotDetail = availableSlotsForDate.find((s) => s.time === timeValue);
-    if (slotDetail) {
+    if (slotDetail && !selectedSpecialist) {
       const specList = slotDetail.available_specialists || [slotDetail.assigned_specialist];
-      setCurrentSlotSpecialists(specList);
-      setSelectedSpecialist(specList[0]);
-    } else {
-      setCurrentSlotSpecialists([]);
+      setSelectedSpecialist(specList[0] || "Leslie Gutierrez");
     }
   };
 
-  const selectSuggestedService = (service: ServiceItem) => {
-    setSelectedService(service);
-    setServiceSearchTerm(service.Servicio);
-    setShowSuggestions(false);
+  /* 🔹 CONFIRMAR HORARIO PARA TODO EL BLOQUE */
+  const handleAddCurrentServiceToCart = () => {
+    if (!selectedDate || !selectedTime) return;
 
-    let specs: string[] = [];
-    if (typeof service.especialistas === "string") {
-      try {
-        specs = JSON.parse(service.especialistas);
-      } catch (e) {
-        specs = [service.especialistas];
-      }
-    } else if (Array.isArray(service.especialistas)) {
-      specs = service.especialistas;
-    }
+    setCartItems((prevItems) => {
+      return prevItems.map((item) => {
+        return {
+          ...item,
+          date: selectedDate,
+          time: selectedTime,
+          specialist: selectedSpecialist || "Cualquier profesional",
+          sede: selectedSede.name,
+        };
+      });
+    });
 
-    setServiceQualifiedSpecialists(specs);
-    setPreferredSpecialistFilter("");
-  };
-
-  const clearSelectedService = () => {
-    setSelectedService(null);
-    setServiceSearchTerm("");
-    setShowSuggestions(true);
-    setServiceQualifiedSpecialists([]);
-    setPreferredSpecialistFilter("");
-    setAvailabilityData([]);
-    setSelectedDate("");
-    setSelectedTime("");
-    setSelectedSpecialist("");
-    setCurrentSlotSpecialists([]);
-    setDateError("");
-  };
-
-  const mainClientFullName = `${firstName} ${lastName}`.trim() || "Para mí";
-
-  const getActiveAttendeeName = () => {
-    if (isAddingCompanion) {
-      return companionNameInput.trim() ? companionNameInput.trim() : "Acompañante";
-    }
-    return currentAttendeeName || mainClientFullName;
-  };
-
-  const handleAddServiceToCart = () => {
-    if (!selectedService || !selectedDate || !selectedTime || !selectedSpecialist) return;
-
-    const attendee = getActiveAttendeeName();
-
-    const newItem: BookingCartItem = {
-      id: Math.random().toString(36).substring(2, 9),
-      attendeeName: attendee,
-      isCompanion: isAddingCompanion || attendee !== mainClientFullName,
-      service: selectedService,
-      date: selectedDate,
-      time: selectedTime,
-      specialist: selectedSpecialist,
-      sede: selectedSede.name,
-    };
-
-    setCartItems([...cartItems, newItem]);
-
-    setSelectedService(null);
-    setServiceSearchTerm("");
-    setServiceQualifiedSpecialists([]);
-    setPreferredSpecialistFilter("");
-    setSelectedDate("");
-    setSelectedTime("");
-    setSelectedSpecialist("");
+    setBookingSubStep(4);
   };
 
   const handleRemoveFromCart = (id: string) => {
     setCartItems(cartItems.filter((item) => item.id !== id));
   };
 
-  const resetAll = () => {
-    setStep("identify");
-    setPhoneSearch("");
-    setClientId(null);
-    setFirstName("");
-    setLastName("");
-    setEmail("");
-    setMunicipio("");
-    setDireccion("");
-    setGenero("Femenino");
-    setPastAppointments([]);
-    setCartItems([]);
-    setCurrentAttendeeName("");
-    setIsAddingCompanion(false);
-    setCompanionNameInput("");
-    setSelectedService(null);
-    setServiceSearchTerm("");
-    setShowSuggestions(false);
-    setServiceQualifiedSpecialists([]);
-    setPreferredSpecialistFilter("");
-    setSelectedDate("");
-    setSelectedTime("");
-    setSelectedSpecialist("");
-    setAvailabilityData([]);
-    setDateError("");
-    setBookingSuccess(false);
+  const calculateTotalPrice = () => {
+    return cartItems.reduce((acc, item) => acc + item.service.Precio, 0);
   };
 
-  const handleIdentify = async (e: React.FormEvent) => {
+  const calculateTotalDuration = () => {
+    return cartItems.reduce((acc, item) => acc + item.service.duracion, 0);
+  };
+
+  /* 🔹 CONFIRMAR RESERVA EVITANDO QUE EL BACKEND MULTIPLIQUE LOS REGISTROS */
+  const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanPhone = phoneSearch.replace(/\D/g, "");
-    if (!cleanPhone) return;
-
-    setSearching(true);
-
-    try {
-      const { data: clientRes } = await supabase
-        .from("clients")
-        .select("*")
-        .or(`celular.eq.${cleanPhone},telefono.eq.${cleanPhone}`)
-        .limit(1);
-
-      if (clientRes && clientRes.length > 0) {
-        const c = clientRes[0];
-        setClientId(c.id);
-        const nameParts = (c.nombre || "").split(" ");
-        setFirstName(nameParts[0] || "");
-        setLastName(nameParts.slice(1).join(" ") || "");
-        setEmail(c.correo_electronico || "");
-        setMunicipio(c.municipio || "");
-        setDireccion(c.direccion || "");
-        setGenero(c.genero || "Femenino");
-
-        const { data: appts } = await supabase
-          .from("appointments")
-          .select("*")
-          .eq("celular", cleanPhone)
-          .order("appointment_at", { ascending: false });
-
-        setPastAppointments(appts || []);
-        setStep("profile");
-      } else {
-        setFirstName("");
-        setLastName("");
-        setEmail("");
-        setMunicipio("");
-        setDireccion("");
-        setStep("register");
-      }
-    } catch (err) {
-      console.error("Error buscando cliente:", err);
-      setStep("register");
-    } finally {
-      setSearching(false);
+    if (cartItems.length === 0) {
+      alert("Por favor selecciona al menos un servicio.");
+      return;
     }
-  };
-
-  const handleRegisterClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearching(true);
-
-    const fullName = `${firstName} ${lastName}`.trim();
-    const cleanPhone = phoneSearch.replace(/\D/g, "");
-
-    try {
-      const { data, error } = await supabase
-        .from("clients")
-        .insert([
-          {
-            nombre: fullName,
-            celular: cleanPhone,
-            correo_electronico: email,
-            municipio: city,
-            direccion: address,
-            genero: gender,
-            sede: selectedSede.name,
-          },
-        ])
-        .select();
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        setClientId(data[0].id);
-      }
-
-      setPastAppointments([]);
-      setStep("profile");
-    } catch (err) {
-      console.error("Error creando cliente:", err);
-      alert("Ocurrió un error al guardar tu registro.");
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleConfirmBooking = async () => {
-    let finalItems = [...cartItems];
-    if (selectedService && selectedDate && selectedTime && selectedSpecialist) {
-      finalItems.push({
-        id: Math.random().toString(36).substring(2, 9),
-        attendeeName: getActiveAttendeeName(),
-        isCompanion: isAddingCompanion,
-        service: selectedService,
-        date: selectedDate,
-        time: selectedTime,
-        specialist: selectedSpecialist,
-        sede: selectedSede.name,
-      });
+    if (!clientName.trim() || !clientPhone.trim()) {
+      alert("Por favor completa tu nombre completo y número de celular.");
+      return;
     }
 
-    if (finalItems.length === 0) return;
     setBookingLoading(true);
 
     try {
-      const cleanPhone = phoneSearch.replace(/\D/g, "");
-      const clientFullName = `${firstName} ${lastName}`.trim();
+      const cleanPhone = clientPhone.replace(/\D/g, "");
+      const cleanIndicativo = formatIndicativo(indicativo);
+      const fullPhone = `${cleanIndicativo}${cleanPhone}`;
 
-      const itemsPayload = finalItems.map((item) => ({
-        servicio: item.service.Servicio,
-        especialista: item.specialist,
-        appointment_at: `${item.date}T${item.time}:00`,
-        duration: item.service.duracion,
-        price: item.service.Precio,
-      }));
+      // 🎯 SOLUCIÓN AL MULTIPLICADOR DEL BACKEND:
+      // Construimos cada objeto de ítem asociando explícitamente el nombre de la persona correspondiente.
+      // Enviamos `cantidad: 1` para que el ciclo 'for' de la API no duplique el arreglo.
+      const itemsPayload = cartItems.map((item) => {
+        let nombreCita = clientName.trim();
+        if (item.isCompanion) {
+          nombreCita = item.companionName?.trim()
+            ? item.companionName.trim()
+            : `Acompañante de ${clientName.trim()}`;
+        }
+
+        return {
+          servicio: item.service.Servicio,
+          especialista: item.specialist || "Cualquier profesional",
+          appointment_at: item.date && item.time ? `${item.date}T${item.time}:00` : new Date().toISOString(),
+          duration: String(item.service.duracion),
+          price: item.service.Precio,
+          descuento: 0,
+          price_final: item.service.Precio,
+          cliente: nombreCita,
+        };
+      });
 
       const response = await fetch("/api/bookings/create", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          cliente: clientFullName,
+          cliente: clientName.trim(),
           celular: cleanPhone,
-          indicativo: "57",
+          indicativo: cleanIndicativo,
+          fullPhone: fullPhone,
+          correo: clientEmail.trim() || null,
           sede: selectedSede.name,
-          cantidad: finalItems.length,
+          cantidad: 1, // 👈 Fijamos cantidad en 1 para que el ciclo 'for' del backend no multiplique las citas
           items: itemsPayload,
         }),
       });
 
       const resData = await response.json();
-
       if (!response.ok || !resData.ok) {
-        throw new Error(resData.error || "Error al procesar la reserva");
+        throw new Error(resData.error || "Error al registrar las citas.");
       }
 
       setBookingSuccess(true);
-      setStep("booking");
     } catch (err: any) {
-      console.error("Error al agendar citas:", err);
-      alert(`No se pudo confirmar la cita: ${err.message}`);
+      console.error("Error al agendar:", err);
+      alert(`No se pudo procesar la reserva: ${err.message}`);
     } finally {
       setBookingLoading(false);
     }
   };
 
-  const filteredServices = allServices.filter(
-    (s) =>
-      s.Servicio.toLowerCase().includes(serviceQuery.toLowerCase()) ||
-      s.category.toLowerCase().includes(serviceQuery.toLowerCase())
-  );
+  const resetAll = () => {
+    setBookingSubStep(1);
+    setClientName("");
+    setClientPhone("");
+    setClientEmail("");
+    setIndicativo("57");
+    setCartItems([]);
+    setSelectedService(null);
+    setSelectedDate("");
+    setSelectedTime("");
+    setBookingSuccess(false);
+    setClientFound(null);
+  };
 
-  const calculateTotalPrice = () => {
-    let total = cartItems.reduce((acc, item) => acc + item.service.Precio, 0);
-    if (selectedService) {
-      total += selectedService.Precio;
+  /* 🔹 NAVEGACIÓN RETROACTIVA SEGURA */
+  const handleBackNavigation = () => {
+    if (bookingSubStep > 1) {
+      const prevStep = bookingSubStep - 1;
+      
+      if ((prevStep === 2 || prevStep === 3) && !selectedService && cartItems.length > 0) {
+        setSelectedService(cartItems[0].service);
+      }
+      
+      setBookingSubStep(prevStep);
+    } else {
+      window.location.href = "/";
     }
-    return total;
+  };
+
+  const serviceToConfigure = useMemo(() => {
+    return cartItems.find((i) => !i.date || !i.time)?.service || selectedService;
+  }, [cartItems, selectedService]);
+
+  const handleNextStep = () => {
+    if (bookingSubStep === 1) {
+      if (cartItems.length === 0) {
+        alert("Por favor selecciona al menos un servicio para continuar.");
+        return;
+      }
+      if (serviceToConfigure) {
+        setSelectedService(serviceToConfigure);
+      } else {
+        setSelectedService(cartItems[0].service);
+      }
+      setBookingSubStep(2);
+    } else if (bookingSubStep === 2) {
+      setBookingSubStep(3);
+    } else if (bookingSubStep === 3) {
+      if (!selectedDate || !selectedTime) {
+        alert("Por favor selecciona la fecha y la hora de tu cita.");
+        return;
+      }
+      handleAddCurrentServiceToCart();
+    }
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50/50 text-zinc-800 font-sans flex flex-col">
-      <header className="sticky top-0 z-40 w-full border-b border-zinc-200/80 bg-white/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex h-20 items-center justify-between px-4 sm:px-8">
-          <Link href="/" className="flex flex-col">
-            <span className="text-lg sm:text-xl font-black tracking-[0.2em] text-zinc-900 uppercase">
+    <div className="min-h-screen bg-zinc-50/60 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans flex flex-col pb-24 lg:pb-8">
+      
+      {/* ENCABEZADO PÚBLICO */}
+      <header className="sticky top-0 z-40 w-full border-b border-zinc-200/80 dark:border-zinc-800 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex h-16 sm:h-20 items-center justify-between px-4 sm:px-8">
+          <button
+            onClick={handleBackNavigation}
+            className="flex items-center gap-2 rounded-2xl bg-zinc-100 dark:bg-zinc-800 px-3.5 py-2 text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 transition-all cursor-pointer"
+            title="Volver atrás"
+          >
+            <ChevronLeft size={18} />
+            <span className="hidden sm:inline">Atrás</span>
+          </button>
+
+          <Link href="/" className="flex flex-col text-center">
+            <span className="text-base sm:text-xl font-black tracking-[0.2em] text-zinc-900 dark:text-zinc-50 uppercase">
               LEHANA STUDIO
             </span>
-            <span className="text-[9px] font-bold tracking-[0.25em] text-rose-600 uppercase -mt-1">
+            <span className="text-[8px] sm:text-[9px] font-bold tracking-[0.25em] text-rose-500 uppercase -mt-0.5">
               BEAUTY & ACADEMY
             </span>
           </Link>
 
-          <Link
-            href="/"
-            className="flex items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-200 transition-all"
+          <button
+            onClick={() => (window.location.href = "/")}
+            className="p-2 rounded-full border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer text-zinc-500"
+            title="Cerrar"
           >
-            <ArrowLeft size={14} />
-            <span>Volver al Inicio</span>
-          </Link>
+            <X size={18} />
+          </button>
         </div>
       </header>
 
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-8 py-6 sm:py-10">
-        <div className="rounded-3xl border border-pink-100 bg-white p-4 sm:p-10 shadow-xl space-y-6 sm:space-y-8">
-          
-          {step === "identify" && (
-            <div className="space-y-6 max-w-md mx-auto py-6">
-              <div className="text-center space-y-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-4 py-1.5 text-xs font-bold text-rose-700">
-                  <Sparkles size={14} /> Portal de Agendamiento
+      {/* CONTENIDO PRINCIPAL */}
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 md:p-8">
+        
+        {!bookingSuccess ? (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            {/* COLUMNA IZQUIERDA: FLUJO DE PASOS */}
+            <div className="lg:col-span-2 space-y-6">
+              
+              {/* BREADCRUMBS MULTIPASO */}
+              <div className="flex items-center gap-2 text-xs font-bold pb-2 border-b border-zinc-200/80 dark:border-zinc-800 overflow-x-auto custom-scrollbar">
+                <span className={bookingSubStep >= 1 ? "text-rose-500 font-extrabold" : "text-zinc-400"}>
+                  1. Servicios
                 </span>
-                <h1 className="text-2xl sm:text-3xl font-black text-zinc-900">Ingresa tu Celular</h1>
-                <p className="text-xs sm:text-sm text-zinc-500">
-                  Escribe tu número de WhatsApp para ver tu perfil, revisar tus citas o agendar un nuevo servicio.
-                </p>
+                <ChevronRight size={12} className="text-zinc-400" />
+                <span className={bookingSubStep >= 2 ? "text-rose-500 font-extrabold" : "text-zinc-400"}>
+                  2. Profesional & Sede
+                </span>
+                <ChevronRight size={12} className="text-zinc-400" />
+                <span className={bookingSubStep >= 3 ? "text-rose-500 font-extrabold" : "text-zinc-400"}>
+                  3. Fecha y Hora
+                </span>
+                <ChevronRight size={12} className="text-zinc-400" />
+                <span className={bookingSubStep >= 4 ? "text-rose-500 font-extrabold" : "text-zinc-400"}>
+                  4. Confirmar
+                </span>
               </div>
 
-              <form onSubmit={handleIdentify} className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 block mb-1">Número de WhatsApp</label>
-                  <div className="relative">
-                    <input
-                      type="tel"
-                      placeholder="Ej. 3000000000"
-                      required
-                      value={phoneSearch}
-                      onChange={(e) => setPhoneSearch(e.target.value)}
-                      className="w-full p-4 pl-11 text-sm rounded-2xl border border-zinc-200 bg-zinc-50 text-zinc-900 outline-none focus:border-rose-500 font-semibold"
-                    />
-                    <Phone size={18} className="absolute left-4 top-4 text-zinc-400" />
-                  </div>
-                </div>
+              {/* PASO 1: SELECCIONAR SERVICIOS */}
+              {bookingSubStep === 1 && (
+                <div className="space-y-5 animate-in fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <h1 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-zinc-50">
+                      Seleccionar servicios
+                    </h1>
 
-                <button
-                  type="submit"
-                  disabled={searching}
-                  className="w-full rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 py-4 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 hover:from-emerald-700 hover:to-emerald-600 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                >
-                  {searching ? "Buscando..." : "Buscar Cuenta / Continuar"}
-                </button>
-              </form>
-            </div>
-          )}
-
-          {step === "register" && (
-            <div className="space-y-6">
-              <div className="border-b border-zinc-100 pb-4 flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-black text-zinc-900">Registro de Cliente</h2>
-                  <p className="text-xs sm:text-sm text-zinc-500">No encontramos el número {phoneSearch}. Completa tus datos.</p>
-                </div>
-                <button
-                  onClick={() => setStep("identify")}
-                  className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-zinc-800 bg-zinc-100 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl"
-                >
-                  <ArrowLeft size={14} /> Cancelar
-                </button>
-              </div>
-
-              <form onSubmit={handleRegisterClient} className="space-y-4 text-xs sm:text-sm">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="font-bold text-zinc-700 block mb-1">Nombres</label>
-                    <input
-                      type="text"
-                      required
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-zinc-200 bg-zinc-50 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-zinc-700 block mb-1">Apellidos</label>
-                    <input
-                      type="text"
-                      required
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-zinc-200 bg-zinc-50 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="font-bold text-zinc-700 block mb-1">Correo Electrónico</label>
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-zinc-200 bg-zinc-50 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-zinc-700 block mb-1">Género</label>
-                    <select
-                      value={gender}
-                      onChange={(e) => setGenero(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-zinc-200 bg-zinc-50 outline-none font-semibold"
-                    >
-                      <option value="Femenino">Femenino</option>
-                      <option value="Masculino">Masculino</option>
-                      <option value="Otro">Otro</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="font-bold text-zinc-700 block mb-1">Municipio / Ciudad</label>
-                    <input
-                      type="text"
-                      required
-                      value={city}
-                      onChange={(e) => setMunicipio(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-zinc-200 bg-zinc-50 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-zinc-700 block mb-1">Dirección</label>
-                    <input
-                      type="text"
-                      required
-                      value={address}
-                      onChange={(e) => setDireccion(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-zinc-200 bg-zinc-50 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-4 flex gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setStep("identify")}
-                    className="w-1/3 rounded-2xl bg-zinc-100 text-zinc-700 font-bold py-3.5 hover:bg-zinc-200 transition-all cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={searching}
-                    className="w-2/3 rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 py-3.5 font-bold text-white shadow-lg shadow-emerald-600/20 hover:from-emerald-700 hover:to-emerald-600 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                  >
-                    {searching ? "Guardando..." : "Guardar & Continuar"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {step === "profile" && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-100 pb-4 gap-4">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-black text-zinc-900">{firstName} {lastName}</h2>
-                  <p className="text-xs sm:text-sm text-zinc-500">{phoneSearch} • {city || "Sin municipio"}</p>
-                </div>
-
-                <button
-                  onClick={resetAll}
-                  className="flex items-center gap-1.5 bg-rose-50 text-rose-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-rose-100 transition-colors w-max"
-                >
-                  <ArrowLeft size={14} /> Salir
-                </button>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2">
-                    <History size={16} className="text-rose-500" /> Historial de Citas
-                  </h3>
-                  <button
-                    onClick={() => setStep("booking")}
-                    className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-rose-500 to-pink-500 px-4 py-2.5 sm:px-5 sm:py-2.5 rounded-xl shadow-md cursor-pointer"
-                  >
-                    <Plus size={16} /> Agendar Cita
-                  </button>
-                </div>
-
-                {pastAppointments.length > 0 ? (
-                  <div className="space-y-3">
-                    {pastAppointments.map((appt) => (
-                      <div
-                        key={appt.id}
-                        className="p-4 rounded-2xl border border-zinc-200/80 bg-zinc-50 flex items-center justify-between text-xs sm:text-sm"
-                      >
-                        <div>
-                          <p className="font-bold text-zinc-900">{appt.servicio}</p>
-                          <p className="text-xs text-zinc-500 mt-0.5">
-                            {appt.sede} • {new Date(appt.appointment_at).toLocaleDateString("es-CO")}
-                          </p>
-                        </div>
-                        <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-rose-100 text-rose-700">
-                          {appt.estado}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs sm:text-sm text-zinc-400 text-center py-10">Aún no tienes citas registradas.</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* VISTA DE CONFIGURACIÓN DE LA RESERVA */}
-          {step === "booking" && !bookingSuccess && (
-            <div className="space-y-6">
-              <div className="border-b border-zinc-100 pb-4 flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-black text-zinc-900">Nueva Cita</h2>
-                  <p className="text-xs sm:text-sm text-zinc-500">Agrega servicios para ti o tus familiares</p>
-                </div>
-                <button
-                  onClick={() => setStep("profile")}
-                  className="text-xs font-bold text-zinc-500 hover:text-zinc-800"
-                >
-                  ← Volver
-                </button>
-              </div>
-
-              {/* RESUMEN DEL CARRITO DE CITAS */}
-              {cartItems.length > 0 && (
-                <div className="space-y-3 p-4 bg-rose-50/40 border border-rose-100 rounded-3xl">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-xs font-bold text-rose-900 flex items-center gap-1.5 uppercase tracking-wider">
-                      <Users size={16} className="text-rose-600" /> Citas añadidas en esta reserva ({cartItems.length})
-                    </h3>
-                    <span className="text-xs font-black text-rose-600">Total: ${calculateTotalPrice().toLocaleString()} COP</span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {cartItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="p-3.5 bg-white rounded-2xl border border-zinc-200 flex items-center justify-between text-xs gap-2"
-                      >
-                        <div>
-                          <p className="font-extrabold text-zinc-900">
-                            {item.attendeeName} • <span className="text-rose-600">{item.service.Servicio}</span>
-                          </p>
-                          <p className="text-zinc-500 mt-0.5">
-                            {item.date} a las {formatTime12h(item.time)} hs con {item.specialist} (Sede {item.sede})
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-zinc-800">${item.service.Precio.toLocaleString()}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveFromCart(item.id)}
-                            className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* SELECCIÓN DE BENEFICIARIO */}
-              <div className="space-y-3 p-4 bg-zinc-50/80 border border-zinc-200/80 rounded-3xl">
-                <label className="text-xs sm:text-sm font-bold text-zinc-800 block">
-                  ¿Para quién es este servicio?
-                </label>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingCompanion(false);
-                      setCurrentAttendeeName(mainClientFullName);
-                    }}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      !isAddingCompanion
-                        ? "bg-zinc-900 text-white shadow-md shadow-zinc-900/10"
-                        : "bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100"
-                    }`}
-                  >
-                    <User size={14} /> Para mí ({firstName})
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingCompanion(true);
-                      if (!companionNameInput) setCompanionNameInput("");
-                    }}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      isAddingCompanion
-                        ? "bg-rose-600 text-white shadow-md shadow-rose-500/20"
-                        : "bg-white text-rose-700 border border-rose-200 hover:bg-rose-50"
-                    }`}
-                  >
-                    <UserPlus size={14} /> + Añadir Acompañante
-                  </button>
-                </div>
-
-                {isAddingCompanion && (
-                  <div className="pt-2">
-                    <input
-                      type="text"
-                      placeholder="Escribe el nombre o parentesco (ej. María, Mamá, Hija)..."
-                      value={companionNameInput}
-                      onChange={(e) => setCompanionNameInput(e.target.value)}
-                      className="w-full p-3.5 text-xs sm:text-sm font-bold rounded-2xl border border-rose-300 bg-white text-rose-900 outline-none focus:border-rose-500"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* SEDE CON MAPA */}
-              <div className="space-y-2">
-                <label className="text-xs sm:text-sm font-bold text-zinc-700 block">
-                  Sede del Estudio
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {SEDES_INFO.map((s) => {
-                    const isSelected = selectedSede.name === s.name;
-                    return (
-                      <div
-                        key={s.name}
-                        onClick={() => setSelectedSede(s)}
-                        className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
-                          isSelected
-                            ? "border-rose-500 bg-rose-50/50 shadow-md shadow-rose-500/10"
-                            : "border-zinc-200 bg-zinc-50 hover:bg-zinc-100"
+                    {/* BENEFICIARIO */}
+                    <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingCompanion(false)}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${
+                          !isAddingCompanion ? "bg-white dark:bg-zinc-800 text-rose-500 shadow-xs" : "text-zinc-400"
                         }`}
                       >
-                        <div>
-                          <div className="flex items-center justify-between w-full mb-1">
-                            <span className={`text-xs font-black ${isSelected ? "text-rose-700" : "text-zinc-800"}`}>
-                              {s.name}
-                            </span>
-                            {isSelected ? (
-                              <CheckCircle2 size={16} className="text-rose-600" />
-                            ) : (
-                              <MapPin size={14} className="text-zinc-400" />
-                            )}
-                          </div>
-                          <span className="text-[11px] text-zinc-500 font-medium block">
-                            {s.address}
-                          </span>
-                        </div>
+                        Para mí
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingCompanion(true)}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${
+                          isAddingCompanion ? "bg-rose-500 text-white shadow-xs" : "text-zinc-400"
+                        }`}
+                      >
+                        + Acompañante
+                      </button>
+                    </div>
+                  </div>
 
-                        <a
-                          href={s.mapUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-2.5 inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 hover:text-rose-800 hover:underline"
-                        >
-                          <span>Ver en Google Maps</span>
-                          <ExternalLink size={10} />
-                        </a>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* PASO 1: SERVICIO */}
-              <div className="space-y-1 relative" ref={suggestionsRef}>
-                <label className="text-xs sm:text-sm font-bold text-zinc-700 block">
-                  1. Selecciona Servicio {isAddingCompanion && companionNameInput ? `para ${companionNameInput}` : "para Ti"}
-                </label>
-
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Escribe para buscar (ej. Cejas, Pestañas, Limpieza)..."
-                    value={serviceQuery}
-                    onFocus={() => setShowSuggestions(true)}
-                    onChange={(e) => {
-                      setServiceSearchTerm(e.target.value);
-                      setSelectedService(null);
-                      setShowSuggestions(true);
-                      setServiceQualifiedSpecialists([]);
-                      setPreferredSpecialistFilter("");
-                      setAvailabilityData([]);
-                      setSelectedDate("");
-                      setSelectedTime("");
-                      setSelectedSpecialist("");
-                      setCurrentSlotSpecialists([]);
-                      setDateError("");
-                    }}
-                    className={`w-full p-3.5 pl-10 pr-10 text-xs sm:text-sm font-semibold rounded-2xl border outline-none transition-colors ${
-                      selectedService
-                        ? "border-emerald-500 bg-emerald-50/40 text-emerald-900 font-bold"
-                        : "border-zinc-200 bg-zinc-50 focus:border-rose-500"
-                    }`}
-                  />
-                  <Search size={16} className="absolute left-3.5 top-4 text-zinc-400 pointer-events-none" />
-
-                  {selectedService && (
-                    <button
-                      type="button"
-                      onClick={clearSelectedService}
-                      className="absolute right-3.5 top-3.5 text-zinc-400 hover:text-zinc-700 p-1 rounded-full hover:bg-zinc-200"
-                    >
-                      <X size={16} />
-                    </button>
+                  {isAddingCompanion && (
+                    <div className="p-3 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-2xl space-y-1">
+                      <label className="text-[10px] font-black uppercase text-rose-500">Nombre del Acompañante</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. María (Hija, Mamá, Amiga)..."
+                        value={companionNameInput}
+                        onChange={(e) => setCompanionNameInput(e.target.value)}
+                        className="w-full p-2.5 text-xs font-bold rounded-xl border border-rose-200 dark:border-rose-900/60 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 outline-none"
+                      />
+                    </div>
                   )}
-                </div>
 
-                {showSuggestions && !selectedService && (
-                  <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-zinc-200 rounded-2xl shadow-2xl divide-y divide-zinc-100 text-xs sm:text-sm">
-                    {filteredServices.length > 0 ? (
-                      filteredServices.map((s) => (
-                        <button
-                          type="button"
-                          key={s.id}
-                          onClick={() => selectSuggestedService(s)}
-                          className="w-full text-left p-3.5 hover:bg-rose-50/70 transition-colors flex items-center justify-between group cursor-pointer"
-                        >
-                          <div>
-                            <p className="font-bold text-zinc-800 group-hover:text-rose-700">{s.Servicio}</p>
-                            <p className="text-xs text-zinc-400">{s.category} • {s.duracion} min</p>
-                          </div>
-                          <span className="font-extrabold text-rose-600 text-xs bg-rose-50 px-2.5 py-1 rounded-lg">
-                            ${s.Precio.toLocaleString()} COP
-                          </span>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center text-zinc-400">No se encontraron servicios.</div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* PASO 2: ESPECIALISTA PREFERIDA */}
-              {selectedService && (
-                <div className="space-y-2">
-                  <label className="text-xs sm:text-sm font-bold text-zinc-700 block">
-                    2. Especialista de Preferencia
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPreferredSpecialistFilter("")}
-                      className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        preferredSpecialistFilter === ""
-                          ? "bg-rose-600 text-white shadow-md shadow-rose-500/20"
-                          : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                      }`}
-                    >
-                      <Sparkles size={14} /> Cualquiera disponible (Recomendado)
-                    </button>
-
-                    {serviceQualifiedSpecialists.map((spec) => {
-                      const isSelected = preferredSpecialistFilter === spec;
-                      return (
-                        <button
-                          key={spec}
-                          type="button"
-                          onClick={() => setPreferredSpecialistFilter(spec)}
-                          className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                            isSelected
-                              ? "bg-rose-600 text-white shadow-md shadow-rose-500/20"
-                              : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                          }`}
-                        >
-                          <User size={14} /> {spec}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* PASO 3: CALENDARIO */}
-              {selectedService && (
-                <div className="space-y-3 pt-2">
-                  <label className="text-xs sm:text-sm font-bold text-zinc-700 block">
-                    3. Selecciona la Fecha en el Calendario
-                  </label>
-
-                  <div className="p-2 sm:p-4 bg-zinc-50 border border-zinc-200 rounded-3xl flex justify-center overflow-x-auto">
-                    <Calendar
-                      onChange={handleCalendarSelect}
-                      tileDisabled={isTileDisabled}
-                      minDate={getTomorrowDate()}
-                      className="custom-lh-calendar font-sans text-xs sm:text-sm w-full max-w-full"
-                    />
+                  {/* Píldoras de Categoría */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                    {categories.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-3.5 py-1.5 rounded-2xl text-[11px] font-extrabold transition-all cursor-pointer shrink-0 ${
+                          selectedCategory === cat
+                            ? "bg-rose-500 text-white shadow-md shadow-rose-500/20"
+                            : "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-rose-300"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
                   </div>
 
-                  {selectedDate && (
-                    <p className="text-xs font-bold text-emerald-700 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
-                      Fecha seleccionada: {selectedDate}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* PASO 4: HORA DISPONIBLE */}
-              {selectedDate && (
-                <div className="space-y-2">
-                  <label className="text-xs sm:text-sm font-bold text-zinc-700 block">
-                    4. Hora Disponible
-                  </label>
-
-                  {availableSlotsForDate.length === 0 ? (
-                    <p className="text-xs text-zinc-400 italic">No hay horarios libres para esta fecha.</p>
+                  {/* Lista de Servicios */}
+                  {loadingServices ? (
+                    <div className="py-12 flex items-center justify-center gap-2 text-zinc-400 text-xs font-bold">
+                      <Loader2 size={20} className="animate-spin text-rose-500" />
+                      <span>Cargando catálogo de servicios...</span>
+                    </div>
+                  ) : filteredServices.length === 0 ? (
+                    <div className="py-12 text-center text-zinc-400 text-xs font-medium">
+                      No se encontraron servicios para esta categoría.
+                    </div>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-60 overflow-y-auto p-1">
-                      {availableSlotsForDate.map((slot) => {
-                        const isSelected = selectedTime === slot.time;
+                    <div className="space-y-3">
+                      {filteredServices.map((service) => {
+                        const isComp = isAddingCompanion;
+                        const compName = companionNameInput.trim();
+
+                        const isInCart = cartItems.some(
+                          (i) =>
+                            (i.service.SKU === service.SKU || i.service.id === service.id) &&
+                            i.isCompanion === isComp &&
+                            (!isComp || i.companionName === compName)
+                        );
+
                         return (
-                          <button
-                            key={slot.time}
-                            type="button"
-                            onClick={() => handleTimeSelect(slot.time)}
-                            className={`p-3 rounded-2xl text-xs font-bold transition-all cursor-pointer border flex items-center justify-between ${
-                              isSelected
-                                ? "bg-rose-600 border-rose-600 text-white shadow-md shadow-rose-500/20"
-                                : "bg-zinc-50 border-zinc-200 text-zinc-800 hover:bg-rose-50 hover:border-rose-300"
+                          <div
+                            key={service.SKU || service.id}
+                            className={`flex items-start justify-between gap-4 p-4 sm:p-5 rounded-3xl border transition-all ${
+                              isInCart
+                                ? "border-rose-500 bg-rose-50/30 dark:bg-rose-950/20 shadow-xs"
+                                : "border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-rose-300"
                             }`}
                           >
-                            <span>{formatTime12h(slot.time)}</span>
-                            {isSelected && <Check size={14} />}
-                          </button>
+                            <div className="space-y-1.5 flex-1">
+                              <h3 className="font-extrabold text-sm sm:text-base text-zinc-900 dark:text-zinc-50">
+                                {service.Servicio}
+                              </h3>
+                              <p className="text-[11px] font-bold text-zinc-400 flex items-center gap-1">
+                                <Clock size={12} /> {service.duracion} min
+                              </p>
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                                {service.descripcion}
+                              </p>
+                              <div className="pt-1 font-black text-xs text-rose-500">
+                                ${service.Precio.toLocaleString("es-CO")} COP
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => toggleSelectService(service)}
+                              className={`w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2.5 rounded-full sm:rounded-2xl font-black text-xs transition-all cursor-pointer shrink-0 flex items-center justify-center gap-1 ${
+                                isInCart
+                                  ? "bg-rose-500 text-white shadow-md shadow-rose-500/20"
+                                  : "border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:border-rose-400"
+                              }`}
+                            >
+                              {isInCart ? (
+                                <>
+                                  <Check size={16} />
+                                  <span className="hidden sm:inline">Añadido</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus size={16} />
+                                  <span className="hidden sm:inline">Seleccionar</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -1138,221 +974,510 @@ function BookingContent() {
                 </div>
               )}
 
-              {/* SELECCIÓN FINAL SI HAY MÁS DE 1 LIBRE */}
-              {selectedTime && preferredSpecialistFilter === "" && currentSlotSpecialists.length > 1 && (
-                <div className="p-4 bg-rose-50/60 border border-rose-100 rounded-2xl space-y-3">
-                  <label className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
-                    <UserCheck size={16} className="text-rose-600" />
-                    Hay {currentSlotSpecialists.length} especialistas disponibles a las {formatTime12h(selectedTime)}. Selecciona una:
-                  </label>
-
-                  <div className="flex flex-wrap gap-2">
-                    {currentSlotSpecialists.map((specName) => (
-                      <button
-                        type="button"
-                        key={specName}
-                        onClick={() => setSelectedSpecialist(specName)}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          selectedSpecialist === specName
-                            ? "bg-rose-600 text-white shadow-md shadow-rose-500/20"
-                            : "bg-white text-zinc-700 border border-zinc-200 hover:bg-rose-100"
-                        }`}
-                      >
-                        {specName}
-                      </button>
-                    ))}
+              {/* PASO 2: PROFESIONAL Y SEDE CON FILTRADO DE ESPECIALISTAS */}
+              {bookingSubStep === 2 && (selectedService || cartItems.length > 0) && (
+                <div className="space-y-6 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-zinc-50">
+                        Seleccionar Profesional & Sede
+                      </h1>
+                      <p className="text-xs text-rose-500 font-bold mt-0.5">
+                        Para: {selectedService?.Servicio || cartItems[0]?.service.Servicio}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setBookingSubStep(1)}
+                      className="text-xs font-bold text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                    >
+                      ← Cambiar servicio
+                    </button>
                   </div>
-                </div>
-              )}
 
-              {/* BOTÓN DE ADICIÓN AL CARRITO */}
-              {selectedService && selectedDate && selectedTime && selectedSpecialist && (
-                <div className="pt-2 space-y-2">
+                  {/* Selección de Sede */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-zinc-400">Sedes Disponibles</label>
+                    <LocationSearch
+                      onSedeSeleccionada={(sedeMasCercana) => {
+                        setSelectedSede(sedeMasCercana);
+                      }}
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      
+                      {SEDES_INFO.map((s) => {
+                        const isSelected = selectedSede.name === s.name;
+                        return (
+                          <div
+                            key={s.name}
+                            onClick={() => setSelectedSede(s)}
+                            className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col justify-between ${
+                              isSelected
+                                ? "border-rose-500 bg-rose-50/50 dark:bg-rose-950/20 text-rose-600 shadow-2xs"
+                                : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-zinc-300"
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-xs block">{s.name}</span>
+                                {isSelected && <CheckCircle2 size={14} className="text-rose-500" />}
+                              </div>
+                              <span className="text-[10px] text-zinc-400 block mt-0.5 leading-tight">{s.address}</span>
+                            </div>
+
+                            <a
+                              href={s.mapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="mt-3 inline-flex items-center gap-1 text-[10px] font-extrabold text-rose-500 hover:text-rose-700 hover:underline pt-2 border-t border-zinc-100 dark:border-zinc-800"
+                            >
+                              <MapPin size={11} />
+                              <span>Ver en Google Maps</span>
+                              <ExternalLink size={10} />
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Selección de Profesional */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-zinc-400">Profesional Capacitado</label>
+                    
+                    <div
+                      onClick={() => setSelectedSpecialist("")}
+                      className={`flex items-center justify-between p-4 rounded-3xl border bg-white dark:bg-zinc-900 cursor-pointer transition-all ${
+                        selectedSpecialist === "" ? "border-rose-500 ring-2 ring-rose-500/20 shadow-xs" : "border-zinc-200 dark:border-zinc-800"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center">
+                          <Shuffle size={18} />
+                        </div>
+                        <div>
+                          <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-50">Cualquier profesional</h4>
+                          <p className="text-[10px] text-zinc-400">Máxima disponibilidad de horarios</p>
+                        </div>
+                      </div>
+                      {selectedSpecialist === "" && <CheckCircle2 size={16} className="text-rose-500" />}
+                    </div>
+
+                    {qualifiedSpecialistsForSelectedService.map((spec) => {
+                      const isSelected = selectedSpecialist === spec;
+                      return (
+                        <div
+                          key={spec}
+                          onClick={() => setSelectedSpecialist(spec)}
+                          className={`flex items-center justify-between p-4 rounded-3xl border bg-white dark:bg-zinc-900 cursor-pointer transition-all ${
+                            isSelected ? "border-rose-500 ring-2 ring-rose-500/20 shadow-xs" : "border-zinc-200 dark:border-zinc-800"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-rose-500">
+                              <User size={18} />
+                            </div>
+                            <div>
+                              <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-50">{spec}</h4>
+                              <p className="text-[10px] text-zinc-400">Especialista en Belleza</p>
+                            </div>
+                          </div>
+                          {isSelected && <CheckCircle2 size={16} className="text-rose-500" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+
                   <button
                     type="button"
-                    onClick={handleAddServiceToCart}
-                    className="w-full p-4 rounded-2xl border-2 border-rose-500 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-rose-500/10"
+                    onClick={handleNextStep}
+                    className="w-full py-4 rounded-2xl bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900 font-black text-xs uppercase tracking-wider shadow-md hover:opacity-90 transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
-                    <Plus size={18} />
-                    <span>
-                      Añadir este servicio a la reserva ({getActiveAttendeeName()})
-                    </span>
+                    <span>Continuar a Fecha y Hora</span>
+                    <ChevronRight size={16} />
                   </button>
                 </div>
               )}
 
-              {/* INDICADOR DE CARGA */}
-              {loadingAvailability && (
-                <p className="text-xs text-rose-600 font-bold animate-pulse flex items-center gap-1.5">
-                  <Clock size={14} /> Consultando disponibilidad...
-                </p>
-              )}
+              {/* PASO 3: FECHA Y HORA DE CITA */}
+              {bookingSubStep === 3 && (selectedService || cartItems.length > 0) && (
+                <div className="space-y-6 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-zinc-50">
+                        Selecciona fecha y hora
+                      </h1>
+                      <p className="text-xs text-rose-500 font-bold mt-0.5">
+                        Para: {selectedService?.Servicio || cartItems[0]?.service.Servicio} ({selectedSpecialist || "Cualquier profesional"})
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setBookingSubStep(2)}
+                      className="text-xs font-bold text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                    >
+                      ← Cambiar profesional
+                    </button>
+                  </div>
 
-              {/* ALERTA DE ERROR */}
-              {dateError && (
-                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-center gap-2">
-                  <AlertCircle size={16} className="text-amber-600 flex-shrink-0" />
-                  <span>{dateError}</span>
+                  <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl flex justify-center">
+                    <Calendar
+                      onChange={handleCalendarSelect}
+                      minDate={getTomorrowDate()}
+                      className="custom-lh-calendar font-sans text-xs w-full"
+                    />
+                  </div>
+
+                  {selectedDate && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-zinc-400">
+                        Horarios Disponibles para el {selectedDate}
+                      </label>
+
+                      {loadingAvailability ? (
+                        <p className="text-xs text-rose-500 font-bold animate-pulse flex items-center gap-2">
+                          <Loader2 size={14} className="animate-spin" /> Consultando disponibilidad...
+                        </p>
+                      ) : availableSlotsForDate.length === 0 ? (
+                        <div className="p-4 bg-rose-50 dark:bg-rose-950/20 rounded-2xl text-xs font-semibold text-rose-700 dark:text-rose-400">
+                          No hay turnos libres para la fecha seleccionada. Por favor intenta seleccionando otro día o probando con otra especialista.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          {availableSlotsForDate.map((slot) => {
+                            const isSelected = selectedTime === slot.time;
+                            return (
+                              <button
+                                key={slot.time}
+                                type="button"
+                                onClick={() => handleTimeSelect(slot.time)}
+                                className={`p-3 rounded-2xl text-xs font-black transition-all cursor-pointer border ${
+                                  isSelected
+                                    ? "bg-rose-500 text-white border-rose-500 shadow-md shadow-rose-500/20"
+                                    : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 hover:border-rose-300"
+                                }`}
+                              >
+                                {formatTime12h(slot.time)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {selectedDate && selectedTime && (
+                    <button
+                      type="button"
+                      onClick={handleAddCurrentServiceToCart}
+                      className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/20 hover:from-rose-600 hover:to-pink-600 transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Plus size={18} />
+                      <span>Confirmar reserva</span>
+                    </button>
+                  )}
                 </div>
               )}
 
-              {/* ACCIONES DE VERIFICACIÓN */}
-              <div className="pt-4 flex justify-between items-center text-xs sm:text-sm">
-                <button
-                  onClick={() => setStep("profile")}
-                  className="text-zinc-500 hover:text-zinc-800 font-bold"
-                >
-                  ← Volver al Perfil
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStep("summary")}
-                  disabled={cartItems.length === 0 && (!selectedService || !selectedDate || !selectedTime || !selectedSpecialist)}
-                  className="rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 px-6 py-3.5 sm:px-8 font-bold text-white shadow-lg shadow-emerald-600/20 hover:from-emerald-700 hover:to-emerald-600 transition-all active:scale-95 disabled:opacity-40 cursor-pointer flex items-center gap-2"
-                >
-                  <ShieldCheck size={18} />
-                  <span>Verificar Disponibilidad {cartItems.length > 0 && `(${cartItems.length + (selectedService ? 1 : 0)})`}</span>
-                </button>
-              </div>
+              {/* PASO 4: INGRESAR DATOS Y BÚSQUEDA EN TABLA 'clientes' */}
+              {bookingSubStep === 4 && (
+                <form onSubmit={handleConfirmBooking} className="space-y-6 animate-in fade-in">
+                  
+                  {/* RESUMEN DETALLADO DEL AGENDAMIENTO */}
+                  <div className="p-6 rounded-3xl border border-rose-200 dark:border-rose-900/40 bg-gradient-to-br from-rose-50/50 to-white dark:from-rose-950/20 dark:to-zinc-900 space-y-4 shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-rose-100 dark:border-rose-900/30 pb-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={18} className="text-rose-500" />
+                        <h2 className="font-extrabold text-sm sm:text-base text-zinc-900 dark:text-zinc-50">
+                          Resumen de tu Agendamiento
+                        </h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setBookingSubStep(1)}
+                        className="text-xs font-bold text-rose-500 hover:underline cursor-pointer"
+                      >
+                        Editar
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="flex items-center gap-2 font-bold text-zinc-700 dark:text-zinc-300">
+                        <MapPin size={15} className="text-rose-500 shrink-0" />
+                        <span>Sede: <strong>{selectedSede.name}</strong></span>
+                      </div>
+
+                      <div className="flex items-center gap-2 font-bold text-zinc-700 dark:text-zinc-300">
+                        <CalendarIcon size={15} className="text-rose-500 shrink-0" />
+                        <span>Fecha: <strong>{selectedDate} ({formatTime12h(selectedTime)})</strong></span>
+                      </div>
+
+                      <div className="flex items-center gap-2 font-bold text-zinc-700 dark:text-zinc-300">
+                        <User size={15} className="text-rose-500 shrink-0" />
+                        <span>Atiende: <strong>{selectedSpecialist || "Cualquier profesional"}</strong></span>
+                      </div>
+
+                      <div className="flex items-center gap-2 font-bold text-zinc-700 dark:text-zinc-300">
+                        <Clock size={15} className="text-rose-500 shrink-0" />
+                        <span>Duración total: <strong>{calculateTotalDuration()} min</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-rose-100 dark:border-rose-900/20 space-y-1.5">
+                      <span className="text-[10px] font-black uppercase text-zinc-400">Servicios Incluidos:</span>
+                      {cartItems.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between text-xs font-bold text-zinc-800 dark:text-zinc-200">
+                          <span>• {item.service.Servicio} <span className="text-rose-500">({getDisplayAttendeeName(item)})</span></span>
+                          <span className="text-rose-500">${item.service.Precio.toLocaleString("es-CO")} COP</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* FORMULARIO DE CONTACTO */}
+                  <div className="p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 space-y-4 shadow-xs">
+                    <h3 className="font-extrabold text-sm text-zinc-900 dark:text-zinc-50 border-b border-zinc-100 dark:border-zinc-800 pb-2">
+                      Tus Datos de Contacto
+                    </h3>
+
+                    {/* Teléfono Móvil */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase text-zinc-400">
+                        Teléfono Móvil (WhatsApp) *
+                      </label>
+                      <div className="flex gap-2">
+                        <CountrySelect
+                          value={indicativo}
+                          onChange={(val) => setIndicativo(val)}
+                        />
+
+                        <div className="relative flex-1">
+                          <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                          <input
+                            type="tel"
+                            required
+                            placeholder="Ej: 3001234567"
+                            value={clientPhone}
+                            onChange={handlePhoneChange}
+                            className="w-full pl-10 pr-4 py-3 text-xs font-bold rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 outline-none focus:border-rose-400"
+                          />
+                          {checkingClient && (
+                            <Loader2 size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-rose-500" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* RECONOCIMIENTO EN LA TABLA 'clientes' */}
+                    {clientFound === true && (
+                      <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2 animate-in fade-in">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                            <CheckCircle2 size={16} className="text-emerald-500" />
+                            ¡Te hemos reconocido! Nombre: <strong>{clientName}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingName(!isEditingName)}
+                            className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                          >
+                            <Edit3 size={12} />
+                            <span>{isEditingName ? "Guardar" : "Cambiar nombre"}</span>
+                          </button>
+                        </div>
+
+                        {isEditingName && (
+                          <input
+                            type="text"
+                            value={clientName}
+                            onChange={(e) => setClientName(e.target.value)}
+                            className="w-full p-2.5 text-xs font-bold rounded-xl border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-zinc-950 outline-none"
+                            placeholder="Ingresa tu nombre..."
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    {/* CLIENTE NUEVO */}
+                    {(clientFound === false || clientFound === null) && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-zinc-400">
+                            Nombre Completo *
+                          </label>
+                          <div className="relative">
+                            <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej: Ana María Pérez"
+                              value={clientName}
+                              onChange={(e) => setClientName(e.target.value)}
+                              className="w-full pl-10 pr-4 py-3 text-xs font-bold rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 outline-none focus:border-rose-400"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-zinc-400">
+                            Correo Electrónico (Opcional)
+                          </label>
+                          <div className="relative">
+                            <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                            <input
+                              type="email"
+                              placeholder="Ej: ana@correo.com"
+                              value={clientEmail}
+                              onChange={(e) => setClientEmail(e.target.value)}
+                              className="w-full pl-10 pr-4 py-3 text-xs font-bold rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 outline-none focus:border-rose-400"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={bookingLoading}
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 hover:from-emerald-700 hover:to-emerald-600 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {bookingLoading ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        <span>Confirmando Reserva...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={18} />
+                        <span>Confirmar Reserva (${calculateTotalPrice().toLocaleString("es-CO")} COP)</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+
             </div>
-          )}
 
-          {/* VISTA RESUMEN */}
-          {step === "summary" && !bookingSuccess && (
-            <div className="space-y-6">
-              <div className="border-b border-zinc-100 pb-4 flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-black text-zinc-900">Resumen de tu Reserva</h2>
-                  <p className="text-xs sm:text-sm text-zinc-500">Por favor revisa todos los detalles antes de confirmar</p>
+            {/* COLUMNA DERECHA: SIDEBAR DE RESUMEN DE CARRITO (ESCRITORIO) */}
+            <aside className="hidden lg:block space-y-4">
+              <div className="sticky top-24 p-6 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl space-y-5">
+                
+                <div className="flex items-center gap-3 pb-4 border-b border-zinc-100 dark:border-zinc-800">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-500 text-white font-black flex items-center justify-center shrink-0">
+                    LS
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-50">Lehana Studio</h3>
+                    <p className="text-[10px] text-zinc-400">{selectedSede.name}, Colombia</p>
+                  </div>
                 </div>
-                <button
-                  onClick={() => setStep("booking")}
-                  className="text-xs font-bold text-zinc-500 hover:text-zinc-800 flex items-center gap-1"
-                >
-                  <ArrowLeft size={14} /> Editar o añadir más
-                </button>
-              </div>
 
-              {/* LISTA DE CITAS A CONFIRMAR */}
-              <div className="space-y-4">
-                {cartItems.map((item, index) => (
-                  <div key={item.id} className="bg-gradient-to-br from-rose-50/50 via-white to-pink-50/30 border border-rose-100 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
-                    <div className="flex justify-between items-start border-b border-rose-100 pb-3">
-                      <div>
-                        <span className="text-[10px] font-black uppercase text-rose-600 bg-rose-100/60 px-2.5 py-0.5 rounded-full">
-                          Cita #{index + 1} • Para: {item.attendeeName}
-                        </span>
-                        <h3 className="text-base sm:text-lg font-black text-zinc-900 mt-1">
-                          {item.service.Servicio}
-                        </h3>
-                      </div>
-                      <span className="text-base font-black text-rose-600">
-                        ${item.service.Precio.toLocaleString()} COP
-                      </span>
-                    </div>
+                {/* Lista del Carrito */}
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black uppercase text-zinc-400">
+                    Carrito ({cartItems.length})
+                  </h4>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                      <div className="bg-white p-3 rounded-xl border border-zinc-100">
-                        <p className="text-zinc-400 font-bold text-[10px] uppercase">Fecha & Hora</p>
-                        <p className="font-extrabold text-zinc-800">{item.date}</p>
-                        <p className="font-bold text-rose-600">{formatTime12h(item.time)}</p>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl border border-zinc-100">
-                        <p className="text-zinc-400 font-bold text-[10px] uppercase">Atendida por</p>
-                        <p className="font-extrabold text-zinc-800">{item.specialist}</p>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl border border-zinc-100">
-                        <p className="text-zinc-400 font-bold text-[10px] uppercase">Sede</p>
-                        <p className="font-extrabold text-zinc-800">Sede {item.sede}</p>
-                      </div>
+                  {cartItems.length === 0 ? (
+                    <p className="text-xs text-zinc-400 italic py-3 text-center">No has añadido citas aún.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                      {cartItems.map((item) => (
+                        <div key={item.id} className="p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-950 flex items-center justify-between text-xs">
+                          <div className="max-w-[160px] space-y-0.5">
+                            <span className="font-bold block truncate text-zinc-900 dark:text-zinc-100">{item.service.Servicio}</span>
+                            <span className="text-[10px] text-zinc-400 block"><strong className="text-rose-500">{getDisplayAttendeeName(item)}</strong> • {item.service.duracion} min</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-rose-500">${item.service.Precio.toLocaleString("es-CO")}</span>
+                            <button onClick={() => handleRemoveFromCart(item.id)} className="text-zinc-400 hover:text-rose-500 p-1 cursor-pointer">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
+                  )}
+                </div>
 
-                {/* Si hay un elemento configurado actualmente sin añadir explícitamente */}
-                {selectedService && selectedDate && selectedTime && selectedSpecialist && (
-                  <div className="bg-gradient-to-br from-rose-50/50 via-white to-pink-50/30 border border-rose-100 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
-                    <div className="flex justify-between items-start border-b border-rose-100 pb-3">
-                      <div>
-                        <span className="text-[10px] font-black uppercase text-rose-600 bg-rose-100/60 px-2.5 py-0.5 rounded-full">
-                          Cita #{cartItems.length + 1} • Para: {getActiveAttendeeName()}
-                        </span>
-                        <h3 className="text-base sm:text-lg font-black text-zinc-900 mt-1">
-                          {selectedService.Servicio}
-                        </h3>
-                      </div>
-                      <span className="text-base font-black text-rose-600">
-                        ${selectedService.Precio.toLocaleString()} COP
-                      </span>
-                    </div>
+                <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-zinc-400">Total Acumulado</span>
+                  <span className="text-lg font-black text-rose-500">${calculateTotalPrice().toLocaleString("es-CO")} COP</span>
+                </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                      <div className="bg-white p-3 rounded-xl border border-zinc-100">
-                        <p className="text-zinc-400 font-bold text-[10px] uppercase">Fecha & Hora</p>
-                        <p className="font-extrabold text-zinc-800">{selectedDate}</p>
-                        <p className="font-bold text-rose-600">{formatTime12h(selectedTime)}</p>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl border border-zinc-100">
-                        <p className="text-zinc-400 font-bold text-[10px] uppercase">Atendida por</p>
-                        <p className="font-extrabold text-zinc-800">{selectedSpecialist}</p>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl border border-zinc-100">
-                        <p className="text-zinc-400 font-bold text-[10px] uppercase">Sede</p>
-                        <p className="font-extrabold text-zinc-800">Sede {selectedSede.name}</p>
-                      </div>
-                    </div>
-                  </div>
+                {/* BOTÓN CONTINUAR EN ESCRITORIO */}
+                {cartItems.length > 0 && bookingSubStep < 4 && (
+                  <button
+                    onClick={handleNextStep}
+                    className="w-full py-3.5 rounded-2xl bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900 font-extrabold text-xs uppercase tracking-wider hover:opacity-90 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <span>Continuar</span>
+                    <ChevronRight size={14} />
+                  </button>
                 )}
-              </div>
 
-              {/* RESUMEN TOTAL */}
-              <div className="p-4 bg-zinc-900 text-white rounded-2xl flex justify-between items-center text-sm font-bold">
-                <span>Total a Pagar ({cartItems.length + (selectedService ? 1 : 0)} Cita/s):</span>
-                <span className="text-lg text-rose-400 font-black">${calculateTotalPrice().toLocaleString()} COP</span>
               </div>
+            </aside>
 
-              {/* ACCIONES FINALES */}
-              <div className="pt-2 flex flex-col-reverse sm:flex-row justify-between items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStep("booking")}
-                  className="w-full sm:w-auto text-zinc-500 hover:text-zinc-800 font-bold text-xs sm:text-sm py-2"
-                >
-                  ← Añadir otra cita o cambiar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmBooking}
-                  disabled={bookingLoading}
-                  className="w-full sm:w-auto rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 px-8 py-4 font-bold text-white shadow-xl shadow-emerald-600/20 hover:from-emerald-700 hover:to-emerald-600 transition-all active:scale-95 disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2 text-sm sm:text-base"
-                >
-                  <CheckCircle2 size={20} />
-                  <span>{bookingLoading ? "Guardando Citas & Enviando WhatsApp..." : "Confirmar Cita"}</span>
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
+        ) : null}
 
-          {bookingSuccess && (
-            <div className="py-12 text-center space-y-4">
-              <div className="w-20 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 size={40} />
-              </div>
-              <h2 className="text-2xl font-black text-zinc-900">¡Citas Confirmadas con Éxito!</h2>
-              <p className="text-xs sm:text-sm text-zinc-500 max-w-md mx-auto">
-                Hemos registrado todas las reservas asociadas al celular <span className="font-bold text-zinc-800">{phoneSearch}</span> y enviado la confirmación por WhatsApp.
-              </p>
-              <button
-                onClick={resetAll}
-                className="mt-6 rounded-2xl bg-zinc-900 px-8 py-3.5 text-xs font-bold text-white hover:bg-zinc-800 cursor-pointer"
-              >
-                Volver al Inicio
-              </button>
-            </div>
-          )}
+        {/* MENSAJE DE ÉXITO */}
+        {bookingSuccess && (
+          <div className="py-16 text-center space-y-4 max-w-md mx-auto bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl animate-in zoom-in-95">
+            <CheckCircle2 size={48} className="mx-auto text-emerald-500" />
+            <h2 className="text-2xl font-black">¡Reserva Registrada con Éxito!</h2>
+            <p className="text-xs text-zinc-500">
+              Registramos tus reservas asociadas al celular <span className="font-bold text-zinc-800 dark:text-zinc-200">+{indicativo} {clientPhone}</span> y enviamos los detalles a tu WhatsApp.
+            </p>
+            <button
+              onClick={resetAll}
+              className="px-6 py-3 rounded-2xl bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900 font-bold text-xs cursor-pointer hover:opacity-90 transition-all"
+            >
+              Realizar otra reserva
+            </button>
+          </div>
+        )}
 
-        </div>
       </main>
+
+      {/* BARRA FLOTANTE INFERIOR MÓVIL ESTILO FRESHA */}
+      {!bookingSuccess && cartItems.length > 0 && (
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 p-3.5 shadow-2xl animate-in slide-in-from-bottom duration-200">
+          <div className="max-w-md mx-auto flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="text-base font-black text-rose-500">
+                ${calculateTotalPrice().toLocaleString("es-CO")} COP
+              </div>
+              <div className="text-[10px] font-bold text-zinc-400 flex items-center gap-1.5">
+                <span>🛒 {cartItems.length} {cartItems.length === 1 ? "servicio" : "servicios"}</span>
+                <span>•</span>
+                <span>{calculateTotalDuration()} min</span>
+              </div>
+            </div>
+
+            {bookingSubStep < 4 ? (
+              <button
+                onClick={handleNextStep}
+                className="px-6 py-3 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <span>Continuar</span>
+                <ChevronRight size={14} />
+              </button>
+            ) : (
+              <button
+                onClick={handleConfirmBooking}
+                disabled={bookingLoading}
+                className="px-6 py-3 rounded-2xl bg-emerald-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-50"
+              >
+                <span>Finalizar</span>
+                <CheckCircle2 size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ESTILOS DEL CALENDARIO */}
       <style jsx global>{`
@@ -1430,7 +1555,6 @@ function BookingContent() {
   );
 }
 
-// 2. COMPONENTE PRINCIPAL EXPORTADO CON LÍMITE DE SUSPENSE
 export default function BookingPage() {
   return (
     <Suspense

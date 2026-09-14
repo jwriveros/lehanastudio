@@ -59,11 +59,19 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const serviceId = searchParams.get("service_id");
   const sede = searchParams.get("sede") || "Marquetalia";
-  const explicitSpecialist = searchParams.get("specialist");
+  
+  let explicitSpecialist = searchParams.get("specialist");
+  if (
+    explicitSpecialist === "undefined" ||
+    explicitSpecialist === "null" ||
+    explicitSpecialist === "Cualquier profesional" ||
+    !explicitSpecialist?.trim()
+  ) {
+    explicitSpecialist = null;
+  }
 
   const filterDate = searchParams.get("date");
   const jornada = searchParams.get("jornada");
-  const searchMode = searchParams.get("search_mode") || "strict";
 
   const customStartDate = searchParams.get("start_date");
   const customEndDate = searchParams.get("end_date");
@@ -173,8 +181,9 @@ export async function GET(request: NextRequest) {
 
     const daysOfWeekEs = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
 
-    let startMinOfDay = 9 * 60;
-    let endMinOfDay = 18 * 60;
+    // Permitimos que los bloques a evaluar inicien hasta las 18:00 (6:00 PM)
+    let startMinOfDay = 9 * 60;  // 09:00 AM
+    let endMinOfDay = 18 * 60;   // 06:00 PM
 
     if (jornada === "manana") {
       startMinOfDay = 9 * 60;
@@ -237,9 +246,7 @@ export async function GET(request: NextRequest) {
 
           let isAvailableInSede = false;
 
-          /* =========================================================
-             🏢 REGLA DE SEDES: MARQUETALIA (BASE) VS OTARAS (OVERRIDE)
-          ========================================================= */
+          /* REGLA DE SEDES */
           if (isMainSede) {
             const scheduleObj = safeParseSchedule(sp.horario_semanal);
             const dayConfig = scheduleObj[dayName];
@@ -248,6 +255,7 @@ export async function GET(request: NextRequest) {
               const workStartMin = timeToMinutes(dayConfig.inicio || "09:00");
               const lastSlotAllowedMin = timeToMinutes(dayConfig.fin || "18:00");
 
+              // 🎯 CORRECCIÓN CLAVE: Solo validamos que la HORA DE INICIO esté en el horario habilitado
               if (slotStartMin >= workStartMin && slotStartMin <= lastSlotAllowedMin) {
                 isAvailableInSede = true;
               }
@@ -276,7 +284,8 @@ export async function GET(request: NextRequest) {
               const bStartMin = timeToMinutes(rule.start_time || "00:00");
               const bEndMin = timeToMinutes(rule.end_time || "23:59");
 
-              return slotStartMin >= bStartMin && slotEndMin <= bEndMin;
+              // Validamos que el inicio esté dentro de la sede asignada
+              return slotStartMin >= bStartMin && slotStartMin <= bEndMin;
             });
 
             if (assignedSedeOverride) {
@@ -301,6 +310,8 @@ export async function GET(request: NextRequest) {
           if (!isAvailableInSede) continue;
 
           const spAppts = apptsBySpecialist[sp.name] || [];
+          
+          // Verificar colisión real con citas agendadas
           const isOccupied = spAppts.some(
             (appt) => slotStartMin < appt.end && slotEndMin > appt.start
           );
@@ -308,14 +319,27 @@ export async function GET(request: NextRequest) {
           if (isOccupied) continue;
 
           /* =========================================================
-             🎯 APLICACIÓN DE MODO ESTRICTO O AMPLIO DE AGENDAMIENTO
+             🎯 APLICACIÓN DE LAS REGLAS DE NEGOCIO Y DISPONIBILIDAD
           ========================================================= */
-          if (searchMode === "broad" || explicitSpecialist || !hasAnyApptInDay) {
+          
+          // REGLA 1: Si no hay NINGUNA cita en el día en la sede, se habilitan todos los horarios de inicio
+          if (!hasAnyApptInDay) {
             freeSpecialistsForSlot.push(sp.name);
-          } else {
-            const spHasApptsToday = spAppts.length > 0;
+            continue;
+          }
 
-            if (spHasApptsToday) {
+          const spHasApptsToday = spAppts.length > 0;
+
+          // REGLA 2: Si se seleccionó una ESPECIALISTA ESPECÍFICA
+          if (explicitSpecialist) {
+            if (!spHasApptsToday) {
+              // Si NO tiene citas en el día, Habilitar aperturas de jornada (9:00 AM y 2:00 PM)
+              const isStartOfShift = slotStartMin === 9 * 60 || slotStartMin === 14 * 60;
+              if (isStartOfShift) {
+                freeSpecialistsForSlot.push(sp.name);
+              }
+            } else {
+              // Si SÍ tiene citas en el día, aplicar anclaje estricto contiguo (incluye 5:30 PM tras cita de 4:30 a 5:30 PM)
               const isAllowedAnchor = spAppts.some((appt) => {
                 const isRightAfter = appt.end === slotStartMin;
                 const isRightBefore = slotEndMin === appt.start;
@@ -324,6 +348,39 @@ export async function GET(request: NextRequest) {
               });
 
               if (isAllowedAnchor) {
+                freeSpecialistsForSlot.push(sp.name);
+              }
+            }
+          } 
+          // REGLA 3: Modo "Cualquier profesional"
+          else {
+            if (spHasApptsToday) {
+              const isMorningSlot = slotStartMin >= 9 * 60 && slotStartMin < 13 * 60;
+              const isAfternoonSlot = slotStartMin >= 13 * 60 && slotStartMin <= 18 * 60;
+
+              const hasApptInMorning = spAppts.some((a) => a.start < 13 * 60);
+              const hasApptInAfternoon = spAppts.some((a) => a.end > 13 * 60);
+
+              if (
+                (isMorningSlot && hasApptInMorning) ||
+                (isAfternoonSlot && hasApptInAfternoon)
+              ) {
+                freeSpecialistsForSlot.push(sp.name);
+              } else {
+                const isAllowedAnchor = spAppts.some((appt) => {
+                  const isRightAfter = appt.end === slotStartMin;
+                  const isRightBefore = slotEndMin === appt.start;
+                  const isOneHourAfter = slotStartMin === appt.end + 60;
+                  return isRightAfter || isRightBefore || isOneHourAfter;
+                });
+
+                if (isAllowedAnchor) {
+                  freeSpecialistsForSlot.push(sp.name);
+                }
+              }
+            } else {
+              const isStartOfShift = slotStartMin === 9 * 60 || slotStartMin === 14 * 60;
+              if (isStartOfShift) {
                 freeSpecialistsForSlot.push(sp.name);
               }
             }
@@ -355,7 +412,7 @@ export async function GET(request: NextRequest) {
         sede,
         date: filterDate || "Rango general",
         jornada: jornada || "Completa",
-        search_mode: searchMode,
+        search_mode: "strict_enhanced",
       },
       available_dates: availableDates,
     });
