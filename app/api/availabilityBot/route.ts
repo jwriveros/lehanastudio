@@ -14,14 +14,33 @@ interface DateAvailability {
   alternative_specialists_slots?: SlotDetail[];
 }
 
-// 🎯 HELPER 1: Obtiene la fecha actual en la zona horaria oficial de Colombia (America/Bogota)
+// 🎯 HELPER 1: Limpia y sanitiza parámetros convirtiendo 'N/A', 'null', 'undefined' o cadenas vacías en null
+function cleanParam(val: string | null): string | null {
+  if (!val) return null;
+  const trimmed = val.trim();
+  const lower = trimmed.toLowerCase();
+
+  if (
+    lower === "" ||
+    lower === "n/a" ||
+    lower === "na" ||
+    lower === "undefined" ||
+    lower === "null" ||
+    lower === "cualquier profesional"
+  ) {
+    return null;
+  }
+  return trimmed;
+}
+
+// 🎯 HELPER 2: Obtiene la fecha actual en la zona horaria oficial de Colombia (America/Bogota)
 function getColombiaNow(): Date {
   const now = new Date();
   const colStr = now.toLocaleString("en-US", { timeZone: "America/Bogota" });
   return new Date(colStr);
 }
 
-// 🎯 HELPER 2: Formatea un objeto Date a YYYY-MM-DD local de Colombia
+// 🎯 HELPER 3: Formatea un objeto Date a YYYY-MM-DD local de Colombia
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -29,7 +48,7 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// 🎯 HELPER 3: Normaliza texto eliminando acentos, símbolos y espacios para comparaciones exactas
+// 🎯 HELPER 4: Normaliza texto eliminando acentos, símbolos y espacios para comparaciones exactas
 function cleanText(text: string): string {
   if (!text) return "";
   return text
@@ -76,31 +95,23 @@ function timeToMinutes(timeStr: string): number {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
-  // Captura flexible del servicio por nombre ('Servicio'), SKU o ID
+  // 🎯 SANITIZACIÓN DE TODOS LOS PARÁMETROS (TRATA 'N/A' COMO VALOR VACÍO)
   const rawServiceInput =
-    searchParams.get("servicio") ||
-    searchParams.get("service_name") ||
-    searchParams.get("service_id") ||
-    searchParams.get("sku") ||
+    cleanParam(searchParams.get("servicio")) ||
+    cleanParam(searchParams.get("service_name")) ||
+    cleanParam(searchParams.get("service_id")) ||
+    cleanParam(searchParams.get("sku")) ||
     "";
 
-  const sede = searchParams.get("sede") || "Marquetalia";
+  const sede = cleanParam(searchParams.get("sede")) || "Marquetalia";
+  const explicitSpecialist = cleanParam(searchParams.get("specialist"));
+  const filterDate = cleanParam(searchParams.get("date"));
+  const jornada = cleanParam(searchParams.get("jornada"));
+  
+  const searchModeParam = cleanParam(searchParams.get("search_mode"));
+  const searchMode = searchModeParam === "broad" ? "broad" : "strict";
 
-  let explicitSpecialist = searchParams.get("specialist");
-  if (
-    explicitSpecialist === "undefined" ||
-    explicitSpecialist === "null" ||
-    explicitSpecialist === "Cualquier profesional" ||
-    !explicitSpecialist?.trim()
-  ) {
-    explicitSpecialist = null;
-  }
-
-  const filterDate = searchParams.get("date");
-  const jornada = searchParams.get("jornada");
-  const searchMode = searchParams.get("search_mode") === "broad" ? "broad" : "strict";
-
-  if (!rawServiceInput.trim()) {
+  if (!rawServiceInput) {
     return NextResponse.json(
       { ok: false, error: "El parámetro de servicio (servicio, service_name, service_id o sku) es requerido." },
       { status: 400 }
@@ -108,7 +119,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 🎯 1. CONSULTA DE SERVICIOS Y BÚSQUEDA POR LA COLUMNA 'Servicio'
+    // 1. CONSULTA DE SERVICIOS Y BÚSQUEDA POR LA COLUMNA 'Servicio'
     const { data: allServices, error: allServicesError } = await supabase
       .from("services")
       .select("*");
@@ -197,7 +208,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 🎯 2. DEFINICIÓN DEL RANGO DE FECHAS (RESPECTANDO UTC-5 COLOMBIA)
+    // 2. DEFINICIÓN DEL RANGO DE FECHAS (RESPECTANDO UTC-5 COLOMBIA Y MANEJO DE 'N/A')
     let startDate: Date;
     let endDate: Date;
 
@@ -208,7 +219,7 @@ export async function GET(request: NextRequest) {
       startDate = new Date(fY, fM - 1, fD, 0, 0, 0);
       endDate = new Date(fY, fM - 1, fD, 23, 59, 59);
     } else {
-      // 🎯 SI NO HAY FECHA, TOMA LOS PRÓXIMOS 3 DÍAS A PARTIR DE MAÑANA (HORA COLOMBIA)
+      // 🎯 SI FECHA ES 'N/A' O VACÍA, TOMA LOS PRÓXIMOS 3 DÍAS A PARTIR DE MAÑANA (HORA COLOMBIA)
       startDate = new Date(colombiaToday);
       startDate.setDate(colombiaToday.getDate() + 1);
       startDate.setHours(0, 0, 0, 0);
