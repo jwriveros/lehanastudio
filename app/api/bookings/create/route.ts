@@ -52,14 +52,16 @@ export async function POST(req: Request) {
     const peopleCount = Number(cantidad || 1);
     const appointmentGroupId = randomUUID();
     const normalizedCelular = String(celular).replace(/\D/g, "");
+    const cleanIndicativo = String(indicativo || "57").replace(/\D/g, "");
+    const fullPhone = `${cleanIndicativo}${normalizedCelular}`;
 
     /* =========================
-       1️⃣ VERIFICAR / CREAR CLIENTE
+       1️⃣ VERIFICAR / CREAR CLIENTE AUTOMÁTICAMENTE
     ========================= */
     const { data: existingClient } = await supabase
       .from("clients")
-      .select("nombre")
-      .or(`celular.eq.${normalizedCelular},numberc.eq.${normalizedCelular}`)
+      .select("id, nombre")
+      .or(`celular.eq.${normalizedCelular},numberc.eq.${fullPhone}`)
       .limit(1)
       .maybeSingle();
 
@@ -68,7 +70,8 @@ export async function POST(req: Request) {
         {
           nombre: cliente,
           celular: normalizedCelular,
-          indicador: indicativo,
+          indicador: cleanIndicativo,
+          numberc: fullPhone,
           creado_desde: "CRM_BOOKING",
           tipo: "Contacto",
           estado: "Activo",
@@ -77,7 +80,7 @@ export async function POST(req: Request) {
     }
 
     /* =========================
-       2️⃣ CONSTRUIR FILAS (ROWS) CON DESCUENTO Y PRICE_FINAL
+       2️⃣ CONSTRUIR FILAS PARA APPOINTMENTS
     ========================= */
     const rows: any[] = [];
     for (let personIndex = 0; personIndex < peopleCount; personIndex++) {
@@ -99,9 +102,9 @@ export async function POST(req: Request) {
           sede,
           cantidad: peopleCount,
           price: basePrice,
-          descuento: discountPct,        // Guarda el entero del porcentaje (ej. 10 o 0)
-          price_final: finalPrice,        // Guarda el valor en pesos tras aplicar el porcentaje
-          indicativo: isPrimary ? indicativo : null,
+          descuento: discountPct,
+          price_final: finalPrice,
+          indicativo: isPrimary ? cleanIndicativo : null,
           is_primary_client: isPrimary,
           primary_client_name: cliente,
           appointment_id: appointmentGroupId, 
@@ -134,22 +137,18 @@ export async function POST(req: Request) {
       ]);
     }
 
-    // El total de la reserva se calcula sumando el price_final
     const total = inserted.reduce(
       (acc: number, r: any) => acc + Number(r.price_final !== undefined ? r.price_final : r.price || 0),
       0
     );
 
     /* =========================
-       5️⃣ NOTIFICAR A N8N (ENVÍO ÚNICO CON PRECIO FINAL)
+       5️⃣ NOTIFICAR A N8N
     ========================= */
     if (process.env.N8N_WEBHOOK_URL && inserted && inserted.length > 0) {
-      // Tomamos el primer servicio del cliente principal como referencia
       const firstRow = inserted[0];
-      const cleanIndicativo = String(indicativo || "57").replace(/\D/g, "");
-      const fullPhone = `+${cleanIndicativo}${normalizedCelular}`;
+      const displayPhone = `+${cleanIndicativo}${normalizedCelular}`;
 
-      // Si hay más de un servicio, creamos un texto descriptivo
       const displayService = items.length > 1 
         ? `${firstRow.servicio} (+${items.length - 1} servicios adicionales)` 
         : firstRow.servicio;
@@ -160,15 +159,14 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           action: "CREATE",
           customerName: cliente,
-          customerPhone: fullPhone,
+          customerPhone: displayPhone,
           sede: firstRow.sede,
           servicio: displayService,
           especialista: firstRow.especialista,
-          price: total, // Enviamos el total real con descuento de la reserva
-          appointment_at: firstRow.appointment_at, // Hora de inicio del primer servicio
+          price: total,
+          appointment_at: firstRow.appointment_at,
           appointmentGroupId: firstRow.appointment_id,
           totalServices: items.length,
-          // Nota para el bot/mensaje:
           mensaje_nota: `A partir de esta hora (${firstRow.appointment_at}) empezarán todos tus servicios.`
         }),
       });

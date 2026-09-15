@@ -600,7 +600,6 @@ export default function ReservationForm({
   
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [saveClient, setSaveClient] = useState(false);
   const [notifyOnEdit, setNotifyOnEdit] = useState(false);
   const [specialists, setSpecialists] = useState<SpecialistItem[]>([]);
   const [loadingSpecialists, setLoadingSpecialists] = useState(false);
@@ -743,7 +742,6 @@ export default function ReservationForm({
     };
 
     loadData();
-    setSaveClient(false);
     setDeletedLineIds([]);
   }, [appointmentData, associatedServices]);
 
@@ -810,17 +808,6 @@ export default function ReservationForm({
       const cleanIndicativo = formatIndicativo(form.indicativo);
       const fullPhone = `${cleanIndicativo}${cleanPhone}`;
 
-      if (saveClient) {
-        await supabase.from("clients").upsert(
-          { 
-            nombre: form.cliente.trim(), 
-            celular: cleanPhone, 
-            indicador: cleanIndicativo,
-            numberc: fullPhone 
-          },
-          { onConflict: "celular" }
-        );
-      }
 
       if (isEditing) {
         if (deletedLineIds.length > 0) {
@@ -1070,19 +1057,6 @@ export default function ReservationForm({
                     />
                   </div>
                 </div>
-              </div>
-
-              <div className="flex items-center pt-0.5">
-                <input
-                  id="save-client"
-                  type="checkbox"
-                  checked={saveClient}
-                  onChange={(e) => setSaveClient(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-zinc-300 text-rose-500 focus:ring-rose-400 dark:bg-zinc-950 dark:border-zinc-800 cursor-pointer"
-                />
-                <label htmlFor="save-client" className="ml-2 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 cursor-pointer">
-                  Guardar cliente en directorio
-                </label>
               </div>
             </section>
 
