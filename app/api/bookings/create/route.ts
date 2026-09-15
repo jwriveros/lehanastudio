@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
+
+// 🎯 Cliente de administración para omitir restricciones RLS en la tabla 'clients'
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+);
 
 /* =========================
    🔥 FIX TIMEZONE (UTC-5)
@@ -51,34 +58,78 @@ export async function POST(req: Request) {
 
     const peopleCount = Number(cantidad || 1);
     const appointmentGroupId = randomUUID();
-    const normalizedCelular = String(celular).replace(/\D/g, "");
-    const cleanIndicativo = String(indicativo || "57").replace(/\D/g, "");
-    const fullPhone = `${cleanIndicativo}${normalizedCelular}`;
+    
+    // Normalización de teléfonos
+    const cleanPhone = String(celular).replace(/\D/g, "");
+    const cleanIndicativoNum = Number(String(indicativo || "57").replace(/\D/g, "")) || 57;
+    const fullPhoneWithPlus = `+${cleanIndicativoNum}${cleanPhone}`;
 
     /* =========================
        1️⃣ VERIFICAR / CREAR CLIENTE AUTOMÁTICAMENTE
     ========================= */
-    const { data: existingClient } = await supabase
-      .from("clients")
-      .select("id, nombre")
-      .or(`celular.eq.${normalizedCelular},numberc.eq.${fullPhone}`)
-      .limit(1)
-      .maybeSingle();
+    let clientStatus = "Inexistente";
+    let clientInsertLog: any = null;
 
-    if (!existingClient) {
-      await supabase.from("clients").insert([
-        {
-          nombre: cliente,
-          celular: normalizedCelular,
-          indicador: cleanIndicativo,
-          numberc: fullPhone,
-          creado_desde: "CRM_BOOKING",
-          tipo: "Contacto",
-          estado: "Activo",
-        },
-      ]);
+    try {
+      // 1.1 Búsqueda por celular exacto
+      const { data: clientByCelular, error: err1 } = await supabaseAdmin
+        .from("clients")
+        .select("id, nombre")
+        .eq("celular", cleanPhone)
+        .maybeSingle();
+
+      if (err1) console.warn("Aviso búsqueda por celular:", err1.message);
+
+      let foundClient = clientByCelular;
+
+      // 1.2 Búsqueda por numberc (+57...)
+      if (!foundClient) {
+        const { data: clientByNumberc, error: err2 } = await supabaseAdmin
+          .from("clients")
+          .select("id, nombre")
+          .eq("numberc", fullPhoneWithPlus)
+          .maybeSingle();
+
+        if (err2) console.warn("Aviso búsqueda por numberc:", err2.message);
+        foundClient = clientByNumberc;
+      }
+
+      // 1.3 Inserción SIN incluir 'numberc' (ya que Postgres la calcula sola)
+      if (!foundClient) {
+        console.log(`[CLIENTS] Insertando cliente nuevo sin columna calculada: ${cliente} (${cleanPhone})`);
+
+        const { data: insertedClient, error: insertError } = await supabaseAdmin
+          .from("clients")
+          .insert([
+            {
+              nombre: cliente.trim(),
+              celular: cleanPhone,
+              indicador: cleanIndicativoNum,
+              sede: sede || "Marquetalia",
+              creado_desde: "CRM_BOOKING",
+              tipo: "Contacto",
+              estado: "Activo",
+            },
+          ])
+          .select();
+
+        if (insertError) {
+          console.error("❌ ERROR AL INSERTAR CLIENTE EN SUPABASE:", insertError);
+          clientStatus = `Error al insertar: ${insertError.message}`;
+          clientInsertLog = insertError;
+        } else {
+          console.log("✅ CLIENTE CREADO CON ÉXITO EN SUPABASE:", insertedClient);
+          clientStatus = "Creado exitosamente";
+          clientInsertLog = insertedClient;
+        }
+      } else {
+        clientStatus = `Ya existía (ID: ${foundClient.id})`;
+        console.log(`ℹ️ [CLIENTS] El cliente ya existe con ID: ${foundClient.id}`);
+      }
+    } catch (clientEx: any) {
+      console.error("Excepción durante la verificación de cliente:", clientEx);
+      clientStatus = `Excepción: ${clientEx.message}`;
     }
-
     /* =========================
        2️⃣ CONSTRUIR FILAS PARA APPOINTMENTS
     ========================= */
@@ -98,13 +149,13 @@ export async function POST(req: Request) {
           especialista: s.especialista ?? null,
           appointment_at: toUTCTimestamp(s.appointment_at),
           duration: s.duration ?? null,
-          celular: isPrimary ? normalizedCelular : null,
+          celular: isPrimary ? cleanPhone : null,
           sede,
           cantidad: peopleCount,
           price: basePrice,
           descuento: discountPct,
           price_final: finalPrice,
-          indicativo: isPrimary ? cleanIndicativo : null,
+          indicativo: isPrimary ? String(cleanIndicativoNum) : null,
           is_primary_client: isPrimary,
           primary_client_name: cliente,
           appointment_id: appointmentGroupId, 
@@ -121,7 +172,10 @@ export async function POST(req: Request) {
       .insert(rows)
       .select();
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      console.error("❌ ERROR INSERTANDO EN APPOINTMENTS:", insertError);
+      throw insertError;
+    }
 
     /* =========================
        4️⃣ REGISTRAR EN BOOKING_REQUESTS
@@ -131,7 +185,7 @@ export async function POST(req: Request) {
         {
           status: "PENDING",
           appointment_id: inserted[0].id,
-          client_phone: normalizedCelular,
+          client_phone: cleanPhone,
           created_at: new Date().toISOString(),
         },
       ]);
@@ -147,7 +201,6 @@ export async function POST(req: Request) {
     ========================= */
     if (process.env.N8N_WEBHOOK_URL && inserted && inserted.length > 0) {
       const firstRow = inserted[0];
-      const displayPhone = `+${cleanIndicativo}${normalizedCelular}`;
 
       const displayService = items.length > 1 
         ? `${firstRow.servicio} (+${items.length - 1} servicios adicionales)` 
@@ -159,7 +212,7 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           action: "CREATE",
           customerName: cliente,
-          customerPhone: displayPhone,
+          customerPhone: fullPhoneWithPlus,
           sede: firstRow.sede,
           servicio: displayService,
           especialista: firstRow.especialista,
@@ -177,6 +230,8 @@ export async function POST(req: Request) {
       appointment_group_id: appointmentGroupId,
       total,
       rows_created: inserted.length,
+      client_creation_status: clientStatus,
+      client_log: clientInsertLog,
     });
 
   } catch (err: any) {
