@@ -7,6 +7,8 @@ import { useUIStore } from "@/lib/uiStore";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import FichaTecnicaEditor from "./FichaTecnicaEditor";
+
+import CustomDialog from "@/components/ui/CustomDIalog"
 import {
   User,
   Scissors,
@@ -22,6 +24,7 @@ import {
   History,
   Loader2,
   Sparkles,
+  ChevronDown,
 } from "lucide-react";
 
 interface ReservationDetailsProps {
@@ -45,10 +48,35 @@ export default function ReservationDetails({
 
   const [showHistory, setShowHistory] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [showCancelMenu, setShowCancelMenu] = useState(false);
+
+  // 🔴 Estado para nuestro Modal de Alerta / Confirmación estilizado
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    type: "alert" | "confirm";
+    variant?: "danger" | "warning" | "info" | "success";
+    title: string;
+    message: string;
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    type: "alert",
+    title: "",
+    message: "",
+  });
+
+  const showAlert = (title: string, message: string, variant: "danger" | "warning" | "info" | "success" = "danger") => {
+    setDialog({ isOpen: true, type: "alert", variant, title, message });
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void, variant: "danger" | "warning" | "info" | "success" = "warning") => {
+    setDialog({ isOpen: true, type: "confirm", variant, title, message, onConfirm });
+  };
 
   const data = appointmentData?.raw || {};
-  const isPaid = data.estado?.toLowerCase() === "cita pagada";
-  const isCancelled = data.estado?.toLowerCase() === "cita cancelada";
+  const currentStatus = data.estado?.toLowerCase() || "";
+  const isPaid = currentStatus === "cita pagada";
+  const isInactive = ["cita cancelada", "no se presentó", "pago anulado"].includes(currentStatus);
 
   /* PERMISOS DE USUARIO EN LOCALSTORAGE */
   useEffect(() => {
@@ -67,11 +95,8 @@ export default function ReservationDetails({
 
           try {
             const jsonParseado = JSON.parse(contenido);
-            if (jsonParseado?.state?.session?.email?.toLowerCase().trim() === emailObjetivo) {
-              accesoConcedido = true;
-              break;
-            }
-            if (jsonParseado?.user?.email?.toLowerCase().trim() === emailObjetivo) {
+            if (jsonParseado?.state?.session?.email?.toLowerCase().trim() === emailObjetivo ||
+                jsonParseado?.user?.email?.toLowerCase().trim() === emailObjetivo) {
               accesoConcedido = true;
               break;
             }
@@ -115,19 +140,8 @@ export default function ReservationDetails({
       setLoadingServices(true);
       try {
         const baseDate = new Date(appointmentData.start || data.appointment_at || new Date());
-        const startOfDay = new Date(
-          baseDate.getFullYear(),
-          baseDate.getMonth(),
-          baseDate.getDate(),
-          0, 0, 0
-        ).toISOString();
-        
-        const endOfDay = new Date(
-          baseDate.getFullYear(),
-          baseDate.getMonth(),
-          baseDate.getDate(),
-          23, 59, 59
-        ).toISOString();
+        const startOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0).toISOString();
+        const endOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59).toISOString();
 
         const celularCliente = data?.celular;
         const nombreCliente = data?.cliente;
@@ -138,15 +152,9 @@ export default function ReservationDetails({
         if (groupId) {
           query = query.eq("appointment_id", groupId);
         } else if (celularCliente) {
-          query = query
-            .eq("celular", celularCliente)
-            .gte("appointment_at", startOfDay)
-            .lte("appointment_at", endOfDay);
+          query = query.eq("celular", celularCliente).gte("appointment_at", startOfDay).lte("appointment_at", endOfDay);
         } else if (nombreCliente) {
-          query = query
-            .eq("cliente", nombreCliente)
-            .gte("appointment_at", startOfDay)
-            .lte("appointment_at", endOfDay);
+          query = query.eq("cliente", nombreCliente).gte("appointment_at", startOfDay).lte("appointment_at", endOfDay);
         } else {
           query = query.eq("id", appointmentData.id);
         }
@@ -157,9 +165,20 @@ export default function ReservationDetails({
 
         if (isMounted) {
           if (list && list.length > 0) {
-            setAssociatedServices(list);
+            const initialized = list.map(item => ({
+              ...item,
+              price: item.price || 0,
+              descuento: item.descuento || 0,
+              abono: item.abono || 0,
+            }));
+            setAssociatedServices(initialized);
           } else {
-            setAssociatedServices([data]);
+            setAssociatedServices([{
+              ...data,
+              price: data.price || 0,
+              descuento: data.descuento || 0,
+              abono: data.abono || 0,
+            }]);
           }
         }
       } catch (err) {
@@ -179,21 +198,44 @@ export default function ReservationDetails({
     };
   }, [appointmentData, data.appointment_id, data.celular, data.cliente]);
 
-  /* CÁLCULO DINÁMICO DEL TOTAL */
+  /* ACTUALIZACIÓN LOCAL DE VALORES FINANCIEROS */
+  const updateServiceFinance = (id: number, field: string, val: string) => {
+    setAssociatedServices(prev =>
+      prev.map(s => {
+        if (s.id === id) {
+          const updated = { ...s, [field]: val };
+          const base = Number(updated.price) || 0;
+          const descPercent = Number(updated.descuento) || 0;
+          const abonoVal = Number(updated.abono) || 0;
+          const descAmount = base * (descPercent / 100);
+          updated.price_final = Math.max(0, base - descAmount - abonoVal);
+          return updated;
+        }
+        return s;
+      })
+    );
+  };
+
+  /* CÁLCULO DINÁMICO DEL TOTAL SELECCIONADO */
   const currentTotal = associatedServices
     .filter((s) => selectedServiceIds.includes(s.id))
-    .reduce((acc, s) => acc + Number(s.price || 0), 0);
+    .reduce((acc, s) => {
+      const base = Number(s.price) || 0;
+      const descPercent = Number(s.descuento) || 0;
+      const abonoVal = Number(s.abono) || 0;
+      const descAmount = base * (descPercent / 100);
+      const finalPrice = Math.max(0, base - descAmount - abonoVal);
+      return acc + finalPrice;
+    }, 0);
 
   /* COBRAR O ANULAR PAGO */
   const handleTogglePayment = async () => {
     if (!isAuthorized) return;
 
-    const activeServices = associatedServices.filter((s) =>
-      selectedServiceIds.includes(s.id)
-    );
+    const activeServices = associatedServices.filter((s) => selectedServiceIds.includes(s.id));
 
     if (activeServices.length === 0) {
-      alert("Por favor, selecciona al menos un servicio para realizar la acción.");
+      showAlert("Atención", "Por favor, selecciona al menos un servicio para realizar la acción.", "warning");
       return;
     }
 
@@ -214,7 +256,7 @@ export default function ReservationDetails({
         router.refresh();
         closeReservationDrawer();
       } catch (err) {
-        alert("Error al anular el pago de los servicios seleccionados");
+        showAlert("Error", "No se pudo anular el pago de los servicios seleccionados.");
       } finally {
         setIsSubmitting(false);
       }
@@ -233,10 +275,21 @@ export default function ReservationDetails({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           appointmentId: appointmentData.id,
-          serviceUpdates: activeServices.map((s) => ({
-            id: s.id,
-            price: Number(s.price),
-          })),
+          serviceUpdates: activeServices.map((s) => {
+            const base = Number(s.price) || 0;
+            const descPercent = Number(s.descuento) || 0;
+            const abonoVal = Number(s.abono) || 0;
+            const descAmount = base * (descPercent / 100);
+            const priceFinal = Math.max(0, base - descAmount - abonoVal);
+
+            return {
+              id: s.id,
+              price: base,
+              descuento: descPercent,
+              abono: abonoVal,
+              price_final: priceFinal,
+            };
+          }),
         }),
       });
 
@@ -246,54 +299,74 @@ export default function ReservationDetails({
       router.refresh();
       closeReservationDrawer();
     } catch (error) {
-      alert("Error al registrar el pago de los servicios seleccionados");
+      showAlert("Error", "No se pudo registrar el pago de los servicios seleccionados.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleCancelAction = async () => {
+  /* CAMBIAR ESTADO */
+  const handleStatusChange = (targetStatus: string) => {
     if (!isAuthorized) return;
-    if (!confirm("¿Deseas cancelar esta cita?")) return;
-    setIsSubmitting(true);
-    try {
-      const res = await fetch("/api/bookings/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appointmentId: appointmentData.id }),
-      });
-      if (!res.ok) throw new Error();
-      onSuccess?.();
-      router.refresh();
-      closeReservationDrawer();
-    } catch (error) {
-      alert("Error al cancelar");
-    } finally {
-      setIsSubmitting(false);
-    }
+
+    showConfirm(
+      "Confirmar Cambio de Estado",
+      `¿Deseas cambiar el estado de la cita a '${targetStatus}'?`,
+      async () => {
+        setIsSubmitting(true);
+        setShowCancelMenu(false);
+        try {
+          const res = await fetch("/api/bookings/cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              appointmentId: appointmentData.id,
+              estado: targetStatus,
+            }),
+          });
+          if (!res.ok) throw new Error();
+          onSuccess?.();
+          router.refresh();
+          closeReservationDrawer();
+        } catch (error) {
+          showAlert("Error", "Ocurrió un error al actualizar el estado de la cita.");
+        } finally {
+          setIsSubmitting(false);
+        }
+      },
+      "warning"
+    );
   };
 
-  const handleDelete = async () => {
+  /* ELIMINAR RESERVA */
+  const handleDelete = () => {
     if (!isAuthorized) return;
-    if (!confirm("⚠️ ¿Eliminar permanentemente esta reserva? Esta acción no se puede deshacer.")) return;
-    setIsSubmitting(true);
-    try {
-      const groupId = data.appointment_id;
-      let query = supabase.from("appointments").delete();
-      if (groupId) query = query.eq("appointment_id", groupId);
-      else query = query.eq("id", appointmentData.id);
 
-      const { error } = await query;
-      if (error) throw error;
+    showConfirm(
+      "Eliminar Reserva",
+      "⚠️ ¿Eliminar permanentemente esta reserva? Esta acción no se puede deshacer.",
+      async () => {
+        setIsSubmitting(true);
+        try {
+          const groupId = data.appointment_id;
+          let query = supabase.from("appointments").delete();
+          if (groupId) query = query.eq("appointment_id", groupId);
+          else query = query.eq("id", appointmentData.id);
 
-      onSuccess?.();
-      router.refresh();
-      closeReservationDrawer();
-    } catch (error: any) {
-      alert("Error al eliminar: " + error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+          const { error } = await query;
+          if (error) throw error;
+
+          onSuccess?.();
+          router.refresh();
+          closeReservationDrawer();
+        } catch (error: any) {
+          showAlert("Error al Eliminar", error.message || "Ocurrió un error inesperado.");
+        } finally {
+          setIsSubmitting(false);
+        }
+      },
+      "danger"
+    );
   };
 
   return (
@@ -342,11 +415,11 @@ export default function ReservationDetails({
           <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
             isPaid 
               ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30" 
-              : isCancelled 
+              : isInactive 
               ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border-zinc-200 dark:border-zinc-700" 
               : "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30"
           }`}>
-            {data.estado?.replace("Cita ", "") || "Reserva"}
+            {data.estado || "Reserva"}
           </span>
         </div>
 
@@ -389,61 +462,94 @@ export default function ReservationDetails({
                 const isSelected = selectedServiceIds.includes(s.id);
 
                 return (
-                  <div key={s.id} className="flex justify-between items-center gap-3 bg-zinc-50/80 dark:bg-zinc-950 p-3 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
-                    <div className="flex items-center gap-3 overflow-hidden flex-1">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelectService(s.id)}
-                        className="w-4 h-4 rounded-md border-zinc-300 text-rose-500 focus:ring-rose-400 dark:bg-zinc-900 dark:border-zinc-700 cursor-pointer"
-                      />
+                  <div key={s.id} className="bg-zinc-50/80 dark:bg-zinc-950 p-3 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 space-y-2">
+                    <div className="flex justify-between items-center gap-3">
+                      <div className="flex items-center gap-3 overflow-hidden flex-1">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectService(s.id)}
+                          className="w-4 h-4 rounded-md border-zinc-300 text-rose-500 focus:ring-rose-400 dark:bg-zinc-900 dark:border-zinc-700 cursor-pointer"
+                        />
 
-                      <div className="flex flex-col overflow-hidden">
-                        <span
-                          className={`text-xs font-extrabold truncate transition-opacity ${
-                            isSelected
-                              ? "text-zinc-800 dark:text-zinc-200"
-                              : "text-zinc-400 dark:text-zinc-600 line-through"
-                          }`}
-                        >
-                          {s.servicio}
-                        </span>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <Scissors size={11} className="text-rose-500" />
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                            {s.especialista || "Sin asignar"}
+                        <div className="flex flex-col overflow-hidden">
+                          <span
+                            className={`text-xs font-extrabold truncate transition-opacity ${
+                              isSelected
+                                ? "text-zinc-800 dark:text-zinc-200"
+                                : "text-zinc-400 dark:text-zinc-600 line-through"
+                            }`}
+                          >
+                            {s.servicio}
                           </span>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <Scissors size={11} className="text-rose-500" />
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                              {s.especialista || "Sin asignar"}
+                            </span>
+                          </div>
                         </div>
                       </div>
+
+                      {!isEditingPrices && (
+                        <span
+                          className={`text-xs font-black shrink-0 ${
+                            isSelected ? "text-rose-500" : "text-zinc-400 line-through"
+                          }`}
+                        >
+                          ${(s.price_final ? Number(s.price_final) : Number(s.price || 0)).toLocaleString("es-CO")}
+                        </span>
+                      )}
                     </div>
 
-                    {isEditingPrices ? (
-                      <div className="flex items-center bg-white dark:bg-zinc-900 border border-rose-300 dark:border-rose-900/50 rounded-xl px-2.5 py-1 w-28 shrink-0 shadow-2xs">
-                        <span className="text-[10px] font-bold mr-1 text-rose-500">$</span>
-                        <input
-                          type="number"
-                          disabled={!isSelected}
-                          value={s.price || 0}
-                          onChange={(e) =>
-                            setAssociatedServices((prev) =>
-                              prev.map((item) =>
-                                item.id === s.id
-                                  ? { ...item, price: e.target.value }
-                                  : item
-                              )
-                            )
-                          }
-                          className="w-full bg-transparent text-xs font-black outline-none text-zinc-900 dark:text-zinc-100 disabled:opacity-40"
-                        />
+                    {/* CAMPOS DE EDICIÓN FINANCIERA (DESCUENTO / ABONO) */}
+                    {isEditingPrices && (
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-200/60 dark:border-zinc-800">
+                        <div>
+                          <label className="text-[9px] font-black uppercase text-zinc-400 block mb-0.5">Precio Base</label>
+                          <div className="flex items-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl px-2 py-1">
+                            <span className="text-[10px] text-zinc-400 mr-0.5">$</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              disabled={!isSelected}
+                              value={s.price || 0}
+                              onChange={(e) => updateServiceFinance(s.id, "price", e.target.value)}
+                              className="w-full bg-transparent text-xs font-bold outline-none disabled:opacity-40"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] font-black uppercase text-zinc-400 block mb-0.5">Desc (%)</label>
+                          <div className="flex items-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl px-2 py-1">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              disabled={!isSelected}
+                              value={s.descuento || 0}
+                              onChange={(e) => updateServiceFinance(s.id, "descuento", e.target.value)}
+                              className="w-full bg-transparent text-xs font-bold outline-none text-center disabled:opacity-40"
+                            />
+                            <span className="text-[10px] text-zinc-400">%</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] font-black uppercase text-zinc-400 block mb-0.5">Abono ($)</label>
+                          <div className="flex items-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl px-2 py-1">
+                            <span className="text-[10px] text-zinc-400 mr-0.5">$</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              disabled={!isSelected}
+                              value={s.abono || 0}
+                              onChange={(e) => updateServiceFinance(s.id, "abono", e.target.value)}
+                              className="w-full bg-transparent text-xs font-bold outline-none disabled:opacity-40"
+                            />
+                          </div>
+                        </div>
                       </div>
-                    ) : (
-                      <span
-                        className={`text-xs font-black shrink-0 ${
-                          isSelected ? "text-rose-500" : "text-zinc-400 line-through"
-                        }`}
-                      >
-                        ${Number(s.price || 0).toLocaleString("es-CO")}
-                      </span>
                     )}
                   </div>
                 );
@@ -504,14 +610,42 @@ export default function ReservationDetails({
             </div>
 
             <div className="flex gap-2">
-              {/* Cancelar Cita */}
-              <button
-                onClick={handleCancelAction}
-                disabled={isSubmitting || isPaid || isCancelled || !isAuthorized}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-2xl text-xs font-bold text-zinc-600 dark:text-zinc-400 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-all cursor-pointer active:scale-95"
-              >
-                <Ban size={14} /> Cancelar Cita
-              </button>
+              {/* Selector Desplegable de Cambios de Estado */}
+              <div className="relative flex-1">
+                <button
+                  onClick={() => setShowCancelMenu(!showCancelMenu)}
+                  disabled={isSubmitting || isPaid || isInactive || !isAuthorized}
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-2xl text-xs font-bold text-zinc-600 dark:text-zinc-400 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-all cursor-pointer active:scale-95"
+                >
+                  <Ban size={14} />
+                  <span>{isInactive ? data.estado : "Cambiar Estado"}</span>
+                  {!isInactive && <ChevronDown size={12} />}
+                </button>
+
+                {/* Menú Flotante de Opciones de Estado */}
+                {showCancelMenu && (
+                  <div className="absolute bottom-full mb-2 left-0 w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50">
+                    <button
+                      onClick={() => handleStatusChange("Cita cancelada")}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                    >
+                      Cancelar Cita
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange("No se presentó")}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors"
+                    >
+                      No se presentó
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange("Pago anulado")}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors"
+                    >
+                      Pago anulado
+                    </button>
+                  </div>
+                )}
+              </div>
               
               {/* Eliminar Reserva */}
               <button
@@ -526,6 +660,17 @@ export default function ReservationDetails({
           </div>
         </div>
       </div>
+
+      {/* 🔴 MODAL DE ALERTA Y CONFIRMACIÓN ESTILIZADO */}
+      <CustomDialog
+        isOpen={dialog.isOpen}
+        type={dialog.type}
+        variant={dialog.variant}
+        title={dialog.title}
+        message={dialog.message}
+        onConfirm={dialog.onConfirm}
+        onClose={() => setDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

@@ -4,7 +4,10 @@ import { supabaseAdmin } from "@/lib/supabaseClient";
 export async function POST(request: Request) {
     try {
         const payload = await request.json();
-        const { appointmentId } = payload; 
+        // Recibimos 'estado' opcionalmente. Si no viene, usamos "Cita cancelada"
+        const { appointmentId, estado } = payload; 
+
+        const targetStatus = estado || "Cita cancelada";
 
         if (!supabaseAdmin) {
             return NextResponse.json({
@@ -32,14 +35,13 @@ export async function POST(request: Request) {
 
         const groupId = current.appointment_id;
 
-        // 2. Definimos los datos de actualización
+        // 2. Definimos los datos de actualización dinámicamente con el estado recibido
         const updateData = {
-            estado: "Cita cancelada",
+            estado: targetStatus,
             updated_at: new Date().toISOString()
         };
 
         // 3. Ejecutar la actualización (Grupo o Individual)
-        // Usamos .or() para filtrar por el UUID de grupo si existe, o por el ID numérico si es una fila antigua
         const { error: updateError, data: updatedRows } = await supabaseAdmin
             .from("appointments")
             .update(updateData)
@@ -47,7 +49,7 @@ export async function POST(request: Request) {
             .select();
 
         if (updateError) {
-            console.error("DB Error al cancelar (Admin Client):", updateError);
+            console.error("DB Error al actualizar estado (Admin Client):", updateError);
             return NextResponse.json({ 
                 error: "Error en DB", 
                 details: updateError.message 
@@ -57,7 +59,6 @@ export async function POST(request: Request) {
         // 4. Notificar a n8n para avisar al cliente
         if (process.env.N8N_WEBHOOK_URL && updatedRows && updatedRows.length > 0) {
             try {
-                // Usamos los datos de la primera fila actualizada para la notificación
                 const mainAppt = updatedRows[0];
                 const rawPhone = String(mainAppt.celular || "").replace(/\D/g, "");
                 const rawIndicativo = String(mainAppt.indicativo || "57").replace(/\D/g, "");
@@ -67,7 +68,8 @@ export async function POST(request: Request) {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        action: "CANCELLED",
+                        action: "STATUS_CHANGED", // Notificamos el cambio de estado
+                        nuevoEstado: targetStatus,
                         customerName: mainAppt.cliente,
                         customerPhone: fullPhone,
                         servicio: mainAppt.servicio,
@@ -78,15 +80,15 @@ export async function POST(request: Request) {
                     }),
                 });
             } catch (webhookError) {
-                console.error("❌ Error enviando a n8n (Cancelación):", webhookError);
+                console.error("❌ Error enviando a n8n:", webhookError);
             }
         }
 
         return NextResponse.json({ 
             success: true, 
             message: groupId 
-                ? "Grupo de citas cancelado y cliente notificado." 
-                : "Cita cancelada y cliente notificado.",
+                ? `Grupo de citas actualizado a '${targetStatus}' y cliente notificado.` 
+                : `Cita actualizada a '${targetStatus}' y cliente notificado.`,
             updatedCount: updatedRows?.length || 0
         });
 

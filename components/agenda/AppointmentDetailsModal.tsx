@@ -14,6 +14,7 @@ import {
   DollarSign,
   Undo2,
   Sparkles,
+  ChevronDown,
 } from "lucide-react";
 import FichaTecnicaModal from "../FichaTecnicaModal";
 import type { CalendarAppointment } from "./types";
@@ -23,7 +24,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 /* ==========================================================================
-   HELPERS Y MAPEO DE ESTADOS (Fuera del componente)
+   HELPERS Y MAPEO DE ESTADOS
    ========================================================================== */
 
 const getStatusStyles = (status: string | undefined): string => {
@@ -35,6 +36,8 @@ const getStatusStyles = (status: string | undefined): string => {
     "cita pagada": "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30 font-extrabold",
     "cita cancelada": "bg-rose-50/60 dark:bg-rose-950/30 text-rose-500 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/20 font-bold",
     "nueva reserva creada": "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30 font-extrabold",
+    "no se presentó": "bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-900/30 font-extrabold",
+    "pago anulado": "bg-orange-50 dark:bg-orange-950/50 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-900/30 font-extrabold",
   };
 
   return statusMap[status.toLowerCase()] || defaultStyles;
@@ -85,10 +88,13 @@ export default function AppointmentDetailsModal({
   const [isEditingPrices, setIsEditingPrices] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFicha, setShowFicha] = useState(false);
+  const [showCancelMenu, setShowCancelMenu] = useState(false);
 
-  const isPaid = appointment.raw.estado?.toLowerCase() === "cita pagada";
-  const isCancelled = appointment.raw.estado?.toLowerCase() === "cita cancelada";
-  
+  const currentStatus = appointment.raw.estado?.toLowerCase();
+  const isPaid = currentStatus === "cita pagada";
+  const isInactive = ["cita cancelada", "no se presentó", "pago anulado"].includes(currentStatus || "");
+
+  // Cargar grupo de servicios asociados
   useEffect(() => {
     async function fetchGroup() {
       const groupId = (appointment.raw as any).appointment_id;
@@ -97,75 +103,90 @@ export default function AppointmentDetailsModal({
         .select("*")
         .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointment.id}`)
         .order("id", { ascending: true });
-      if (data) setAssociatedServices(data);
+
+      if (data) {
+        // Inicializar campos de descuento y abono si vienen vacíos
+        const initializedData = data.map(item => ({
+          ...item,
+          price: item.price || 0,
+          descuento: item.descuento || 0,
+          abono: item.abono || 0,
+        }));
+        setAssociatedServices(initializedData);
+      }
     }
     fetchGroup();
   }, [appointment]);
 
-  const updatePriceLocal = (id: number, val: string) => {
-    setAssociatedServices(prev => 
-      prev.map(s => s.id === id ? { ...s, price: val } : s)
+  // Función para actualizar campos financieros locales de un servicio
+  const updateServiceFinance = (id: number, field: string, val: string) => {
+    setAssociatedServices(prev =>
+      prev.map(s => {
+        if (s.id === id) {
+          const updated = { ...s, [field]: val };
+          // Recalcular price_final para ese servicio individual
+          const base = Number(updated.price) || 0;
+          const descPercent = Number(updated.descuento) || 0;
+          const abonoVal = Number(updated.abono) || 0;
+          const descAmount = base * (descPercent / 100);
+          updated.price_final = Math.max(0, base - descAmount - abonoVal);
+          return updated;
+        }
+        return s;
+      })
     );
   };
 
-  const currentTotal = associatedServices.reduce((acc, s) => acc + Number(s.price || 0), 0);
+  // Cálculo del gran total a pagar en tiempo real
+  const currentTotal = associatedServices.reduce((acc, s) => {
+    const base = Number(s.price) || 0;
+    const descPercent = Number(s.descuento) || 0;
+    const abonoVal = Number(s.abono) || 0;
+    const descAmount = base * (descPercent / 100);
+    const finalPrice = Math.max(0, base - descAmount - abonoVal);
+    return acc + finalPrice;
+  }, 0);
 
-  const notifyN8N = async (action: "EDITED" | "CANCELLED") => {
-    try {
-      const rawPhone = String((appointment.raw as any).celular || "").replace(/\D/g, "");
-      const rawIndicativo = String((appointment.raw as any).indicativo || "57").replace(/\D/g, "");
-      const fullPhone = `+${rawIndicativo}${rawPhone}`;
-
-      await fetch("/api/bookings/notify-update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          appointmentId: appointment.id,
-          customerName: appointment.raw.cliente,
-          customerPhone: fullPhone,
-          servicio: appointment.title,
-          especialista: appointment.raw.especialista,
-          fecha: format(appointment.start, "PPP", { locale: es }),
-          hora: format(appointment.start, "h:mm aa", { locale: es }),
-          indicativo: (appointment.raw as any).indicativo || "+57"
-        }),
-      });
-    } catch (error) {
-      console.error(`Error notificando ${action}:`, error);
-    }
-  };
-
-  const handleCancelAction = async () => {
+  // Manejar el cambio de estado (Cancelar, No se presentó, Pago anulado)
+  const handleStatusChange = async (targetStatus: string) => {
     if (!appointment?.id) return;
-    if (!confirm("¿Deseas cancelar esta cita? El cliente recibirá un mensaje.")) return;
+    if (!confirm(`¿Confirmas cambiar el estado a '${targetStatus}'?`)) return;
 
     setIsSubmitting(true);
+    setShowCancelMenu(false);
     try {
       const response = await fetch("/api/bookings/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appointmentId: appointment.id }),
+        body: JSON.stringify({
+          appointmentId: appointment.id,
+          estado: targetStatus,
+        }),
       });
 
-      if (!response.ok) throw new Error("Error al cancelar");
-      await notifyN8N("CANCELLED");
+      if (!response.ok) throw new Error("Error al cambiar estado");
 
       onCancel?.(appointment);
       onClose();
     } catch (error) {
-      alert("No se pudo cancelar la cita.");
+      alert("No se pudo actualizar el estado de la cita.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Manejar Pago / Cobro de cita
   const handleTogglePayment = async () => {
     if (isPaid) {
       setIsSubmitting(true);
-      await fetch("/api/bookings/unpay", { method: "POST", body: JSON.stringify({ appointmentId: appointment.id }) });
-      onMarkAsPaid?.(appointment.id);
+      await fetch("/api/bookings/unpay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointmentId: appointment.id }),
+      });
+      onMarkAsPaid?.(String(appointment.id));
       setIsSubmitting(false);
+      onClose();
       return;
     }
 
@@ -179,17 +200,31 @@ export default function AppointmentDetailsModal({
       const response = await fetch("/api/bookings/mark-as-paid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           appointmentId: appointment.id,
-          serviceUpdates: associatedServices.map(s => ({ id: s.id, price: Number(s.price) }))
+          serviceUpdates: associatedServices.map(s => {
+            const base = Number(s.price) || 0;
+            const descPercent = Number(s.descuento) || 0;
+            const abonoVal = Number(s.abono) || 0;
+            const descAmount = base * (descPercent / 100);
+            const priceFinal = Math.max(0, base - descAmount - abonoVal);
+
+            return {
+              id: s.id,
+              price: base,
+              descuento: descPercent,
+              abono: abonoVal,
+              price_final: priceFinal,
+            };
+          }),
         }),
       });
 
       if (!response.ok) throw new Error("Error al pagar");
-      onMarkAsPaid?.(appointment.id);
+      onMarkAsPaid?.(String(appointment.id));
       onClose();
     } catch (error) {
-      alert("No se pudo procesar el pago");
+      alert("No se pudo procesar el cobro de la cita");
     } finally {
       setIsSubmitting(false);
     }
@@ -235,33 +270,76 @@ export default function AppointmentDetailsModal({
             </div>
           </DetailItem>
 
-          {/* SERVICIOS Y PRECIOS EDITABLES */}
-          <DetailItem icon={<DollarSign size={16} />} label="Servicios y Precios">
-            <div className="space-y-2 mt-1.5">
+          {/* SERVICIOS, PRECIOS, DESCUENTOS Y ABONOS EDITABLES */}
+          <DetailItem icon={<DollarSign size={16} />} label="Servicios y Finanzas">
+            <div className="space-y-3 mt-1.5">
               {associatedServices.map((s) => (
-                <div key={s.id} className="flex items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-950/60 p-2.5 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
-                  <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 truncate flex-1">{s.servicio}</span>
+                <div key={s.id} className="bg-zinc-50 dark:bg-zinc-950/60 p-3 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
+                  <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300 block mb-2">{s.servicio}</span>
+                  
                   {isEditingPrices ? (
-                    <div className="flex items-center bg-white dark:bg-zinc-900 border border-rose-300 dark:border-rose-900/50 rounded-xl px-2 py-1 w-28 shadow-2xs">
-                      <span className="text-[10px] font-bold mr-1 text-rose-500">$</span>
-                      <input 
-                        type="text" 
-                        inputMode="numeric"
-                        value={s.price}
-                        onChange={(e) => updatePriceLocal(s.id, e.target.value)}
-                        className="w-full bg-transparent text-xs font-extrabold outline-none text-zinc-900 dark:text-zinc-100"
-                        autoFocus={associatedServices[0].id === s.id}
-                      />
+                    <div className="grid grid-cols-3 gap-2 pt-1 border-t border-zinc-200/40 dark:border-zinc-800">
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-zinc-400 block mb-0.5">Precio Base</label>
+                        <div className="flex items-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl px-2 py-1">
+                          <span className="text-[10px] text-zinc-400 mr-0.5">$</span>
+                          <input 
+                            type="text" 
+                            inputMode="numeric"
+                            value={s.price}
+                            onChange={(e) => updateServiceFinance(s.id, "price", e.target.value)}
+                            className="w-full bg-transparent text-xs font-bold outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-zinc-400 block mb-0.5">Desc (%)</label>
+                        <div className="flex items-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl px-2 py-1">
+                          <input 
+                            type="text" 
+                            inputMode="numeric"
+                            value={s.descuento}
+                            onChange={(e) => updateServiceFinance(s.id, "descuento", e.target.value)}
+                            className="w-full bg-transparent text-xs font-bold outline-none text-center"
+                          />
+                          <span className="text-[10px] text-zinc-400">%</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-zinc-400 block mb-0.5">Abono ($)</label>
+                        <div className="flex items-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl px-2 py-1">
+                          <span className="text-[10px] text-zinc-400 mr-0.5">$</span>
+                          <input 
+                            type="text" 
+                            inputMode="numeric"
+                            value={s.abono}
+                            onChange={(e) => updateServiceFinance(s.id, "abono", e.target.value)}
+                            className="w-full bg-transparent text-xs font-bold outline-none"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ) : (
-                    <span className="text-xs font-extrabold text-rose-500">${Number(s.price).toLocaleString("es-CO")}</span>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-zinc-400 text-[10px] font-bold">
+                        {Number(s.descuento) > 0 && `Desc: ${s.descuento}% `}
+                        {Number(s.abono) > 0 && `Abono: $${Number(s.abono).toLocaleString("es-CO")}`}
+                      </span>
+                      <span className="font-extrabold text-rose-500">
+                        ${(s.price_final ? Number(s.price_final) : Number(s.price)).toLocaleString("es-CO")}
+                      </span>
+                    </div>
                   )}
                 </div>
               ))}
               
               <div className="flex justify-between items-center pt-2 border-t border-dashed border-zinc-200 dark:border-zinc-800">
-                <span className="text-[10px] font-black uppercase text-zinc-400">Total a Pagar</span>
-                <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">${currentTotal.toLocaleString("es-CO")} COP</span>
+                <span className="text-[10px] font-black uppercase text-zinc-400">Total a Cobrar</span>
+                <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
+                  ${currentTotal.toLocaleString("es-CO")} COP
+                </span>
               </div>
             </div>
           </DetailItem>
@@ -301,23 +379,50 @@ export default function AppointmentDetailsModal({
             <Trash2 size={16} />
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 relative">
             
-            {/* Cancelar Cita */}
-            <button
-              onClick={handleCancelAction}
-              disabled={isSubmitting || isPaid || isCancelled}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3.5 py-2.5 text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 active:scale-95 ${
-                isCancelled 
-                  ? "bg-rose-50 text-rose-400 border border-rose-200/50 dark:bg-rose-950/30 dark:border-rose-900/30" 
-                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              }`}
-            >
-              <Ban size={14} />
-              <span>{isSubmitting ? "..." : isCancelled ? "Cancelada" : "Cancelar"}</span>
-            </button>
+            {/* Selector desplegable de Estados de Cancelación */}
+            <div className="relative">
+              <button
+                onClick={() => setShowCancelMenu(!showCancelMenu)}
+                disabled={isSubmitting || isPaid || isInactive}
+                className={`inline-flex items-center justify-center gap-1 rounded-2xl px-3 py-2.5 text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 active:scale-95 ${
+                  isInactive 
+                    ? "bg-rose-50 text-rose-400 border border-rose-200/50 dark:bg-rose-950/30 dark:border-rose-900/30" 
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                }`}
+              >
+                <Ban size={14} />
+                <span>{isSubmitting ? "..." : isInactive ? appointment.raw.estado : "Estado"}</span>
+                {!isInactive && <ChevronDown size={12} />}
+              </button>
 
-            {/* Marcar Pago / Anular Pago */}
+              {/* Menú Flotante de Opciones */}
+              {showCancelMenu && (
+                <div className="absolute bottom-full mb-2 left-0 w-44 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl shadow-xl overflow-hidden z-50">
+                  <button
+                    onClick={() => handleStatusChange("Cita cancelada")}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                  >
+                    Cancelar Cita
+                  </button>
+                  <button
+                    onClick={() => handleStatusChange("No se presentó")}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors"
+                  >
+                    No se presentó
+                  </button>
+                  <button
+                    onClick={() => handleStatusChange("Pago anulado")}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors"
+                  >
+                    Pago anulado
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Marcar Pago / Confirmar Cobro */}
             <button
               onClick={handleTogglePayment}
               disabled={isSubmitting}
@@ -328,7 +433,7 @@ export default function AppointmentDetailsModal({
               }`}
             >
               {isPaid ? <Undo2 size={14} /> : <DollarSign size={14} />}
-              <span>{isSubmitting ? "..." : isPaid ? "Anular Pago" : isEditingPrices ? "Confirmar" : "Marcar Pago"}</span>
+              <span>{isSubmitting ? "..." : isPaid ? "Anular Pago" : isEditingPrices ? "Confirmar Cobro" : "Cobrar Cita"}</span>
             </button>
 
             {/* Editar Cita */}

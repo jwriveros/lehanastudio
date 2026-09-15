@@ -116,6 +116,7 @@ function CustomSelect({
   placeholder = "Seleccionar...",
   icon: Icon,
   className = "",
+  dropUp = false, // 👈 Se agrega soporte para despliegue superior
 }: {
   value: string;
   onChange: (val: string) => void;
@@ -123,6 +124,7 @@ function CustomSelect({
   placeholder?: string;
   icon?: any;
   className?: string;
+  dropUp?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -158,11 +160,20 @@ function CustomSelect({
           ) : null}
           <span className="truncate">{selectedOpt ? selectedOpt.label : placeholder}</span>
         </div>
-        <ChevronDown size={13} className={`text-zinc-400 transition-transform duration-200 shrink-0 ${open ? "rotate-180 text-rose-500" : ""}`} />
+        <ChevronDown 
+          size={13} 
+          className={`text-zinc-400 transition-transform duration-200 shrink-0 ${
+            open ? (dropUp ? "rotate-0 text-rose-500" : "rotate-180 text-rose-500") : (dropUp ? "rotate-180" : "")
+          }`} 
+        />
       </button>
 
       {open && (
-        <div className="absolute z-50 top-full mt-2 w-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-150">
+        <div 
+          className={`absolute z-50 w-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-150 ${
+            dropUp ? "bottom-full mb-2" : "top-full mt-2"
+          }`}
+        >
           <div className="max-h-48 overflow-y-auto space-y-0.5 custom-scrollbar">
             {options.map((opt) => {
               const isSelected = opt.value === value;
@@ -285,7 +296,7 @@ const COUNTRIES = [
   { code: "240", flag: "🇬🇶", name: "Guinea Ecuatorial" },
   { code: "592", flag: "🇬🇾", name: "Guyana" },
   { code: "509", flag: "🇭🇹", name: "Haití" },
-  { code: "504", flag: "🇭HN", name: "Honduras" },
+  { code: "504", flag: "🇭🇳", name: "Honduras" },
   { code: "852", flag: "🇭🇰", name: "Hong Kong" },
   { code: "36", flag: "🇭🇺", name: "Hungría" },
   { code: "91", flag: "🇮🇳", name: "India" },
@@ -531,11 +542,14 @@ const EMPTY_FORM: FormState = {
   lines: [{ ...EMPTY_LINE }],
 };
 
+/* 👈 Se agregan los dos nuevos estados al listado */
 const ESTADO_OPTIONS = [
   { label: "Nueva reserva creada", value: "Nueva reserva creada", dot: "bg-amber-400" },
   { label: "Cita confirmada", value: "Cita confirmada", dot: "bg-rose-500" },
   { label: "Cita pagada", value: "Cita pagada", dot: "bg-emerald-500" },
   { label: "Cita cancelada", value: "Cita cancelada", dot: "bg-zinc-400" },
+  { label: "No se presentó", value: "No se presentó", dot: "bg-purple-500" },
+  { label: "Pago anulado", value: "Pago anulado", dot: "bg-orange-500" },
 ];
 
 const SEDE_OPTIONS = [
@@ -1281,6 +1295,7 @@ export default function ReservationForm({
                     value={form.estado}
                     onChange={(val: string) => updateField("estado", val)}
                     options={ESTADO_OPTIONS}
+                    dropUp={true} // 👈 Despliega hacia arriba
                   />
                 </div>
 
@@ -1291,6 +1306,7 @@ export default function ReservationForm({
                     onChange={(val: string) => updateField("sede", val)}
                     options={SEDE_OPTIONS}
                     icon={Building}
+                    dropUp={true} // 👈 Despliega hacia arriba
                   />
                 </div>
 

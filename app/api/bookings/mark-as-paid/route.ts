@@ -4,10 +4,10 @@ import { supabaseAdmin } from "@/lib/supabaseClient";
 export async function POST(request: Request) {
     try {
         const payload = await request.json();
-        // 1. Extraemos el ID y el arreglo de actualizaciones de precios
+        // 1. Extraemos el ID y la lista de servicios con sus precios/descuentos
         const { appointmentId, serviceUpdates } = payload; 
 
-        // ASIGNACIÓN LOCAL PARA TS NARROWING
+        // Asignación local para evitar problemas de tipos en TypeScript
         const adminClient = supabaseAdmin;
 
         if (!adminClient) {
@@ -20,28 +20,46 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Falta 'appointmentId' en el payload." }, { status: 400 });
         }
 
-        // 2. Si vienen actualizaciones de precios, las procesamos una por una usando adminClient
+        // 2. Procesamiento de actualización con desglose financiero
         if (serviceUpdates && Array.isArray(serviceUpdates)) {
-            const updatePromises = serviceUpdates.map(item => 
-                adminClient
+            const updatePromises = serviceUpdates.map(item => {
+                // Preparamos el objeto con los valores financieros
+                const priceBase = item.price !== undefined ? String(item.price) : undefined;
+                const descuentoVal = item.descuento !== undefined ? String(item.descuento) : "0";
+                const abonoVal = item.abono !== undefined ? String(item.abono) : "0";
+                
+                // Si no envían price_final, lo calculamos: Base - Descuento - Abono
+                let finalPrice = item.price_final;
+                if (finalPrice === undefined && item.price !== undefined) {
+                    const base = Number(item.price) || 0;
+                    const desc = Number(item.descuento) || 0;
+                    const ab = Number(item.abono) || 0;
+                    const descMonto = base * (desc / 100);
+                    finalPrice = Math.max(0, base - descMonto - ab);
+                }
+
+                return adminClient
                     .from("appointments")
                     .update({ 
-                        price: Number(item.price), 
+                        price: priceBase,
+                        descuento: descuentoVal,
+                        abono: abonoVal,
+                        price_final: finalPrice !== undefined ? String(finalPrice) : priceBase,
                         estado: "Cita pagada",
                         updated_at: new Date().toISOString()
                     })
-                    .eq("id", item.id)
-            );
+                    .eq("id", item.id);
+            });
             
             const results = await Promise.all(updatePromises);
             const errors = results.filter(r => r.error);
             
             if (errors.length > 0) {
-                console.error("Errores al actualizar precios:", errors);
-                return NextResponse.json({ error: "Error al actualizar algunos precios." }, { status: 500 });
+                console.error("Errores al actualizar cobro de servicios:", errors);
+                return NextResponse.json({ error: "Error al actualizar algunos cobros." }, { status: 500 });
             }
         } else {
-            // Lógica de respaldo: Si no hay lista de precios, buscamos la cita para el grupo
+            // Lógica de respaldo: Actualizar grupo completo a "Cita pagada"
             const { data: current } = await adminClient
                 .from("appointments")
                 .select("appointment_id")
@@ -52,11 +70,14 @@ export async function POST(request: Request) {
 
             await adminClient
                 .from("appointments")
-                .update({ estado: "Cita pagada", updated_at: new Date().toISOString() })
+                .update({ 
+                    estado: "Cita pagada", 
+                    updated_at: new Date().toISOString() 
+                })
                 .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointmentId}`);
         }
 
-        // 3. Obtenemos las filas actualizadas para la notificación
+        // 3. Obtenemos las filas actualizadas para la notificación a n8n
         const { data: updatedRows } = await adminClient
             .from("appointments")
             .select("*")
@@ -80,6 +101,9 @@ export async function POST(request: Request) {
                         servicio: mainAppt.servicio,
                         groupId: mainAppt.appointment_id,
                         appointment_at: mainAppt.appointment_at,
+                        price_final: mainAppt.price_final,
+                        abono: mainAppt.abono,
+                        descuento: mainAppt.descuento
                     }),
                 });
             } catch (webhookError) {
@@ -90,7 +114,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        console.error("API Processing Error:", e);
+        console.error("API Processing Error (mark-as-paid):", e);
         return NextResponse.json({ error: "Internal server error.", details: e.message }, { status: 500 });
     }
 }

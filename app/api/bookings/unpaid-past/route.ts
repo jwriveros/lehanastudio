@@ -1,22 +1,30 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { supabaseAdmin } from "@/lib/supabaseClient";
 
 export async function GET() {
   try {
-    // Definir la fecha de ayer a las 00:00:00 (Hora Colombia UTC-5)
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { ok: false, error: "Error de configuración: supabaseAdmin no disponible." },
+        { status: 500 }
+      );
+    }
 
-    const yesterdayISO = yesterday.toISOString();
+    // 1. Obtener la fecha de inicio del día de hoy a las 00:00:00
+    const now = new Date();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0, 0, 0, 0
+    ).toISOString();
 
-    // Consultar citas anteriores a ayer no pagadas ni canceladas
-    const { data: unpaidBookings, error } = await supabase
+    // 2. Consultar citas pasadas que estén estrictamente en 'Nueva reserva creada' o 'Cita confirmada'
+    const { data: unpaidBookings, error } = await supabaseAdmin
       .from("appointments")
       .select("id, cliente, servicio, especialista, price, price_final, abono, appointment_at, estado, sede, celular")
-      .lt("appointment_at", yesterdayISO)
-      .neq("estado", "Cita pagada")
-      .neq("estado", "Cita cancelada")
+      .lt("appointment_at", startOfToday) // Citas anteriores al inicio del día de hoy
+      .in("estado", ["Nueva reserva creada", "Cita confirmada"]) // 👈 SOLO LEE ESTOS DOS ESTADOS
       .order("appointment_at", { ascending: false });
 
     if (error) throw error;
