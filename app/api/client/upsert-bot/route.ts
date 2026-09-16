@@ -170,8 +170,14 @@ export async function POST(request: NextRequest) {
           results.push({ ok: true, action: "CREATED", client: inserted });
         }
       } else {
-        // CLIENTE EXISTENTE (ACTUALIZACIÓN INTELIGENTE)
+        // CLIENTE EXISTENTE (ACTUALIZACIÓN INTELIGENTE DEL DELTA)
         const updates: any = {};
+
+        // Actualizar celular e indicador si estaban nulos o son diferentes
+        if (isValidValue(cleanPhoneDigits) && (!isValidValue(existingClient.celular) || existingClient.celular !== cleanPhoneDigits)) {
+          updates.celular = cleanPhoneDigits;
+          updates.indicador = Number(cleanIndDigits);
+        }
 
         // Actualizar nombre
         if (isValidValue(item.nombre) && (!isValidValue(existingClient.nombre) || existingClient.nombre === "Desconocido")) {
@@ -181,29 +187,32 @@ export async function POST(request: NextRequest) {
         }
 
         // Actualizar municipio
-        if (isValidValue(item.municipio) && item.municipio !== existingClient.municipio) {
+        if (isValidValue(item.municipio) && (!isValidValue(existingClient.municipio) || item.municipio !== existingClient.municipio)) {
           updates.municipio = item.municipio;
         }
 
         // Actualizar sede
-        if (isValidValue(item.sede) && item.sede !== existingClient.sede) {
+        if (isValidValue(item.sede) && (!isValidValue(existingClient.sede) || item.sede !== existingClient.sede)) {
           updates.sede = item.sede;
         }
 
         // Actualizar BSUID
-        if (isValidValue(item.bsuid) && item.bsuid !== existingClient.BSUID) {
+        if (isValidValue(item.bsuid) && (!isValidValue(existingClient.BSUID) || item.bsuid !== existingClient.BSUID)) {
           updates.BSUID = item.bsuid;
         }
 
         // Actualizar nombre_comercial con userProfile
-        if (isValidValue(item.userProfile) && item.userProfile !== existingClient.nombre_comercial) {
+        if (isValidValue(item.userProfile) && (!isValidValue(existingClient.nombre_comercial) || item.userProfile !== existingClient.nombre_comercial)) {
           updates.nombre_comercial = item.userProfile;
         }
 
-        // Actualizar marca de tiempo de última interacción
+        // Actualizar marca de tiempo
         updates.last_incoming_at = new Date().toISOString();
 
-        if (Object.keys(updates).length > 1) { // Si hay cambios más allá de last_incoming_at
+        // Si hay cambios reales más allá del timestamp last_incoming_at
+        const hasRealUpdates = Object.keys(updates).some((key) => key !== "last_incoming_at");
+
+        if (hasRealUpdates) {
           const { data: updated, error: updateError } = await supabaseAdmin
             .from("clients")
             .update(updates)
@@ -214,7 +223,7 @@ export async function POST(request: NextRequest) {
           if (updateError) {
             results.push({ ok: false, error: updateError.message, payload: item });
           } else {
-            results.push({ ok: true, action: "UPDATED", matched_by: matchedBy, client: updated });
+            results.push({ ok: true, action: "UPDATED", matched_by: matchedBy, updated_fields: Object.keys(updates), client: updated });
           }
         } else {
           results.push({ ok: true, action: "NO_CHANGES_NEEDED", matched_by: matchedBy, client: existingClient });
