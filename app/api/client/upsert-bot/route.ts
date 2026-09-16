@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Inicialización de cliente con Service Role para saltar restricciones de RLS
+// Inicialización del cliente administrador
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
@@ -17,7 +17,7 @@ interface BotClientPayload {
   indicativo?: string;
 }
 
-// Helper para validar si un valor entrante es información válida
+// Helper para validar si un valor es información útil
 function isValidValue(val: any): boolean {
   if (val === undefined || val === null) return false;
   const str = String(val).trim().toLowerCase();
@@ -31,9 +31,27 @@ function isValidValue(val: any): boolean {
   );
 }
 
-// Helper para limpiar el número de teléfono dejando solo los dígitos del celular
+// Helper para determinar si una cadena es un BSUID o un identificador no telefónico
+function isBSUIDFormat(val: string): boolean {
+  if (!val) return false;
+  const str = val.trim().toUpperCase();
+  // Detecta si incluye letras (como "CO.") o prefijos de BSUID
+  const hasLetters = /[A-Z]/.test(str);
+  const cleanDigits = str.replace(/\D/g, "");
+  return hasLetters || cleanDigits.length > 15;
+}
+
+// Helper para validar si una cadena corresponde verdaderamente a un número de teléfono
+function isValidPhoneFormat(val: string): boolean {
+  if (!isValidValue(val) || isBSUIDFormat(val)) return false;
+  const cleanDigits = val.replace(/\D/g, "");
+  // Un teléfono válido suele tener entre 7 y 15 dígitos
+  return cleanDigits.length >= 7 && cleanDigits.length <= 15;
+}
+
+// Helper para obtener únicamente los dígitos del celular sin el indicativo
 function cleanCelular(phone: string, indicativo: string = "57"): string {
-  if (!phone) return "";
+  if (!isValidPhoneFormat(phone)) return "";
   let digits = phone.replace(/\D/g, "");
   const cleanInd = indicativo.replace(/\D/g, "");
 
@@ -58,12 +76,22 @@ export async function POST(request: NextRequest) {
     const results = [];
 
     for (const item of payloadArray) {
-      const rawNumero = item.numero || "";
+      let rawNumero = item.numero || "";
+      let rawBsuid = item.bsuid || "";
       const rawIndicativo = item.indicativo || "57";
       const cleanIndDigits = rawIndicativo.replace(/\D/g, "") || "57";
+
+      // 🎯 REDIRECCIÓN INTELIGENTE: Si 'numero' es un BSUID, corregimos la asignación
+      if (isBSUIDFormat(rawNumero)) {
+        if (!isValidValue(rawBsuid)) {
+          rawBsuid = rawNumero;
+        }
+        rawNumero = ""; // Limpiamos la variable para que no afecte 'celular'
+      }
+
       const cleanPhoneDigits = cleanCelular(rawNumero, cleanIndDigits);
-      const fullNumberc = `+${cleanIndDigits}${cleanPhoneDigits}`;
-      const rawBsuid = item.bsuid || "";
+      const rawNumeroEsValido = isValidPhoneFormat(rawNumero);
+      const rawBsuidEsValido = isValidValue(rawBsuid);
 
       let existingClient: any = null;
       let matchedBy = "";
@@ -71,8 +99,8 @@ export async function POST(request: NextRequest) {
       /* =========================
          1️⃣ BÚSQUEDA JERÁRQUICA
       ========================= */
-      // Paso 1: Buscar numero en la columna 'numberc'
-      if (isValidValue(rawNumero)) {
+      // Paso 1: Buscar numero en la columna 'numberc' (Solo si es un teléfono válido)
+      if (rawNumeroEsValido) {
         const { data } = await supabaseAdmin
           .from("clients")
           .select("*")
@@ -85,7 +113,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Paso 2: Buscar numero en la columna 'celular'
-      if (!existingClient && isValidValue(rawNumero)) {
+      if (!existingClient && rawNumeroEsValido) {
         const { data } = await supabaseAdmin
           .from("clients")
           .select("*")
@@ -97,7 +125,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Paso 3: Buscar celular limpio sin indicativo ni '+'
+      // Paso 3: Buscar por celular limpio de dígitos
       if (!existingClient && isValidValue(cleanPhoneDigits)) {
         const { data } = await supabaseAdmin
           .from("clients")
@@ -111,7 +139,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Paso 4: Buscar bsuid en la columna 'BSUID'
-      if (!existingClient && isValidValue(rawBsuid)) {
+      if (!existingClient && rawBsuidEsValido) {
         const { data } = await supabaseAdmin
           .from("clients")
           .select("*")
@@ -123,8 +151,8 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Paso 5: Buscar bsuid en la columna 'celular'
-      if (!existingClient && isValidValue(rawBsuid)) {
+      // Paso 5: Buscar bsuid en la columna 'celular' (por compatibilidad previa)
+      if (!existingClient && rawBsuidEsValido) {
         const { data } = await supabaseAdmin
           .from("clients")
           .select("*")
@@ -137,7 +165,7 @@ export async function POST(request: NextRequest) {
       }
 
       /* =========================
-         2️⃣ PROCESO DE CREACIÓN / ACTUALIZACIÓN
+         2️⃣ CREACIÓN O ACTUALIZACIÓN
       ========================= */
       if (!existingClient) {
         // CLIENTE NUEVO
@@ -146,11 +174,11 @@ export async function POST(request: NextRequest) {
 
         const newRecord: any = {
           nombre: finalNombre,
-          celular: cleanPhoneDigits,
-          indicador: Number(cleanIndDigits),
+          celular: isValidValue(cleanPhoneDigits) ? cleanPhoneDigits : null,
+          indicador: isValidValue(cleanPhoneDigits) ? Number(cleanIndDigits) : null,
           sede: isValidValue(item.sede) ? item.sede : "Marquetalia",
           municipio: isValidValue(item.municipio) ? item.municipio : null,
-          BSUID: isValidValue(item.bsuid) ? item.bsuid : null,
+          BSUID: rawBsuidEsValido ? rawBsuid : null,
           nombre_comercial: finalNombreComercial,
           tipo: "Contacto",
           estado: "Activo",
@@ -170,10 +198,10 @@ export async function POST(request: NextRequest) {
           results.push({ ok: true, action: "CREATED", client: inserted });
         }
       } else {
-        // CLIENTE EXISTENTE (ACTUALIZACIÓN INTELIGENTE DEL DELTA)
+        // CLIENTE EXISTENTE (ACTUALIZACIÓN DELTA)
         const updates: any = {};
 
-        // Actualizar celular e indicador si estaban nulos o son diferentes
+        // Solo actualiza celular e indicador si enviamos un teléfono REALMENTE válido
         if (isValidValue(cleanPhoneDigits) && (!isValidValue(existingClient.celular) || existingClient.celular !== cleanPhoneDigits)) {
           updates.celular = cleanPhoneDigits;
           updates.indicador = Number(cleanIndDigits);
@@ -196,9 +224,9 @@ export async function POST(request: NextRequest) {
           updates.sede = item.sede;
         }
 
-        // Actualizar BSUID
-        if (isValidValue(item.bsuid) && (!isValidValue(existingClient.BSUID) || item.bsuid !== existingClient.BSUID)) {
-          updates.BSUID = item.bsuid;
+        // Actualizar BSUID si viene un valor válido y no estaba asignado o es diferente
+        if (rawBsuidEsValido && (!isValidValue(existingClient.BSUID) || rawBsuid !== existingClient.BSUID)) {
+          updates.BSUID = rawBsuid;
         }
 
         // Actualizar nombre_comercial con userProfile
@@ -206,10 +234,9 @@ export async function POST(request: NextRequest) {
           updates.nombre_comercial = item.userProfile;
         }
 
-        // Actualizar marca de tiempo
+        // Marca de tiempo de última interacción
         updates.last_incoming_at = new Date().toISOString();
 
-        // Si hay cambios reales más allá del timestamp last_incoming_at
         const hasRealUpdates = Object.keys(updates).some((key) => key !== "last_incoming_at");
 
         if (hasRealUpdates) {
