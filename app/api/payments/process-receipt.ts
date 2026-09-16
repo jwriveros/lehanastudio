@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Inicializamos el cliente administrador de Supabase
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
@@ -29,9 +28,7 @@ export async function POST(request: NextRequest) {
     const cleanPhone = numero.replace(/\D/g, "");
     const fullPhoneWithPlus = `+${cleanPhone}`;
 
-    /* =========================
-       1️⃣ EXTRAER MONTO DEL TEXTO
-    ========================= */
+    /* 1️⃣ EXTRAER MONTO DEL TEXTO */
     const textoIA = text || "";
     const valorMatch = textoIA.match(/\$\s?([\d\.]+)/);
     const montoLeido = valorMatch ? parseInt(valorMatch[1].replace(/\./g, ""), 10) : 0;
@@ -46,9 +43,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    /* =========================
-       2️⃣ SUBIR IMAGEN A SUPABASE STORAGE Y GENERAR RECEIPT_URL
-    ========================= */
+    /* 2️⃣ SUBIR IMAGEN A STORAGE SI VIENE EN BASE64 */
     let finalReceiptUrl = imageUrl || "";
 
     if (imageBase64) {
@@ -71,9 +66,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    /* =========================
-       3️⃣ CONSULTAR CITAS (ÚLTIMOS 30 DÍAS)
-    ========================= */
+    /* 3️⃣ CONSULTAR CITAS (ÚLTIMOS 30 DÍAS) */
     const ahora = new Date();
     const hace30Dias = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -89,7 +82,6 @@ export async function POST(request: NextRequest) {
 
     const appointments = rawAppointments || [];
 
-    // Si no se encuentran citas recientes
     if (appointments.length === 0) {
       await supabaseAdmin.from("payments").insert([
         {
@@ -112,14 +104,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    /* =========================
-       4️⃣ SEPARAR EN CITAS FUTURAS Y PASADAS RECIENTES
-    ========================= */
+    /* 4️⃣ SEPARAR EN CITAS FUTURAS Y PASADAS RECIENTES */
     const limitePasado = new Date(ahora.getTime() - 12 * 60 * 60 * 1000);
     const citasFuturas = appointments.filter((a: any) => new Date(a.appointment_at) >= limitePasado);
     const citasPasadasRecientes = appointments.filter((a: any) => new Date(a.appointment_at) < limitePasado);
 
-    // Si hay ambigüedad entre citas futuras y pasadas
     if (citasFuturas.length > 0 && citasPasadasRecientes.length > 0) {
       return NextResponse.json({
         ok: true,
@@ -134,9 +123,7 @@ export async function POST(request: NextRequest) {
 
     const citasAProcesar = citasFuturas.length > 0 ? citasFuturas : citasPasadasRecientes;
 
-    /* =========================
-       5️⃣ CÁLCULO DE MONTOS Y ESTADO DE PAGO
-    ========================= */
+    /* 5️⃣ CÁLCULO DE MONTOS Y ESTADO DE PAGO */
     let sumaPrecios = 0;
     let sumaAbonosRequeridos = 0;
     const idsCitasString: string[] = [];
@@ -166,33 +153,25 @@ export async function POST(request: NextRequest) {
       pagoStatus = "abono";
       mensajeFinal = `¡Listo! Recibimos el abono de $${montoLeido.toLocaleString("es-CO")}. Estaremos verificándolo. Tus cupos están asegurados. El saldo restante lo cancelas en el estudio. 😊`;
     } else {
-      accion = "PAGO_INSUFICIENTE";
+      accion = "PAGO_INSUFFICIENTE";
       pagoStatus = "insuficiente";
       mensajeFinal = `Recibimos un comprobante por $${montoLeido.toLocaleString("es-CO")}, Muchas gracias por tu pago. Estaremos verificándolo.`;
     }
 
-    /* =========================
-       6️⃣ INSERTAR REGISTRO EN LA TABLA PAYMENTS
-    ========================= */
-    const { error: insertPaymentErr } = await supabaseAdmin.from("payments").insert([
+    /* 6️⃣ INSERTAR EN PAYMENTS */
+    await supabaseAdmin.from("payments").insert([
       {
         full_phone: fullPhoneWithPlus,
-        amount_extracted: montoLeido.toString(), // Guardado como string "39000"
+        amount_extracted: montoLeido.toString(),
         receipt_url: finalReceiptUrl,
-        appointment_ids: idsCitasString,       // Guardado como array ["6642"]
-        status: pagoStatus,                    // "abono", "completo" o "insuficiente"
+        appointment_ids: idsCitasString,
+        status: pagoStatus,
         mensaje: textoIA,
         created_at: new Date().toISOString(),
       },
     ]);
 
-    if (insertPaymentErr) {
-      console.error("Error insertando registro en 'payments':", insertPaymentErr);
-    }
-
-    /* =========================
-       7️⃣ ACTUALIZAR ESTADO DE LAS CITAS
-    ========================= */
+    /* 7️⃣ ACTUALIZAR ESTADO DE CITAS */
     if (estadoNuevoCita && idsCitasString.length > 0) {
       await supabaseAdmin
         .from("appointments")
