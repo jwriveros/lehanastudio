@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Inicializamos el cliente administrador de Supabase
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
@@ -28,7 +29,9 @@ export async function POST(request: NextRequest) {
     const cleanPhone = numero.replace(/\D/g, "");
     const fullPhoneWithPlus = `+${cleanPhone}`;
 
-    /* 1️⃣ EXTRAER MONTO DEL TEXTO */
+    /* =========================
+       1️⃣ EXTRAER MONTO DEL TEXTO (OCR)
+    ========================= */
     const textoIA = text || "";
     const valorMatch = textoIA.match(/\$\s?([\d\.]+)/);
     const montoLeido = valorMatch ? parseInt(valorMatch[1].replace(/\./g, ""), 10) : 0;
@@ -37,18 +40,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         accion: "IMAGEN_NO_VALIDA",
+        pago_tipo: "invalido",
         monto_validado: 0,
         mensaje_final:
           "Recibí tu imagen, pero no logro identificar los datos del pago. 🧐 Por favor, asegúrate de enviar una captura de pantalla clara donde se vea el valor y la fecha de la transferencia.",
       });
     }
 
-    /* 2️⃣ SUBIR IMAGEN A STORAGE SI VIENE EN BASE64 */
+    /* =========================
+       2️⃣ GESTIONAR SUBIDA A STORAGE Y FORMATEAR RECEIPT_URL CON EXTENSIÓN .PNG
+    ========================= */
     let finalReceiptUrl = imageUrl || "";
 
     if (imageBase64) {
       try {
         const buffer = Buffer.from(imageBase64, "base64");
+        // Formato exacto requerido: +573005729325_1789497252988.png
         const fileName = `${fullPhoneWithPlus}_${Date.now()}.png`;
 
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
@@ -62,11 +69,13 @@ export async function POST(request: NextRequest) {
           finalReceiptUrl = publicUrlData.publicUrl;
         }
       } catch (storageErr) {
-        console.error("Error procesando imagen en Storage:", storageErr);
+        console.error("Error subiendo imagen a Storage:", storageErr);
       }
     }
 
-    /* 3️⃣ CONSULTAR CITAS (ÚLTIMOS 30 DÍAS) */
+    /* =========================
+       3️⃣ CONSULTAR CITAS (FUTURAS Y HASTA 30 DÍAS ATRÁS)
+    ========================= */
     const ahora = new Date();
     const hace30Dias = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -78,18 +87,21 @@ export async function POST(request: NextRequest) {
       .gte("appointment_at", hace30Dias)
       .order("appointment_at", { ascending: true });
 
-    if (appError) console.error("Error en consulta de citas:", appError);
+    if (appError) console.error("Error consultando citas:", appError);
 
     const appointments = rawAppointments || [];
 
+    // Si no hay citas activas
     if (appointments.length === 0) {
+      const pagoStatusNoCita = "sin_cita_asociada";
+
       await supabaseAdmin.from("payments").insert([
         {
           full_phone: fullPhoneWithPlus,
           amount_extracted: montoLeido.toString(),
           receipt_url: finalReceiptUrl,
           appointment_ids: [],
-          status: "sin_cita_asociada",
+          status: pagoStatusNoCita,
           mensaje: textoIA,
           created_at: new Date().toISOString(),
         },
@@ -98,13 +110,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         accion: "SIN_CITA_ENCONTRADA",
+        pago_tipo: pagoStatusNoCita,
         monto_validado: montoLeido,
         receipt_url: finalReceiptUrl,
-        mensaje_final: `Recibimos tu comprobante por $${montoLeido.toLocaleString("es-CO")}, pero no encuentro ninguna cita activa para este número de WhatsApp en los últimos 30 días. 🧐 ¿La reserva se hizo con otro número o a nombre de otra persona? ¡Confírmanos para verificarlo manualmente! ✨`,
+        mensaje_final: `Recibimos tu comprobante por $${montoLeido.toLocaleString("es-CO")}, pero no encuentro ninguna cita activa para este número de WhatsApp. 🧐 ¿La reserva se hizo con otro número o a nombre de otra persona? ¡Confírmanos para verificarlo manualmente! ✨`,
       });
     }
 
-    /* 4️⃣ SEPARAR EN CITAS FUTURAS Y PASADAS RECIENTES */
+    /* =========================
+       4️⃣ CLASIFICAR CITAS Y EVALUAR CONFLICTOS
+    ========================= */
     const limitePasado = new Date(ahora.getTime() - 12 * 60 * 60 * 1000);
     const citasFuturas = appointments.filter((a: any) => new Date(a.appointment_at) >= limitePasado);
     const citasPasadasRecientes = appointments.filter((a: any) => new Date(a.appointment_at) < limitePasado);
@@ -113,6 +128,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         accion: "REQUIERE_SELECCION",
+        pago_tipo: "requiere_seleccion",
         monto_validado: montoLeido,
         receipt_url: finalReceiptUrl,
         citas_futuras: citasFuturas.map((c: any) => ({ id: String(c.id), servicio: c.servicio, fecha: c.appointment_at, precio: c.price_final || c.price })),
@@ -123,7 +139,9 @@ export async function POST(request: NextRequest) {
 
     const citasAProcesar = citasFuturas.length > 0 ? citasFuturas : citasPasadasRecientes;
 
-    /* 5️⃣ CÁLCULO DE MONTOS Y ESTADO DE PAGO */
+    /* =========================
+       5️⃣ CÁLCULO DE MONTOS Y DETERMINACIÓN DE PAGO_TIPO
+    ========================= */
     let sumaPrecios = 0;
     let sumaAbonosRequeridos = 0;
     const idsCitasString: string[] = [];
@@ -139,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     let accion = "";
     let estadoNuevoCita = "";
-    let pagoStatus = "";
+    let pagoStatus = ""; // 🎯 ESTE VALOR EVALÚA TU NODO SWITCH EN N8N
     let mensajeFinal = "";
 
     if (montoLeido >= sumaPrecios) {
@@ -158,7 +176,9 @@ export async function POST(request: NextRequest) {
       mensajeFinal = `Recibimos un comprobante por $${montoLeido.toLocaleString("es-CO")}, Muchas gracias por tu pago. Estaremos verificándolo.`;
     }
 
-    /* 6️⃣ INSERTAR EN PAYMENTS */
+    /* =========================
+       6️⃣ INSERTAR EN LA TABLA PAYMENTS
+    ========================= */
     await supabaseAdmin.from("payments").insert([
       {
         full_phone: fullPhoneWithPlus,
@@ -171,7 +191,9 @@ export async function POST(request: NextRequest) {
       },
     ]);
 
-    /* 7️⃣ ACTUALIZAR ESTADO DE CITAS */
+    /* =========================
+       7️⃣ ACTUALIZAR ESTADO DE CITAS
+    ========================= */
     if (estadoNuevoCita && idsCitasString.length > 0) {
       await supabaseAdmin
         .from("appointments")
@@ -179,14 +201,15 @@ export async function POST(request: NextRequest) {
         .in("id", idsCitasString);
     }
 
+    // 🎯 DEVOLVEMOS 'pago_tipo' DIRECTAMENTE PARA EL MAPPING DE N8N
     return NextResponse.json({
       ok: true,
       accion,
+      pago_tipo: pagoStatus, // "abono" o "completo"
       monto_validado: montoLeido,
       total_servicios: sumaPrecios,
       total_abonos: sumaAbonosRequeridos,
       ids: idsCitasString,
-      pago_tipo: pagoStatus,
       receipt_url: finalReceiptUrl,
       mensaje_final: mensajeFinal,
     });
