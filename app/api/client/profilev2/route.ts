@@ -177,6 +177,11 @@ export async function GET(request: NextRequest) {
     const totalReservas = appointments?.length || 0;
     const citasValidas = (appointments as Appointment[] || []).filter(a => a.estado !== 'Cita cancelada');
 
+    // 🎯 1. SEPARAR EN CITAS PASADAS Y FUTURAS (RESPECTO A HOY)
+    const hoy = new Date();
+    const citasPasadas = citasValidas.filter(a => a.appointment_at && new Date(a.appointment_at) <= hoy);
+    const citasFuturas = citasValidas.filter(a => a.appointment_at && new Date(a.appointment_at) > hoy);
+
     const especialistaCount: Record<string, number> = {};
     const serviciosFrecuentes: string[] = [];
     const sedesUsadas: Record<string, number> = {};
@@ -209,8 +214,10 @@ export async function GET(request: NextRequest) {
       || clientData?.sede 
       || inferirSedePorMunicipio(clientData?.municipio || null);
 
-    // --- CÁLCULO DE FECHAS Y DÍAS DE DISPONIBILIDAD FUTURA ---
-    const ultimaCita = citasValidas[0] || null;
+    // 🎯 2. DETERMINAR EL ÚLTIMO SERVICIO REALIZADO (SOLO DESDE CITAS PASADAS)
+    const ultimaCitaPasada = citasPasadas[0] || null;
+    const proximaCitaFutura = citasFuturas[citasFuturas.length - 1] || citasFuturas[0] || null;
+
     let evaluacionMantenimiento = {
       aplica: false,
       estado_ventana: 'SIN_REGISTROS',
@@ -224,13 +231,28 @@ export async function GET(request: NextRequest) {
       contexto_ia: 'No requiere mantenimiento ni retoque por fechas.'
     };
 
-    if (ultimaCita && ultimaCita.appointment_at) {
-      const fechaUltima = new Date(ultimaCita.appointment_at);
-      const hoy = new Date();
-      const diasTranscurridos = Math.floor((hoy.getTime() - fechaUltima.getTime()) / (1000 * 3600 * 24));
-      const skuUltimo = (ultimaCita.sku || '').toLowerCase();
+    // 🎯 3. REGLA PRINCIPAL: SI TIENE UNA CITA FUTURA AGENDADA, SE BLOQUEA EL RETOQUE
+    if (proximaCitaFutura) {
+      evaluacionMantenimiento = {
+        aplica: false,
+        estado_ventana: 'CITA_FUTURA_AGENDADA',
+        categoria: 'Cita Ya Programada',
+        servicio_sugerido: 'N/A',
+        sku_sugerido: 'N/A',
+        precio: 0,
+        dias_transcurridos: 0,
+        fecha_inicio_agendamiento: 'N/A',
+        fecha_limite_agendamiento: 'N/A',
+        contexto_ia: `La clienta ya tiene una cita futura agendada para el ${new Date(proximaCitaFutura.appointment_at!).toLocaleDateString('es-CO')} (${proximaCitaFutura.servicio}). NO le ofrezcas ni agendes retoque.`
+      };
+    } 
+    // 🎯 4. EVALUAR RETOQUE SOLO SI HAY CITA PASADA Y NO HAY CITA FUTURA PENDIENTE
+    else if (ultimaCitaPasada && ultimaCitaPasada.appointment_at) {
+      const fechaUltima = new Date(ultimaCitaPasada.appointment_at);
+      const diasTranscurridos = Math.max(0, Math.floor((hoy.getTime() - fechaUltima.getTime()) / (1000 * 3600 * 24)));
+      const skuUltimo = (ultimaCitaPasada.sku || '').toLowerCase();
 
-      // 1. Micropigmentación (30 a 60 días)
+      // 4.1. Micropigmentación (30 a 60 días)
       if (microMapping[skuUltimo]) {
         const infoRefuerzo = microMapping[skuUltimo];
         const fechaInicio = agregarDias(fechaUltima, 30);
@@ -247,7 +269,7 @@ export async function GET(request: NextRequest) {
             dias_transcurridos: diasTranscurridos,
             fecha_inicio_agendamiento: fechaInicio,
             fecha_limite_agendamiento: fechaLimite,
-            contexto_ia: `Aún no cumple los 30 días mínimos. Su cita de ${infoRefuerzo.nombre} se puede agendar a partir del ${fechaInicio} y tiene plazo hasta el ${fechaLimite}.`
+            contexto_ia: `Aún no cumple los 30 días mínimos de cicatrización. Su cita de ${infoRefuerzo.nombre} se puede agendar a partir del ${fechaInicio} y hasta el ${fechaLimite}.`
           };
         } else if (diasTranscurridos >= 30 && diasTranscurridos <= 60) {
           evaluacionMantenimiento = {
@@ -277,7 +299,7 @@ export async function GET(request: NextRequest) {
           };
         }
       }
-      // 2. Pestañas (15 a 25 días)
+      // 4.2. Pestañas (15 a 25 días)
       else if (lashMapping[skuUltimo]) {
         const configLash = lashMapping[skuUltimo];
         const fechaInicio = agregarDias(fechaUltima, 15);
@@ -328,9 +350,9 @@ export async function GET(request: NextRequest) {
             aplica: false,
             estado_ventana: 'VENTANA_VENCIDA',
             categoria: 'Postura Nueva Requerida',
-            servicio_sugerido: ultimaCita.servicio || 'Postura Nueva de Pestañas',
+            servicio_sugerido: ultimaCitaPasada.servicio || 'Postura Nueva de Pestañas',
             sku_sugerido: skuUltimo,
-            precio: Number(ultimaCita.price) || 0,
+            precio: Number(ultimaCitaPasada.price) || 0,
             dias_transcurridos: diasTranscurridos,
             fecha_inicio_agendamiento: fechaInicio,
             fecha_limite_agendamiento: fechaLimiteExt,
@@ -360,6 +382,13 @@ export async function GET(request: NextRequest) {
       cliente: clienteEstructurado,
       insights_ia: {
         es_cliente_nuevo: esClienteNuevo,
+        tiene_cita_futura_agendada: citasFuturas.length > 0,
+        proxima_cita_futura: proximaCitaFutura ? {
+          servicio: proximaCitaFutura.servicio,
+          fecha: proximaCitaFutura.appointment_at,
+          especialista: proximaCitaFutura.especialista || 'N/A',
+          sede: proximaCitaFutura.sede || 'N/A',
+        } : null,
         faltan_datos_clave: {
           requiere_nombre: nombreCliente === 'N/A' || nombreCliente.trim() === '',
           requiere_sede: clienteEstructurado.sede === 'N/A',
@@ -371,9 +400,9 @@ export async function GET(request: NextRequest) {
           sede_habitual: sedeHabitual,
         },
         sugerencia_reserva: {
-          ultimo_servicio_realizado: ultimaCita?.servicio || 'N/A',
-          especialista_ultimo_servicio: ultimaCita?.especialista || 'N/A',
-          fecha_ultimo_servicio: ultimaCita?.appointment_at || 'N/A',
+          ultimo_servicio_realizado: ultimaCitaPasada?.servicio || 'N/A',
+          especialista_ultimo_servicio: ultimaCitaPasada?.especialista || 'N/A',
+          fecha_ultimo_servicio: ultimaCitaPasada?.appointment_at || 'N/A',
         },
         evaluacion_mantenimiento: evaluacionMantenimiento,
         servicios_realizados: serviciosFrecuentes.length > 0 ? [...new Set(serviciosFrecuentes)] : ['N/A'],
