@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Inicializamos el cliente administrador de Supabase
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
@@ -12,6 +11,26 @@ interface ProcessReceiptPayload {
   text: string;
   imageUrl?: string;
   imageBase64?: string;
+}
+
+// 🎯 Helper para garantizar que la URL de la imagen sea pública y válida
+function formatPublicStorageUrl(inputUrl?: string): string {
+  if (!inputUrl) return "";
+  
+  const supabaseProjectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://ijbmsdypiudovdnpwwzg.supabase.co";
+
+  // Si ya es una URL pública completa, la devuelve limpia
+  if (inputUrl.includes("/storage/v1/object/public/")) {
+    return inputUrl;
+  }
+
+  // Si viene con la ruta interna 'comprobantes/filename.png' o similar
+  if (inputUrl.includes("comprobantes/")) {
+    const pathAfterBucket = inputUrl.split("comprobantes/")[1];
+    return `${supabaseProjectUrl}/storage/v1/object/public/comprobantes/${pathAfterBucket}`;
+  }
+
+  return inputUrl;
 }
 
 export async function POST(request: NextRequest) {
@@ -48,14 +67,14 @@ export async function POST(request: NextRequest) {
     }
 
     /* =========================
-       2️⃣ GESTIONAR SUBIDA A STORAGE Y FORMATEAR RECEIPT_URL CON EXTENSIÓN .PNG
+       2️⃣ GESTIONAR RECEIPT_URL CON NORMALIZACIÓN AUTOMÁTICA
     ========================= */
-    let finalReceiptUrl = imageUrl || "";
+    let finalReceiptUrl = formatPublicStorageUrl(imageUrl);
 
+    // Si la imagen viene en Base64 desde el backend
     if (imageBase64) {
       try {
         const buffer = Buffer.from(imageBase64, "base64");
-        // Formato exacto requerido: +573005729325_1789497252988.png
         const fileName = `${fullPhoneWithPlus}_${Date.now()}.png`;
 
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
@@ -74,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     /* =========================
-       3️⃣ CONSULTAR CITAS (FUTURAS Y HASTA 30 DÍAS ATRÁS)
+       3️⃣ CONSULTAR CITAS (FUTURAS Y ÚLTIMOS 30 DÍAS)
     ========================= */
     const ahora = new Date();
     const hace30Dias = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -91,7 +110,6 @@ export async function POST(request: NextRequest) {
 
     const appointments = rawAppointments || [];
 
-    // Si no hay citas activas
     if (appointments.length === 0) {
       const pagoStatusNoCita = "sin_cita_asociada";
 
@@ -140,7 +158,7 @@ export async function POST(request: NextRequest) {
     const citasAProcesar = citasFuturas.length > 0 ? citasFuturas : citasPasadasRecientes;
 
     /* =========================
-       5️⃣ CÁLCULO DE MONTOS Y DETERMINACIÓN DE PAGO_TIPO
+       5️⃣ CÁLCULO DE MONTOS Y PAGO_TIPO
     ========================= */
     let sumaPrecios = 0;
     let sumaAbonosRequeridos = 0;
@@ -157,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     let accion = "";
     let estadoNuevoCita = "";
-    let pagoStatus = ""; // 🎯 ESTE VALOR EVALÚA TU NODO SWITCH EN N8N
+    let pagoStatus = "";
     let mensajeFinal = "";
 
     if (montoLeido >= sumaPrecios) {
@@ -201,11 +219,10 @@ export async function POST(request: NextRequest) {
         .in("id", idsCitasString);
     }
 
-    // 🎯 DEVOLVEMOS 'pago_tipo' DIRECTAMENTE PARA EL MAPPING DE N8N
     return NextResponse.json({
       ok: true,
       accion,
-      pago_tipo: pagoStatus, // "abono" o "completo"
+      pago_tipo: pagoStatus,
       monto_validado: montoLeido,
       total_servicios: sumaPrecios,
       total_abonos: sumaAbonosRequeridos,
