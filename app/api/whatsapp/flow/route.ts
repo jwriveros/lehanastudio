@@ -209,7 +209,7 @@ export async function POST(req: Request) {
 
     let responsePayload: any = {};
 
-    // PASO 1: Apertura -> Cargar Catálogo de Servicios desde Supabase
+    // PASO 1: Apertura del Flow (ping de Meta o inicio del usuario)
     if (action === 'INIT') {
       const { data: servicesDB } = await supabase.from('services').select('*');
 
@@ -226,8 +226,13 @@ export async function POST(req: Request) {
         }));
 
       responsePayload = {
+        version: '3.0',
         screen: 'SERVICES_SCREEN',
-        data: { services_list: filteredServices },
+        data: {
+          services_list: filteredServices.length > 0 ? filteredServices : [
+            { id: 'lash_clasicas', title: '✨ Pestañas Clásicas', description: '120 min • $90.000 COP' }
+          ]
+        },
       };
     }
 
@@ -346,8 +351,9 @@ export async function POST(req: Request) {
     const encryptedResponseBytes = cipher.output.getBytes() + cipher.mode.tag.getBytes();
     const encryptedBase64 = forge.util.encode64(encryptedResponseBytes);
 
-    return new NextResponse(encryptedBase64, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+    return new NextResponse(encryptedBase64, { status: 200, headers: { 'Content-Type': 'text/plain','ngrok-skip-browser-warning': 'true', } });
   } catch (error: any) {
     return new NextResponse(`Error: ${error.message}`, { status: 421 });
   }
+  
 }
