@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Descifrar clave AES negociada usando RSA-OAEP SHA-256 (Página 9 del PDF de Meta)
+    // 1. Descifrar la clave AES negociada (RSA-OAEP SHA-256)
     const privateKey = forge.pki.privateKeyFromPem(PRIVATE_KEY_PEM);
     const encryptedAesKeyBytes = forge.util.decode64(encrypted_aes_key);
 
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       }
     );
 
-    // 2. Descifrar el payload del Flow usando AES-128-GCM
+    // 2. Descifrar el payload del Flow (AES-128-GCM)
     const flowDataBytes = forge.util.decode64(encrypted_flow_data);
     const ivBytes = forge.util.decode64(initial_vector);
 
@@ -76,22 +76,134 @@ export async function POST(req: Request) {
     }
 
     const decryptedBody = JSON.parse(forge.util.encodeUtf8(decipher.output.getBytes()));
+    const { action, screen, data } = decryptedBody;
 
-    // 3. Preparar la respuesta ping de Meta
-    let responsePayload = {};
-    if (decryptedBody.action === 'ping') {
-      responsePayload = { data: { status: 'active' } };
-    } else {
-      responsePayload = { screen: 'INIT', data: {} };
+    let responsePayload: any = {};
+
+    // ------------------------------------------------------------------
+    // MANEJO DINÁMICO DE NAVEGACIÓN Y DATOS DE LEHANA STUDIO
+    // ------------------------------------------------------------------
+
+    // PASO 1: Apertura del Flow -> Cargar Sedes
+    if (action === 'INIT') {
+      responsePayload = {
+        screen: 'LOCATION_SCREEN',
+        data: {
+          locations_list: [
+            { id: 'Marquetalia', title: '📍 Marquetalia', description: 'Palomino, La Guajira' },
+            { id: 'Buga', title: '📍 Buga', description: 'Valle del Cauca' },
+            { id: 'Santa Marta', title: '📍 Santa Marta', description: 'Centro Histórico' }
+          ]
+        }
+      };
+    } 
+
+    // PASO 2: Selección de Sede -> Cargar Servicios
+    else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
+      responsePayload = {
+        screen: 'SERVICES_SCREEN',
+        data: {
+          services_list: [
+            { id: 'micro_cejas_sombra', title: '✨ Micropigmentación Sombreada', description: '3 hrs • $350.000 COP' },
+            { id: 'cejas_sombreado', title: '🎨 Diseño, Epilación y Sombreado', description: '45 min • $35.000 COP' },
+            { id: 'lash_clasicas', title: '👁️ Pestañas Pelo a Pelo Clásicas', description: '2 hrs • $90.000 COP' }
+          ]
+        }
+      };
     }
 
-    // 4. Invertir vector de inicialización (XOR 0xFF)
+    // PASO 3: Selección de Servicio -> Cargar Especialistas CALIFICADOS
+    else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
+    const selectedServiceId = data.selected_service;
+
+    const specialistsByService: Record<string, Array<{ id: string; title: string; description?: string }>> = {
+        micro_cejas_sombra: [
+        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad de horarios' },
+        { id: 'Leslie Gutierrez', title: '👑 Leslie Gutierrez', description: 'Especialista principal' }
+        ],
+        cejas_sombreado: [
+        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad de horarios' },
+        { id: 'Nary Cabrales', title: '🌸 Nary Cabrales' },
+        { id: 'Yucelis Moscote', title: '🌸 Yucelis Moscote' },
+        { id: 'Leslie Gutierrez', title: '👑 Leslie Gutierrez' }
+        ],
+        lash_clasicas: [
+        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad de horarios' },
+        { id: 'Yucelis Moscote', title: '🌸 Yucelis Moscote' },
+        { id: 'Leslie Gutierrez', title: '👑 Leslie Gutierrez' }
+        ]
+    };
+
+    const availableSpecialists = specialistsByService[selectedServiceId] || [
+        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad de horarios' },
+        { id: 'Leslie Gutierrez', title: '👑 Leslie Gutierrez' },
+        { id: 'Nary Cabrales', title: '🌸 Nary Cabrales' },
+        { id: 'Yucelis Moscote', title: '🌸 Yucelis Moscote' }
+    ];
+
+    responsePayload = {
+        screen: 'SPECIALIST_SCREEN',
+        data: {
+        specialists_list: availableSpecialists
+        }
+    };
+    }
+
+    // PASO 4: Selección de Especialista -> Cargar Horarios e Indicativos
+    else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
+      const listaPaises = [
+        { id: '57', title: '🇨🇴 Colombia (+57)' },
+        { id: '1', title: '🇺🇸 Estados Unidos (+1)' },
+        { id: '34', title: '🇪🇸 España (+34)' },
+        { id: '52', title: '🇲🇽 México (+52)' },
+        { id: '54', title: '🇦🇷 Argentina (+54)' },
+        { id: '56', title: '🇨🇱 Chile (+56)' },
+        { id: '51', title: '🇵🇪 Perú (+51)' },
+        { id: '58', title: '🇻🇪 Venezuela (+58)' },
+      ];
+
+      responsePayload = {
+        screen: 'DATETIME_SCREEN',
+        data: {
+          slots_list: [
+            { id: '09:00', title: '⏰ 09:00 AM' },
+            { id: '11:00', title: '⏰ 11:00 AM' },
+            { id: '14:30', title: '⏰ 02:30 PM' },
+            { id: '16:00', title: '⏰ 04:00 PM' }
+          ],
+          country_codes: listaPaises
+        }
+      };
+    }
+
+    // PASO 5: Selección de Fecha, Hora y Datos -> Mostrar Resumen Final
+    else if (action === 'data_exchange' && screen === 'DATETIME_SCREEN') {
+      const fullPhone = `+${data.indicativo} ${data.client_phone}`;
+
+      responsePayload = {
+        screen: 'SUMMARY_SCREEN',
+        data: {
+          summary_text: `Por favor confirma los detalles de tu cita:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${data.selected_time}\n\nPresiona *Confirmar y Agendar* para registrar tu cita.`
+        }
+      };
+    }
+
+    // PASO 6: Finalización
+    else if (action === 'complete') {
+      responsePayload = {
+        screen: 'SUCCESS',
+        data: { extension_message_response: { params: { status: 'booked' } } }
+      };
+    }
+
+    // ------------------------------------------------------------------
+    // CIFRAR RESPUESTA CON AES-128-GCM Y ENVIAR A META
+    // ------------------------------------------------------------------
     let flippedIv = '';
     for (let i = 0; i < ivBytes.length; i++) {
       flippedIv += String.fromCharCode(ivBytes.charCodeAt(i) ^ 0xff);
     }
 
-    // 5. Cifrar la respuesta final con AES-128-GCM
     const cipher = forge.cipher.createCipher('AES-GCM', decryptedAesKeyBytes);
     cipher.start({
       iv: flippedIv,
@@ -115,7 +227,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
-    console.error('Error al descifrar con Forge:', error);
+    console.error('Error al procesar el Flow:', error);
     return new NextResponse(`Error de descifrado: ${error.message}`, {
       status: 421,
     });
