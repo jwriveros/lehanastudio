@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
+// Clave privada convertida a formato estándar PKCS#8 para OpenSSL 3.0 / Vercel
+const PKCS8_PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCy6I14OwNRD2fU
 gT3lWUtdbRJV89/r+3bfaD5iF0N2U4HrLbBqXgDIAxBChsHIsrQn9DCPAuAnxmQH
 s9a+aYn3dgsO5TYe9VlZyep9yzLVmIgWk2vTppoD7JXj4fkz8/FeHGDCq3d/+nqe
@@ -28,19 +29,17 @@ l8jSj4E2aCFix+oIBq1zhos15MvVH4+LEFNK6V1OLMWxotXkZOsoou+DW8gA4Zmr
 BaiLJkg5M2ihZZ5E8HOpnuohfn0vZJ5EOjvoZ1PhB23j3UgTvS+hgL5+L4yn7FjX
 MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
------END RSA PRIVATE KEY-----`;
+-----END PRIVATE KEY-----`;
 
-function getParsedKey() {
-  const rawKey = process.env.WHATSAPP_PRIVATE_KEY
-    ? process.env.WHATSAPP_PRIVATE_KEY.replace(/\\n/g, '\n').trim()
-    : PRIVATE_KEY_PEM.trim();
+function getValidPrivateKey() {
+  // Si existe una variable de entorno la formateamos, si no usamos la constante PKCS8 garantizada
+  let keyString = process.env.WHATSAPP_PRIVATE_KEY || PKCS8_PRIVATE_KEY_PEM;
+  
+  // Limpiar posibles escapes de Vercel
+  keyString = keyString.replace(/\\n/g, '\n').trim();
 
-  // Parsear y convertir la clave explícitamente a un KeyObject nativo
-  return crypto.createPrivateKey({
-    key: rawKey,
-    type: 'pkcs1',
-    format: 'pem',
-  });
+  // Asegurar la conversión a KeyObject nativo
+  return crypto.createPrivateKey(keyString);
 }
 
 export async function POST(req: Request) {
@@ -55,12 +54,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const privateKeyObject = getParsedKey();
+    const privateKey = getValidPrivateKey();
 
-    // 1. Descifrar la clave AES negociada (RSA-OAEP SHA-256)
+    // 1. Descifrar la clave AES negociada usando RSA-OAEP SHA-256
     const decryptedAesKey = crypto.privateDecrypt(
       {
-        key: privateKeyObject,
+        key: privateKey,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha256',
       },
