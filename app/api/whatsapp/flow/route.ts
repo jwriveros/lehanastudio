@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-// Reemplaza o configura esta variable en Vercel (Environment Variables)
-const PRIVATE_KEY = process.env.WHATSAPP_PRIVATE_KEY || `-----BEGIN RSA PRIVATE KEY-----
+// Limpiar la clave privada para asegurar el formato PEM correcto
+function getPrivateKey() {
+  const rawKey = process.env.WHATSAPP_PRIVATE_KEY || `-----BEGIN RSA PRIVATE KEY-----
 AQUÍ_VA_TU_CLAVE_PRIVADA
 -----END RSA PRIVATE KEY-----`;
+
+  return rawKey.replace(/\\n/g, '\n');
+}
 
 export async function POST(req: Request) {
   try {
@@ -12,16 +16,19 @@ export async function POST(req: Request) {
     const { encrypted_aes_key, encrypted_flow_data, initial_vector } = body;
 
     if (!encrypted_aes_key || !encrypted_flow_data || !initial_vector) {
+      console.error('Campos faltantes en el payload:', body);
       return NextResponse.json(
         { error: 'Faltan campos cifrados de Meta' },
         { status: 400 }
       );
     }
 
-    // 1. Descifrar la clave AES negociada usando RSA-OAEP SHA-256
+    const privateKeyPem = getPrivateKey();
+
+    // 1. Descifrar la clave AES negociada (RSA-OAEP SHA-256)
     const decryptedAesKey = crypto.privateDecrypt(
       {
-        key: crypto.createPrivateKey(PRIVATE_KEY),
+        key: crypto.createPrivateKey(privateKeyPem),
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha256',
       },
@@ -88,7 +95,6 @@ export async function POST(req: Request) {
       cipher.getAuthTag(),
     ]).toString('base64');
 
-    // Retornar en texto plano según la exigencia de Meta
     return new NextResponse(encryptedBase64, {
       status: 200,
       headers: {
@@ -96,7 +102,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
-    console.error('Error al descifrar WhatsApp Flow:', error);
-    return new NextResponse('Error de descifrado', { status: 421 });
+    console.error('Error detallado de descifrado:', error.message, error.stack);
+    return new NextResponse(`Error de descifrado: ${error.message}`, { status: 421 });
   }
 }
