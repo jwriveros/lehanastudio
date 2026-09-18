@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-// Clave privada RSA limpia formateada línea por línea
 const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCy6I14OwNRD2fU
 gT3lWUtdbRJV89/r+3bfaD5iF0N2U4HrLbBqXgDIAxBChsHIsrQn9DCPAuAnxmQH
@@ -31,12 +30,17 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
-function getFormattedKey(): string {
-  const envKey = process.env.WHATSAPP_PRIVATE_KEY;
-  if (envKey) {
-    return envKey.replace(/\\n/g, '\n').trim();
-  }
-  return PRIVATE_KEY_PEM.trim();
+function getParsedKey() {
+  const rawKey = process.env.WHATSAPP_PRIVATE_KEY
+    ? process.env.WHATSAPP_PRIVATE_KEY.replace(/\\n/g, '\n').trim()
+    : PRIVATE_KEY_PEM.trim();
+
+  // Parsear y convertir la clave explícitamente a un KeyObject nativo
+  return crypto.createPrivateKey({
+    key: rawKey,
+    type: 'pkcs1',
+    format: 'pem',
+  });
 }
 
 export async function POST(req: Request) {
@@ -51,12 +55,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const privateKey = getFormattedKey();
+    const privateKeyObject = getParsedKey();
 
-    // 1. Descifrar la clave AES negociada pasando la clave PEM directamente
+    // 1. Descifrar la clave AES negociada (RSA-OAEP SHA-256)
     const decryptedAesKey = crypto.privateDecrypt(
       {
-        key: privateKey,
+        key: privateKeyObject,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha256',
       },
