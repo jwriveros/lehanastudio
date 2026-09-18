@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-// Clave privada RSA inyectada directamente
-const HARDCODED_PRIVATE_KEY = `-----BEGIN RSA PRIVATE KEY-----
+// Clave privada RSA limpia formateada línea por línea
+const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCy6I14OwNRD2fU
 gT3lWUtdbRJV89/r+3bfaD5iF0N2U4HrLbBqXgDIAxBChsHIsrQn9DCPAuAnxmQH
 s9a+aYn3dgsO5TYe9VlZyep9yzLVmIgWk2vTppoD7JXj4fkz8/FeHGDCq3d/+nqe
 8jKe9vW5wy6mNqgOglik7NjHQtpgY5rITVkZ2J4zEfQrqh6MZuSS13eXh5TGGnHm
 x5yhGwFEc1oPt9bk3zUQwFNBnDhR5O2Bg3TiP4aekfWATsHBpEdNjNL5qBstGDpb
 S/mbj5ljhlsFRYUE2kw6xdtfcmx5cxMOImve3B0VzNdDHjvMfTyV2e0TBxFIyyeu
-KQV17zgnAgMBAAECggEALCoAEjfvH6l/5hNpNpZh5e3lc4eYNUOXq/43JmQ+yeOK1w
+KQV17zgnAgMBAAECggEALCoAEjfvH6l/5hNpZh5e3lc4eYNUOXq/43JmQ+yeOK1w
 ms+Shw9hff5TmziMybBjjKFZA1SgZPEybDxWvHZtGmtHW4v1ijriramMezUX/WZD
 4d7OdVbhGiri7Xgw/kQvxx2WPTf6rdr1Phtnp5orGoo2D83aOoquuzfEY5v7MGO8
 Z6fNwDIuDp0W8/uHlulPxNewRv91vesEL02PKYKeCnDrLZfzKo87Ne2RhZkyJTLZ
@@ -31,6 +31,14 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
+function getFormattedKey(): string {
+  const envKey = process.env.WHATSAPP_PRIVATE_KEY;
+  if (envKey) {
+    return envKey.replace(/\\n/g, '\n').trim();
+  }
+  return PRIVATE_KEY_PEM.trim();
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -43,17 +51,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Tomar la variable de entorno o la clave asignada arriba
-    const rawKey = process.env.WHATSAPP_PRIVATE_KEY || HARDCODED_PRIVATE_KEY;
-    const formattedPem = rawKey.replace(/\\n/g, '\n').trim();
+    const privateKey = getFormattedKey();
 
-    // 1. Descifrar la clave AES negociada usando RSA-OAEP SHA-256
+    // 1. Descifrar la clave AES negociada pasando la clave PEM directamente
     const decryptedAesKey = crypto.privateDecrypt(
       {
-        key: crypto.createPrivateKey({
-          key: formattedPem,
-          format: 'pem',
-        }),
+        key: privateKey,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha256',
       },
