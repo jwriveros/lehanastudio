@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+import forge from 'node-forge';
 
-// Clave privada convertida a formato estándar PKCS#8 para OpenSSL 3.0 / Vercel
-const PKCS8_PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
+const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCy6I14OwNRD2fU
 gT3lWUtdbRJV89/r+3bfaD5iF0N2U4HrLbBqXgDIAxBChsHIsrQn9DCPAuAnxmQH
 s9a+aYn3dgsO5TYe9VlZyep9yzLVmIgWk2vTppoD7JXj4fkz8/FeHGDCq3d/+nqe
@@ -29,18 +28,7 @@ l8jSj4E2aCFix+oIBq1zhos15MvVH4+LEFNK6V1OLMWxotXkZOsoou+DW8gA4Zmr
 BaiLJkg5M2ihZZ5E8HOpnuohfn0vZJ5EOjvoZ1PhB23j3UgTvS+hgL5+L4yn7FjX
 MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
------END PRIVATE KEY-----`;
-
-function getValidPrivateKey() {
-  // Si existe una variable de entorno la formateamos, si no usamos la constante PKCS8 garantizada
-  let keyString = process.env.WHATSAPP_PRIVATE_KEY || PKCS8_PRIVATE_KEY_PEM;
-  
-  // Limpiar posibles escapes de Vercel
-  keyString = keyString.replace(/\\n/g, '\n').trim();
-
-  // Asegurar la conversión a KeyObject nativo
-  return crypto.createPrivateKey(keyString);
-}
+-----END RSA PRIVATE KEY-----`;
 
 export async function POST(req: Request) {
   try {
@@ -54,77 +42,71 @@ export async function POST(req: Request) {
       );
     }
 
-    const privateKey = getValidPrivateKey();
+    // 1. Descifrar clave AES negociada usando RSA-OAEP SHA-256 (Página 9 del PDF de Meta)
+    const privateKey = forge.pki.privateKeyFromPem(PRIVATE_KEY_PEM);
+    const encryptedAesKeyBytes = forge.util.decode64(encrypted_aes_key);
 
-    // 1. Descifrar la clave AES negociada usando RSA-OAEP SHA-256
-    const decryptedAesKey = crypto.privateDecrypt(
+    const decryptedAesKeyBytes = privateKey.decrypt(
+      encryptedAesKeyBytes,
+      'RSA-OAEP',
       {
-        key: privateKey,
-        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: 'sha256',
-      },
-      Buffer.from(encrypted_aes_key, 'base64')
+        md: forge.md.sha256.create(),
+        mgf1: { md: forge.md.sha256.create() },
+      }
     );
 
-    // 2. Descifrar el payload del flujo con AES-128-GCM
-    const flowDataBuffer = Buffer.from(encrypted_flow_data, 'base64');
-    const initialVectorBuffer = Buffer.from(initial_vector, 'base64');
+    // 2. Descifrar el payload del Flow usando AES-128-GCM
+    const flowDataBytes = forge.util.decode64(encrypted_flow_data);
+    const ivBytes = forge.util.decode64(initial_vector);
+
     const TAG_LENGTH = 16;
+    const encryptedPayload = flowDataBytes.slice(0, flowDataBytes.length - TAG_LENGTH);
+    const tag = flowDataBytes.slice(flowDataBytes.length - TAG_LENGTH);
 
-    const encrypted_flow_data_body = flowDataBuffer.subarray(
-      0,
-      flowDataBuffer.length - TAG_LENGTH
-    );
-    const encrypted_flow_data_tag = flowDataBuffer.subarray(
-      flowDataBuffer.length - TAG_LENGTH
-    );
+    const decipher = forge.cipher.createDecipher('AES-GCM', decryptedAesKeyBytes);
+    decipher.start({
+      iv: ivBytes,
+      tag: forge.util.createBuffer(tag),
+      tagLength: 128,
+    });
+    decipher.update(forge.util.createBuffer(encryptedPayload));
 
-    const decipher = crypto.createDecipheriv(
-      'aes-128-gcm',
-      decryptedAesKey,
-      initialVectorBuffer
-    );
-    decipher.setAuthTag(encrypted_flow_data_tag);
+    if (!decipher.finish()) {
+      throw new Error('Tag de autenticación inválido al descifrar el payload');
+    }
 
-    const decryptedJSONString = Buffer.concat([
-      decipher.update(encrypted_flow_data_body),
-      decipher.final(),
-    ]).toString('utf-8');
+    const decryptedBody = JSON.parse(forge.util.encodeUtf8(decipher.output.getBytes()));
 
-    const decryptedBody = JSON.parse(decryptedJSONString);
-
-    // 3. Responder según la acción enviada por Meta
+    // 3. Preparar la respuesta ping de Meta
     let responsePayload = {};
     if (decryptedBody.action === 'ping') {
-      responsePayload = {
-        data: {
-          status: 'active',
-        },
-      };
+      responsePayload = { data: { status: 'active' } };
     } else {
-      responsePayload = {
-        screen: 'INIT',
-        data: {},
-      };
+      responsePayload = { screen: 'INIT', data: {} };
     }
 
     // 4. Invertir vector de inicialización (XOR 0xFF)
-    const flipped_iv = [];
-    for (const pair of initialVectorBuffer.entries()) {
-      flipped_iv.push(pair[1] ^ 0xff);
+    let flippedIv = '';
+    for (let i = 0; i < ivBytes.length; i++) {
+      flippedIv += String.fromCharCode(ivBytes.charCodeAt(i) ^ 0xff);
     }
 
     // 5. Cifrar la respuesta final con AES-128-GCM
-    const cipher = crypto.createCipheriv(
-      'aes-128-gcm',
-      decryptedAesKey,
-      Buffer.from(flipped_iv)
+    const cipher = forge.cipher.createCipher('AES-GCM', decryptedAesKeyBytes);
+    cipher.start({
+      iv: flippedIv,
+      tagLength: 128,
+    });
+    cipher.update(
+      forge.util.createBuffer(
+        forge.util.encodeUtf8(JSON.stringify(responsePayload))
+      )
     );
-    const encryptedBase64 = Buffer.concat([
-      cipher.update(JSON.stringify(responsePayload), 'utf-8'),
-      cipher.final(),
-      cipher.getAuthTag(),
-    ]).toString('base64');
+    cipher.finish();
+
+    const encryptedResponseBytes =
+      cipher.output.getBytes() + cipher.mode.tag.getBytes();
+    const encryptedBase64 = forge.util.encode64(encryptedResponseBytes);
 
     return new NextResponse(encryptedBase64, {
       status: 200,
@@ -133,7 +115,9 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: any) {
-    console.error('Error al descifrar:', error);
-    return new NextResponse(`Error de descifrado: ${error.message}`, { status: 421 });
+    console.error('Error al descifrar con Forge:', error);
+    return new NextResponse(`Error de descifrado: ${error.message}`, {
+      status: 421,
+    });
   }
 }
