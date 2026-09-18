@@ -68,7 +68,6 @@ function timeToMinutes(timeStr: string): number {
   return hours * 60 + minutes;
 }
 
-// ALGORITMO INTEGRADO DE DISPONIBILIDAD DE AGENDA
 async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialist: string | null) {
   const { data: service } = await supabase
     .from("services")
@@ -209,8 +208,17 @@ export async function POST(req: Request) {
 
     let responsePayload: any = {};
 
-    // PASO 1: Apertura del Flow (ping de Meta o inicio del usuario)
-    if (action === 'INIT') {
+    // 🎯 RESPUESTA OBLIGATORIA AL PING DE META (HEALTH CHECK)
+    if (action === 'ping') {
+      responsePayload = {
+        data: {
+          status: 'active'
+        }
+      };
+    }
+
+    // PASO 1: Apertura -> Cargar Catálogo de Servicios desde Supabase
+    else if (action === 'INIT') {
       const { data: servicesDB } = await supabase.from('services').select('*');
 
       const filteredServices = (servicesDB || [])
@@ -351,9 +359,8 @@ export async function POST(req: Request) {
     const encryptedResponseBytes = cipher.output.getBytes() + cipher.mode.tag.getBytes();
     const encryptedBase64 = forge.util.encode64(encryptedResponseBytes);
 
-    return new NextResponse(encryptedBase64, { status: 200, headers: { 'Content-Type': 'text/plain','ngrok-skip-browser-warning': 'true', } });
+    return new NextResponse(encryptedBase64, { status: 200, headers: { 'Content-Type': 'text/plain' } });
   } catch (error: any) {
     return new NextResponse(`Error: ${error.message}`, { status: 421 });
   }
-  
 }
