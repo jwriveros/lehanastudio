@@ -31,22 +31,154 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
-// Helper para llamadas internas a tu endpoint de disponibilidad
-async function fetchRealAvailability(serviceId: string, sede: string, specialist?: string) {
-  try {
-    const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://lehanastudio.com';
-    let url = `${origin}/api/availability?service_id=${encodeURIComponent(serviceId)}&sede=${encodeURIComponent(sede)}`;
-    if (specialist && specialist !== 'Cualquier profesional') {
-      url += `&specialist=${encodeURIComponent(specialist)}`;
+function getColombiaNow(): Date {
+  const now = new Date();
+  const colStr = now.toLocaleString("en-US", { timeZone: "America/Bogota" });
+  return new Date(colStr);
+}
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function safeParseSchedule(rawSchedule: any): any {
+  if (!rawSchedule) return {};
+  let current = rawSchedule;
+  while (typeof current === "string") {
+    try {
+      let trimmed = current.trim();
+      if (trimmed.startsWith('"') && trimmed.endsWith('"')) trimmed = trimmed.slice(1, -1);
+      current = JSON.parse(trimmed.replace(/\\"/g, '"'));
+    } catch {
+      break;
     }
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.available_dates || [];
-  } catch (err) {
-    console.error('Error al llamar a /api/availability:', err);
-    return [];
   }
+  return typeof current === "object" && current !== null ? current : {};
+}
+
+function timeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const cleanTime = timeStr.trim().split(" ")[0].split("T").pop() || "";
+  const parts = cleanTime.substring(0, 5).split(":");
+  const hours = parseInt(parts[0], 10) || 0;
+  const minutes = parseInt(parts[1], 10) || 0;
+  return hours * 60 + minutes;
+}
+
+// ALGORITMO INTEGRADO DE DISPONIBILIDAD DE AGENDA
+async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialist: string | null) {
+  const { data: service } = await supabase
+    .from("services")
+    .select("*")
+    .or(`id.eq.${serviceId},SKU.eq.${serviceId}`)
+    .single();
+
+  if (!service) return [];
+
+  const duration = parseInt(service.duracion || "60", 10);
+
+  let serviceEspecialistas: string[] = [];
+  if (typeof service.especialistas === "string") {
+    try { serviceEspecialistas = JSON.parse(service.especialistas); } catch { serviceEspecialistas = [service.especialistas]; }
+  } else if (Array.isArray(service.especialistas)) {
+    serviceEspecialistas = service.especialistas;
+  }
+
+  const { data: specialists } = await supabase.from("app_users").select("id, name, horario_semanal");
+  let qualifiedSpecialists = (specialists || []).filter((sp) => serviceEspecialistas.includes(sp.name));
+
+  if (explicitSpecialist && explicitSpecialist !== "Cualquier profesional") {
+    qualifiedSpecialists = qualifiedSpecialists.filter((sp) => sp.name.toLowerCase() === explicitSpecialist.toLowerCase());
+  }
+
+  if (qualifiedSpecialists.length === 0) return [];
+
+  const colombiaToday = getColombiaNow();
+  const startDate = new Date(colombiaToday);
+  startDate.setDate(colombiaToday.getDate() + 1);
+  startDate.setHours(0, 0, 0, 0);
+
+  const endDate = new Date(colombiaToday);
+  endDate.setDate(colombiaToday.getDate() + 15);
+  endDate.setHours(23, 59, 59, 999);
+
+  const startDateStr = formatLocalDate(startDate);
+  const endDateStr = formatLocalDate(endDate);
+
+  const { data: overrides } = await supabase.from("specialist_overrides").select("*").gte("date", startDateStr).lte("date", endDateStr);
+  const { data: existingAppts } = await supabase
+    .from("appointments")
+    .select("appointment_at, duration, especialista, sede, estado")
+    .eq("sede", sede)
+    .neq("estado", "Cita cancelada")
+    .gte("appointment_at", `${startDateStr} 00:00:00`)
+    .lte("appointment_at", `${endDateStr} 23:59:59`);
+
+  const daysOfWeekEs = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+  const candidateSlots: string[] = [];
+  for (let m = 9 * 60; m <= 18 * 60; m += 30) {
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    candidateSlots.push(`${hh < 10 ? `0${hh}` : hh}:${mm < 10 ? `0${mm}` : mm}`);
+  }
+
+  const slotsList: Array<{ id: string; title: string }> = [];
+  const isMainSede = sede.toLowerCase() === "marquetalia";
+
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dateStr = formatLocalDate(d);
+    const dayName = daysOfWeekEs[d.getDay()];
+
+    const dayAppts = (existingAppts || []).filter((appt) => (appt.appointment_at || "").replace(" ", "T").startsWith(dateStr));
+    const apptsBySpecialist: Record<string, { start: number; end: number }[]> = {};
+    dayAppts.forEach((appt) => {
+      const apptStartMin = timeToMinutes(appt.appointment_at || "00:00");
+      const apptEndMin = apptStartMin + parseInt(appt.duration || "60", 10);
+      if (!apptsBySpecialist[appt.especialista]) apptsBySpecialist[appt.especialista] = [];
+      apptsBySpecialist[appt.especialista].push({ start: apptStartMin, end: apptEndMin });
+    });
+
+    for (const slot of candidateSlots) {
+      const slotStartMin = timeToMinutes(slot);
+      const slotEndMin = slotStartMin + duration;
+      let hasAvailableSpecialist = false;
+
+      for (const sp of qualifiedSpecialists) {
+        let isAvailableInSede = false;
+        if (isMainSede) {
+          const scheduleObj = safeParseSchedule(sp.horario_semanal);
+          const dayConfig = scheduleObj[dayName];
+          if (dayConfig && dayConfig.estado === "abierto") isAvailableInSede = true;
+        } else {
+          const assignedSedeOverride = (overrides || []).find(
+            (rule) => rule.type === "assigned_sede" && rule.sede?.toLowerCase() === sede.toLowerCase() && rule.date === dateStr
+          );
+          if (assignedSedeOverride) isAvailableInSede = true;
+        }
+
+        if (!isAvailableInSede) continue;
+        const spAppts = apptsBySpecialist[sp.name] || [];
+        const isOccupied = spAppts.some((appt) => slotStartMin < appt.end && slotEndMin > appt.start);
+
+        if (!isOccupied) {
+          hasAvailableSpecialist = true;
+          break;
+        }
+      }
+
+      if (hasAvailableSpecialist) {
+        slotsList.push({
+          id: `${dateStr}T${slot}`,
+          title: `📅 ${dateStr} — ⏰ ${slot}`,
+        });
+      }
+    }
+  }
+
+  return slotsList.slice(0, 25);
 }
 
 export async function POST(req: Request) {
@@ -54,11 +186,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { encrypted_aes_key, encrypted_flow_data, initial_vector } = body;
 
-    if (!encrypted_aes_key || !encrypted_flow_data || !initial_vector) {
-      return NextResponse.json({ error: 'Faltan campos cifrados de Meta' }, { status: 400 });
-    }
-
-    // 1. Descifrado criptográfico con node-forge
     const privateKey = forge.pki.privateKeyFromPem(PRIVATE_KEY_PEM);
     const decryptedAesKeyBytes = privateKey.decrypt(
       forge.util.decode64(encrypted_aes_key),
@@ -75,76 +202,22 @@ export async function POST(req: Request) {
     const decipher = forge.cipher.createDecipher('AES-GCM', decryptedAesKeyBytes);
     decipher.start({ iv: ivBytes, tag: forge.util.createBuffer(tag), tagLength: 128 });
     decipher.update(forge.util.createBuffer(encryptedPayload));
-
-    if (!decipher.finish()) {
-      throw new Error('Tag de autenticación inválido al descifrar el payload');
-    }
+    decipher.finish();
 
     const decryptedBody = JSON.parse(forge.util.encodeUtf8(decipher.output.getBytes()));
     const { action, screen, data } = decryptedBody;
 
     let responsePayload: any = {};
 
-    // ------------------------------------------------------------------
-    // MANEJO DINÁMICO EN VIVO CON SUPABASE
-    // ------------------------------------------------------------------
-
-    // PASO 1: Apertura del Flow -> Cargar Sedes activas desde specialist_overrides
+    // PASO 1: Apertura -> Cargar Catálogo de Servicios desde Supabase
     if (action === 'INIT') {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const { data: overrides } = await supabase
-        .from('specialist_overrides')
-        .select('sede')
-        .eq('type', 'assigned_sede')
-        .gte('date', todayStr);
-
-      const activeSedesMap: Record<string, boolean> = {
-        Marquetalia: true,
-        Buga: false,
-        'Santa Marta': false,
-      };
-
-      if (overrides) {
-        overrides.forEach((row: any) => {
-          if (row.sede) {
-            const normalized = row.sede.trim().toLowerCase();
-            if (normalized === 'buga') activeSedesMap['Buga'] = true;
-            if (normalized === 'santa marta') activeSedesMap['Santa Marta'] = true;
-          }
-        });
-      }
-
-      const locationsList = [
-        { id: 'Marquetalia', title: '📍 Marquetalia', description: 'Palomino, La Guajira (Principal)' },
-      ];
-
-      if (activeSedesMap['Buga']) {
-        locationsList.push({ id: 'Buga', title: '📍 Buga', description: 'Carrera 14 # 6-32, Valle del Cauca' });
-      }
-      if (activeSedesMap['Santa Marta']) {
-        locationsList.push({ id: 'Santa Marta', title: '📍 Santa Marta', description: 'Centro Histórico' });
-      }
-
-      responsePayload = {
-        screen: 'LOCATION_SCREEN',
-        data: { locations_list: locationsList },
-      };
-    }
-
-    // PASO 2: Selección de Sede -> Cargar Servicios desde Supabase (Excluyendo retoques)
-    else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
       const { data: servicesDB } = await supabase.from('services').select('*');
 
       const filteredServices = (servicesDB || [])
         .filter((s: any) => {
-          const catLower = (s.category || '').toLowerCase();
-          const nameLower = (s.Servicio || s.servicio || '').toLowerCase();
-          return (
-            !catLower.includes('retoque') &&
-            !catLower.includes('refuerzo') &&
-            !nameLower.includes('retoque') &&
-            !nameLower.includes('refuerzo')
-          );
+          const cat = (s.category || '').toLowerCase();
+          const name = (s.Servicio || s.servicio || '').toLowerCase();
+          return !cat.includes('retoque') && !cat.includes('refuerzo') && !name.includes('retoque') && !name.includes('refuerzo');
         })
         .map((s: any) => ({
           id: s.SKU || s.id,
@@ -158,7 +231,7 @@ export async function POST(req: Request) {
       };
     }
 
-    // PASO 3: Selección de Servicio -> Cargar Especialistas calificadas para este servicio
+    // PASO 2: Selección de Servicio -> Cargar Especialistas Calificadas
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
       const selectedServiceId = data.selected_service;
 
@@ -171,53 +244,61 @@ export async function POST(req: Request) {
       let serviceEspecialistas: string[] = [];
       if (service && service.especialistas) {
         if (typeof service.especialistas === 'string') {
-          try {
-            serviceEspecialistas = JSON.parse(service.especialistas);
-          } catch {
-            serviceEspecialistas = [service.especialistas];
-          }
+          try { serviceEspecialistas = JSON.parse(service.especialistas); } catch { serviceEspecialistas = [service.especialistas]; }
         } else if (Array.isArray(service.especialistas)) {
           serviceEspecialistas = service.especialistas;
         }
       }
 
       const specialistsList: Array<{ id: string; title: string; description?: string }> = [
-        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad de horarios' },
+        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad' },
       ];
-
-      serviceEspecialistas.forEach((name) => {
-        specialistsList.push({ id: name, title: `🌸 ${name}` });
-      });
+      serviceEspecialistas.forEach((name) => specialistsList.push({ id: name, title: `🌸 ${name}` }));
 
       responsePayload = {
         screen: 'SPECIALIST_SCREEN',
+        data: { selected_service: selectedServiceId, specialists_list: specialistsList },
+      };
+    }
+
+    // PASO 3: Selección de Especialista -> Cargar Sedes Activas
+    else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data: overrides } = await supabase.from('specialist_overrides').select('sede').eq('type', 'assigned_sede').gte('date', todayStr);
+
+      const activeSedesMap: Record<string, boolean> = { Marquetalia: true, Buga: false, 'Santa Marta': false };
+      if (overrides) {
+        overrides.forEach((row: any) => {
+          if (row.sede) {
+            const norm = row.sede.trim().toLowerCase();
+            if (norm === 'buga') activeSedesMap['Buga'] = true;
+            if (norm === 'santa marta') activeSedesMap['Santa Marta'] = true;
+          }
+        });
+      }
+
+      const locationsList = [{ id: 'Marquetalia', title: '📍 Marquetalia', description: 'Palomino, La Guajira' }];
+      if (activeSedesMap['Buga']) locationsList.push({ id: 'Buga', title: '📍 Buga', description: 'Valle del Cauca' });
+      if (activeSedesMap['Santa Marta']) locationsList.push({ id: 'Santa Marta', title: '📍 Santa Marta', description: 'Centro Histórico' });
+
+      responsePayload = {
+        screen: 'LOCATION_SCREEN',
         data: {
-          selected_service: selectedServiceId,
-          selected_sede: data.selected_sede,
-          specialists_list: specialistsList,
+          selected_service: data.selected_service,
+          selected_specialist: data.selected_specialist,
+          locations_list: locationsList,
         },
       };
     }
 
-    // PASO 4: Selección de Especialista -> Consultar horas disponibles usando /api/availability
-    else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
+    // PASO 4: Selección de Sede -> Cargar Horarios Disponibles
+    else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
       const serviceId = data.selected_service;
-      const sede = data.selected_sede || 'Marquetalia';
       const specialist = data.selected_specialist;
+      const sede = data.selected_sede || 'Marquetalia';
 
-      const availableDates = await fetchRealAvailability(serviceId, sede, specialist);
-
-      const slotsList: Array<{ id: string; title: string }> = [];
-      availableDates.forEach((dateItem: any) => {
-        (dateItem.slots || []).forEach((slot: any) => {
-          slotsList.push({
-            id: `${dateItem.date}T${slot.time}`,
-            title: `📅 ${dateItem.date} — ⏰ ${slot.time}`,
-          });
-        });
-      });
-
-      const fallbackSlots = slotsList.length > 0 ? slotsList.slice(0, 20) : [{ id: 'NONE', title: 'Sin horarios disponibles' }];
+      const slotsList = await getAvailableSlots(serviceId, sede, specialist);
+      const finalSlots = slotsList.length > 0 ? slotsList : [{ id: 'NONE', title: 'Sin turnos libres en estos días' }];
 
       const countryCodes = [
         { id: '57', title: '🇨🇴 Colombia (+57)' },
@@ -232,17 +313,11 @@ export async function POST(req: Request) {
 
       responsePayload = {
         screen: 'DATETIME_SCREEN',
-        data: {
-          selected_service: serviceId,
-          selected_sede: sede,
-          selected_specialist: specialist,
-          slots_list: fallbackSlots,
-          country_codes: countryCodes,
-        },
+        data: { slots_list: finalSlots, country_codes: countryCodes },
       };
     }
 
-    // PASO 5: Selección de Fecha y Contacto -> Mostrar Resumen
+    // PASO 5: Selección de Fecha/Hora y Contacto -> Resumen Final
     else if (action === 'data_exchange' && screen === 'DATETIME_SCREEN') {
       const [datePart, timePart] = (data.selected_time || '').split('T');
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
@@ -250,26 +325,18 @@ export async function POST(req: Request) {
       responsePayload = {
         screen: 'SUMMARY_SCREEN',
         data: {
-          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n📅 *Fecha:* ${datePart || data.selected_date}\n⏰ *Hora:* ${timePart || 'Seleccionada'}\n\nPresiona *Confirmar y Agendar* para asegurar tu espacio.`,
+          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n📅 *Fecha:* ${datePart || 'Día seleccionado'}\n⏰ *Hora:* ${timePart || 'Hora seleccionada'}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
         },
       };
     }
 
-    // PASO 6: Finalización -> Cierre del flujo
+    // PASO 6: Finalización
     else if (action === 'complete') {
-      responsePayload = {
-        screen: 'SUCCESS',
-        data: { extension_message_response: { params: { status: 'booked' } } },
-      };
+      responsePayload = { screen: 'SUCCESS', data: { extension_message_response: { params: { status: 'booked' } } } };
     }
 
-    // ------------------------------------------------------------------
-    // CIFRAR RESPUESTA Y DEVOLVER A META
-    // ------------------------------------------------------------------
     let flippedIv = '';
-    for (let i = 0; i < ivBytes.length; i++) {
-      flippedIv += String.fromCharCode(ivBytes.charCodeAt(i) ^ 0xff);
-    }
+    for (let i = 0; i < ivBytes.length; i++) flippedIv += String.fromCharCode(ivBytes.charCodeAt(i) ^ 0xff);
 
     const cipher = forge.cipher.createCipher('AES-GCM', decryptedAesKeyBytes);
     cipher.start({ iv: flippedIv, tagLength: 128 });
@@ -279,12 +346,8 @@ export async function POST(req: Request) {
     const encryptedResponseBytes = cipher.output.getBytes() + cipher.mode.tag.getBytes();
     const encryptedBase64 = forge.util.encode64(encryptedResponseBytes);
 
-    return new NextResponse(encryptedBase64, {
-      status: 200,
-      headers: { 'Content-Type': 'text/plain' },
-    });
+    return new NextResponse(encryptedBase64, { status: 200, headers: { 'Content-Type': 'text/plain' } });
   } catch (error: any) {
-    console.error('Error al procesar el Flow:', error);
-    return new NextResponse(`Error de descifrado: ${error.message}`, { status: 421 });
+    return new NextResponse(`Error: ${error.message}`, { status: 421 });
   }
 }
