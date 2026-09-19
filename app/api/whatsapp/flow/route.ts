@@ -217,28 +217,74 @@ export async function POST(req: Request) {
       };
     }
 
-    // PASO 1: Apertura -> Cargar Catálogo de Servicios desde Supabase
+    // PASO 1: Apertura -> Cargar Catálogo Organizado por Categorías
     else if (action === 'INIT') {
       const { data: servicesDB } = await supabase.from('services').select('*');
 
-      const filteredServices = (servicesDB || [])
-        .filter((s: any) => {
-          const cat = (s.category || '').toLowerCase();
-          const name = (s.Servicio || s.servicio || '').toLowerCase();
-          return !cat.includes('retoque') && !cat.includes('refuerzo') && !name.includes('retoque') && !name.includes('refuerzo');
-        })
-        .map((s: any) => ({
+      // 1. Emojis identificadores por categoría
+      const categoryEmojis: Record<string, string> = {
+        'Pestañas': '👁️',
+        'Cejas': '🎨',
+        'Micropigmentación': '✨',
+        'Limpieza facial': '💆‍♀️',
+        'Depilación': '🪒'
+      };
+
+      // 2. Orden de prioridad estricto exigido
+      const CATEGORIAS_ORDEN = [
+        "Pestañas",
+        "Cejas",
+        "Micropigmentación",
+        "Limpieza facial",
+        "Depilación"
+      ];
+
+      const rawServices = servicesDB || [];
+
+      // 3. Excluir retoques y refuerzos
+      const filtered = rawServices.filter((s: any) => {
+        const cat = (s.category || '').toLowerCase();
+        const name = (s.Servicio || s.servicio || '').toLowerCase();
+        return !cat.includes('retoque') && !cat.includes('refuerzo') && !name.includes('retoque') && !name.includes('refuerzo');
+      });
+
+      // 4. Ordenar estrictamente según CATEGORIAS_ORDEN
+      filtered.sort((a: any, b: any) => {
+        const catA = a.category || '';
+        const catB = b.category || '';
+        let indexA = CATEGORIAS_ORDEN.indexOf(catA);
+        let indexB = CATEGORIAS_ORDEN.indexOf(catB);
+        
+        if (indexA === -1) indexA = 99;
+        if (indexB === -1) indexB = 99;
+        
+        return indexA - indexB;
+      });
+
+      // 5. Formatear títulos con salto de línea y categoría clara
+      const categorisedServices = filtered.map((s: any) => {
+        const catName = s.category || 'General';
+        const emoji = categoryEmojis[catName] || '📌';
+        const nombreServicio = s.Servicio || s.servicio;
+        
+        return {
           id: s.SKU || s.id,
-          title: `✨ ${s.Servicio || s.servicio}`,
-          description: `${s.duracion || 45} min • $${Number(s.Precio || s.precio || 0).toLocaleString('es-CO')} COP`,
-        }));
+          // Título principal con categoría arriba y nombre abajo
+          title: `${emoji} CATEGORÍA: ${catName.toUpperCase()}\n↳ ${nombreServicio}`,
+          description: `⏱️ ${s.duracion || 45} min • 💳 $${Number(s.Precio || s.precio || 0).toLocaleString('es-CO')} COP`
+        };
+      });
 
       responsePayload = {
         version: '3.0',
         screen: 'SERVICES_SCREEN',
         data: {
-          services_list: filteredServices.length > 0 ? filteredServices : [
-            { id: 'lash_clasicas', title: '✨ Pestañas Clásicas', description: '120 min • $90.000 COP' }
+          services_list: categorisedServices.length > 0 ? categorisedServices : [
+            { 
+              id: 'lash_clasicas', 
+              title: '👁️ CATEGORÍA: PESTAÑAS\n↳ Pestañas pelo a pelo CLASICAS NATURAL', 
+              description: '⏱️ 120 min • 💳 $90.000 COP' 
+            }
           ]
         },
       };
