@@ -339,33 +339,78 @@ export async function POST(req: Request) {
       };
     }
 
-    // PASO 2: Selección de Servicio -> Cargar Especialistas Calificadas
+    // PASO 2: Selección de Servicio -> Cargar Especialistas Calificadas desde Supabase
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
       const selectedServiceId = data.selected_service;
 
+      // Ignorar si el usuario seleccionó un separador de categoría (HEADER_)
+      if (selectedServiceId && selectedServiceId.startsWith('HEADER_')) {
+        return NextResponse.json({
+          version: '3.0',
+          screen: 'SERVICES_SCREEN',
+          data: { services_list: responsePayload.data?.services_list || [] }
+        });
+      }
+
+      // 1. Consultar el servicio en Supabase
       const { data: service } = await supabase
         .from('services')
-        .select('especialistas')
-        .or(`id.eq.${selectedServiceId},SKU.eq.${selectedServiceId}`)
-        .single();
+        .select('*')
+        .or(`SKU.eq.${selectedServiceId},id.eq.${selectedServiceId}`)
+        .maybeSingle();
 
       let serviceEspecialistas: string[] = [];
+
       if (service && service.especialistas) {
-        if (typeof service.especialistas === 'string') {
-          try { serviceEspecialistas = JSON.parse(service.especialistas); } catch { serviceEspecialistas = [service.especialistas]; }
-        } else if (Array.isArray(service.especialistas)) {
-          serviceEspecialistas = service.especialistas;
+        let rawSpecs = service.especialistas;
+
+        // Desempaquetado seguro si viene como String JSON de Supabase
+        if (typeof rawSpecs === 'string') {
+          try {
+            // Limpiar comillas escapadas si las hay
+            let cleaned = rawSpecs.trim();
+            if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+              cleaned = cleaned.slice(1, -1);
+            }
+            serviceEspecialistas = JSON.parse(cleaned.replace(/\\"/g, '"'));
+          } catch {
+            serviceEspecialistas = [rawSpecs];
+          }
+        } else if (Array.isArray(rawSpecs)) {
+          serviceEspecialistas = rawSpecs;
         }
       }
 
+      // 2. Construir la lista de especialistas
       const specialistsList: Array<{ id: string; title: string; description?: string }> = [
-        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad' },
+        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad de horarios' },
       ];
-      serviceEspecialistas.forEach((name) => specialistsList.push({ id: name, title: `🌸 ${name}` }));
+
+      if (Array.isArray(serviceEspecialistas) && serviceEspecialistas.length > 0) {
+        serviceEspecialistas.forEach((name) => {
+          if (name && typeof name === 'string' && name.trim()) {
+            specialistsList.push({
+              id: name.trim(),
+              title: `🌸 ${name.trim()}`,
+              description: 'Especialista capacitada'
+            });
+          }
+        });
+      } else {
+        // Fallback por si el servicio en BD no tiene la columna llena
+        specialistsList.push(
+          { id: 'Leslie Gutierrez', title: '👑 Leslie Gutierrez', description: 'Especialista principal' },
+          { id: 'Yucelis Moscote', title: '🌸 Yucelis Moscote', description: 'Especialista en pestañas y cejas' },
+          { id: 'Nary Cabrales', title: '🌸 Nary Cabrales', description: 'Especialista en depilación y cejas' }
+        );
+      }
 
       responsePayload = {
         screen: 'SPECIALIST_SCREEN',
-        data: { selected_service: selectedServiceId, specialists_list: specialistsList },
+        data: {
+          selected_service: selectedServiceId,
+          specialists_list: specialistsList,
+        },
       };
     }
 
