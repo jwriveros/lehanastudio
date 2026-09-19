@@ -31,6 +31,155 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
+function getColombiaNow(): Date {
+  const now = new Date();
+  const colStr = now.toLocaleString("en-US", { timeZone: "America/Bogota" });
+  return new Date(colStr);
+}
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function safeParseSchedule(rawSchedule: any): any {
+  if (!rawSchedule) return {};
+  let current = rawSchedule;
+  while (typeof current === "string") {
+    try {
+      let trimmed = current.trim();
+      if (trimmed.startsWith('"') && trimmed.endsWith('"')) trimmed = trimmed.slice(1, -1);
+      current = JSON.parse(trimmed.replace(/\\"/g, '"'));
+    } catch {
+      break;
+    }
+  }
+  return typeof current === "object" && current !== null ? current : {};
+}
+
+function timeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const cleanTime = timeStr.trim().split(" ")[0].split("T").pop() || "";
+  const parts = cleanTime.substring(0, 5).split(":");
+  const hours = parseInt(parts[0], 10) || 0;
+  const minutes = parseInt(parts[1], 10) || 0;
+  return hours * 60 + minutes;
+}
+
+async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialist: string | null) {
+  const { data: service } = await supabase
+    .from("services")
+    .select("*")
+    .or(`id.eq.${serviceId},SKU.eq.${serviceId}`)
+    .maybeSingle();
+
+  if (!service) return [];
+
+  const duration = parseInt(service.duracion || "60", 10);
+
+  let serviceEspecialistas: string[] = [];
+  if (typeof service.especialistas === "string") {
+    try { serviceEspecialistas = JSON.parse(service.especialistas); } catch { serviceEspecialistas = [service.especialistas]; }
+  } else if (Array.isArray(service.especialistas)) {
+    serviceEspecialistas = service.especialistas;
+  }
+
+  const { data: specialists } = await supabase.from("app_users").select("id, name, horario_semanal");
+  let qualifiedSpecialists = (specialists || []).filter((sp) => serviceEspecialistas.includes(sp.name));
+
+  if (explicitSpecialist && explicitSpecialist !== "Cualquier profesional") {
+    qualifiedSpecialists = qualifiedSpecialists.filter((sp) => sp.name.toLowerCase() === explicitSpecialist.toLowerCase());
+  }
+
+  if (qualifiedSpecialists.length === 0) return [];
+
+  const colombiaToday = getColombiaNow();
+  const startDate = new Date(colombiaToday);
+  startDate.setDate(colombiaToday.getDate() + 1);
+  startDate.setHours(0, 0, 0, 0);
+
+  const endDate = new Date(colombiaToday);
+  endDate.setDate(colombiaToday.getDate() + 15);
+  endDate.setHours(23, 59, 59, 999);
+
+  const startDateStr = formatLocalDate(startDate);
+  const endDateStr = formatLocalDate(endDate);
+
+  const { data: overrides } = await supabase.from("specialist_overrides").select("*").gte("date", startDateStr).lte("date", endDateStr);
+  const { data: existingAppts } = await supabase
+    .from("appointments")
+    .select("appointment_at, duration, especialista, sede, estado")
+    .eq("sede", sede)
+    .neq("estado", "Cita cancelada")
+    .gte("appointment_at", `${startDateStr} 00:00:00`)
+    .lte("appointment_at", `${endDateStr} 23:59:59`);
+
+  const daysOfWeekEs = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+  const candidateSlots: string[] = [];
+  for (let m = 9 * 60; m <= 18 * 60; m += 30) {
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+    candidateSlots.push(`${hh < 10 ? `0${hh}` : hh}:${mm < 10 ? `0${mm}` : mm}`);
+  }
+
+  const slotsList: Array<{ id: string; title: string }> = [];
+  const isMainSede = sede.toLowerCase() === "marquetalia";
+
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dateStr = formatLocalDate(d);
+    const dayName = daysOfWeekEs[d.getDay()];
+
+    const dayAppts = (existingAppts || []).filter((appt) => (appt.appointment_at || "").replace(" ", "T").startsWith(dateStr));
+    const apptsBySpecialist: Record<string, { start: number; end: number }[]> = {};
+    dayAppts.forEach((appt) => {
+      const apptStartMin = timeToMinutes(appt.appointment_at || "00:00");
+      const apptEndMin = apptStartMin + parseInt(appt.duration || "60", 10);
+      if (!apptsBySpecialist[appt.especialista]) apptsBySpecialist[appt.especialista] = [];
+      apptsBySpecialist[appt.especialista].push({ start: apptStartMin, end: apptEndMin });
+    });
+
+    for (const slot of candidateSlots) {
+      const slotStartMin = timeToMinutes(slot);
+      const slotEndMin = slotStartMin + duration;
+      let hasAvailableSpecialist = false;
+
+      for (const sp of qualifiedSpecialists) {
+        let isAvailableInSede = false;
+        if (isMainSede) {
+          const scheduleObj = safeParseSchedule(sp.horario_semanal);
+          const dayConfig = scheduleObj[dayName];
+          if (dayConfig && dayConfig.estado === "abierto") isAvailableInSede = true;
+        } else {
+          const assignedSedeOverride = (overrides || []).find(
+            (rule) => rule.type === "assigned_sede" && rule.sede?.toLowerCase() === sede.toLowerCase() && rule.date === dateStr
+          );
+          if (assignedSedeOverride) isAvailableInSede = true;
+        }
+
+        if (!isAvailableInSede) continue;
+        const spAppts = apptsBySpecialist[sp.name] || [];
+        const isOccupied = spAppts.some((appt) => slotStartMin < appt.end && slotEndMin > appt.start);
+
+        if (!isOccupied) {
+          hasAvailableSpecialist = true;
+          break;
+        }
+      }
+
+      if (hasAvailableSpecialist) {
+        slotsList.push({
+          id: `${dateStr}T${slot}`,
+          title: `📅 ${dateStr} — ⏰ ${slot}`,
+        });
+      }
+    }
+  }
+
+  return slotsList.slice(0, 25);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -59,12 +208,9 @@ export async function POST(req: Request) {
 
     let responsePayload: any = {};
 
-    // 🎯 RESPUESTA OBLIGATORIA AL PING
     if (action === 'ping') {
       responsePayload = { data: { status: 'active' } };
     }
-
-    // PASO 1: Apertura -> Cargar Servicios con Categorías en 1 solo Dropdown
     else if (action === 'INIT') {
       const { data: servicesDB } = await supabase.from('services').select('*');
 
@@ -116,12 +262,9 @@ export async function POST(req: Request) {
         data: { services_list: formattedList },
       };
     }
-
-    // PASO 2: Selección de Servicio -> Lógica IDÉNTICA a /api/availability
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
       const selectedServiceId = data.selected_service;
 
-      // 1. Obtener la información del servicio exacto en Supabase
       const { data: service } = await supabase
         .from("services")
         .select("*")
@@ -142,16 +285,15 @@ export async function POST(req: Request) {
         }
       }
 
-      // 2. Consultar especialistas registradas en app_users
       const { data: specialists } = await supabase
         .from("app_users")
-        .select("id, name");
+        .select("id, name, role")
+        .eq("role", "ESPECIALISTA");
 
       let qualifiedSpecialists = (specialists || []).filter((sp) =>
         serviceEspecialistas.includes(sp.name)
       );
 
-      // 3. Formatear la lista de opciones para la pantalla de WhatsApp
       const specialistsList: Array<{ id: string; title: string; description?: string }> = [
         { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad de horarios' }
       ];
@@ -165,7 +307,6 @@ export async function POST(req: Request) {
           });
         });
       } else {
-        // Fallback leyendo directo los nombres de la columna si no hace match con app_users
         serviceEspecialistas.forEach((name) => {
           if (name) {
             specialistsList.push({
@@ -185,8 +326,6 @@ export async function POST(req: Request) {
         }
       };
     }
-
-    // PASO 3: Selección de Especialista -> Cargar Sedes Activas
     else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
       const todayStr = new Date().toISOString().split('T')[0];
       const { data: overrides } = await supabase.from('specialist_overrides').select('sede').eq('type', 'assigned_sede').gte('date', todayStr);
@@ -215,9 +354,14 @@ export async function POST(req: Request) {
         },
       };
     }
-
-    // PASO 4: Selección de Sede -> Cargar Horarios Disponibles
     else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
+      const serviceId = data.selected_service;
+      const specialist = data.selected_specialist;
+      const sede = data.selected_sede || 'Marquetalia';
+
+      const slotsList = await getAvailableSlots(serviceId, sede, specialist);
+      const finalSlots = slotsList.length > 0 ? slotsList : [{ id: 'NONE', title: 'Sin turnos libres en estos días' }];
+
       const countryCodes = [
         { id: '57', title: '🇨🇴 Colombia (+57)' },
         { id: '1', title: '🇺🇸 Estados Unidos (+1)' },
@@ -232,17 +376,11 @@ export async function POST(req: Request) {
       responsePayload = {
         screen: 'DATETIME_SCREEN',
         data: {
-          slots_list: [
-            { id: '2026-09-19T09:00', title: '📅 2026-09-19 — ⏰ 09:00 AM' },
-            { id: '2026-09-19T11:00', title: '📅 2026-09-19 — ⏰ 11:00 AM' },
-            { id: '2026-09-19T14:30', title: '📅 2026-09-19 — ⏰ 02:30 PM' }
-          ],
+          slots_list: finalSlots,
           country_codes: countryCodes
         },
       };
     }
-
-    // PASO 5: Resumen Final
     else if (action === 'data_exchange' && screen === 'DATETIME_SCREEN') {
       const [datePart, timePart] = (data.selected_time || '').split('T');
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
@@ -254,8 +392,6 @@ export async function POST(req: Request) {
         },
       };
     }
-
-    // PASO 6: Finalización
     else if (action === 'complete') {
       responsePayload = { screen: 'SUCCESS', data: { extension_message_response: { params: { status: 'booked' } } } };
     }

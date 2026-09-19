@@ -6,7 +6,7 @@ import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { supabase } from "@/lib/supabaseClient";
 import LocationSearch from "@/components/LocationSearch";
-import { toast } from "sonner"; // 👈 Importamos toast
+import { toast } from "sonner";
 import {
   Phone,
   Calendar as CalendarIcon,
@@ -29,7 +29,6 @@ import {
   Mail,
   Edit3,
   MessageCircle,
-  AlertCircle,
 } from "lucide-react";
 
 /* =========================================================
@@ -38,7 +37,17 @@ import {
 const LESLIE_WHATSAPP_NUMBER = "573058633774";
 
 /* =========================================================
-   2. SEDES DE LEHANA STUDIO
+   2. FOTOS DE LAS ESPECIALISTAS
+========================================================= */
+const SPECIALIST_PHOTOS: Record<string, string> = {
+  "Nary Cabrales": "https://ijbmsdypiudovdnpwwzg.supabase.co/storage/v1/object/public/wa_media/nary.jpeg",
+  "Andrea Garcia": "https://ijbmsdypiudovdnpwwzg.supabase.co/storage/v1/object/public/wa_media/andrea.jpeg",
+  "Leslie Gutierrez": "https://ijbmsdypiudovdnpwwzg.supabase.co/storage/v1/object/public/wa_media/leslie.jpeg",
+  "Yucelis Moscote": "https://ijbmsdypiudovdnpwwzg.supabase.co/storage/v1/object/public/wa_media/yucelis.jpeg",
+};
+
+/* =========================================================
+   3. SEDES DE LEHANA STUDIO
 ========================================================= */
 const SEDES_INFO = [
   {
@@ -62,7 +71,7 @@ const SEDES_INFO = [
 ];
 
 /* =========================================================
-   3. ORDEN DE CATEGORÍAS PÚBLICAS Y EXCLUSIONES
+   4. ORDEN DE CATEGORÍAS PÚBLICAS Y EXCLUSIONES
 ========================================================= */
 const CATEGORIAS_ORDEN = [
   "Todos",
@@ -74,7 +83,7 @@ const CATEGORIAS_ORDEN = [
 ];
 
 /* =========================================================
-   4. CATÁLOGO BASE DE RESPALDO (FALLBACK SEGURO)
+   5. CATÁLOGO BASE DE RESPALDO (FALLBACK SEGURO)
 ========================================================= */
 const INITIAL_PUBLIC_SERVICES: ServiceItem[] = [
   {
@@ -110,7 +119,7 @@ const INITIAL_PUBLIC_SERVICES: ServiceItem[] = [
 ];
 
 /* =========================================================
-   5. PAÍSES Y SELECTOR CON COLOMBIA (+57)
+   6. PAÍSES Y SELECTOR CON COLOMBIA (+57)
 ========================================================= */
 const RAW_COUNTRIES = [
   { code: "57", flag: "🇨🇴", name: "Colombia" },
@@ -145,13 +154,20 @@ function CountrySelect({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    // 🎯 Agregamos 'touchstart' además de 'mousedown' para móviles
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, []);
 
   const cleanValue = formatIndicativo(value);
@@ -168,11 +184,11 @@ function CountrySelect({
   );
 
   return (
-    <div className="relative w-28 shrink-0" ref={ref}>
+    <div className="relative w-28 shrink-0 select-none" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 py-3 px-2.5 text-xs font-black hover:border-rose-300 transition-all cursor-pointer"
+        className="w-full flex items-center justify-between rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 py-3 px-2.5 text-xs font-black hover:border-rose-300 transition-all cursor-pointer touch-manipulation"
       >
         <span className="flex items-center gap-1">
           <span>{selectedCountry.flag}</span>
@@ -213,7 +229,7 @@ function CountrySelect({
                   setOpen(false);
                   setSearch("");
                 }}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer ${
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-[10px] font-bold text-left transition-all cursor-pointer touch-manipulation ${
                   c.code === cleanValue
                     ? "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400"
                     : "text-zinc-700 dark:text-zinc-300 hover:bg-rose-500/10 hover:text-rose-500"
@@ -287,7 +303,7 @@ function formatTime12h(time24: string): string {
 }
 
 /* =========================================================
-   6. COMPONENTE PRINCIPAL DE RESERVAS
+   7. COMPONENTE PRINCIPAL DE RESERVAS
 ========================================================= */
 function BookingContent() {
   const [bookingSubStep, setBookingSubStep] = useState<number>(1);
@@ -350,6 +366,11 @@ function BookingContent() {
     fetchServicesFromSupabase();
     fetchSedesAvailability();
   }, []);
+
+  // 🎯 Reinicia la posición del scroll al cambiar de paso para evitar que la pantalla parezca bloqueada
+useEffect(() => {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}, [bookingSubStep]);
 
   /* 🔹 VALIDAR FECHAS PROGRAMADAS EN SUPABASE PARA BUGA Y SANTA MARTA */
   const fetchSedesAvailability = async () => {
@@ -509,11 +530,12 @@ function BookingContent() {
       : ["Leslie Gutierrez", "Nary Cabrales", "Yucelis Moscote", "Andrea Garcia"];
   }, [selectedService, cartItems]);
 
-  /* 🔹 CONSULTA DE DISPONIBILIDAD */
+  /* 🔹 CONSULTA DE DISPONIBILIDAD ESTABLE (SIN PARPADEO) */
   useEffect(() => {
     const controller = new AbortController();
 
     async function loadAvailability() {
+      // Solo consultar si estamos en el paso 3 y hay un servicio seleccionado
       if (!selectedService || bookingSubStep !== 3) return;
 
       setLoadingAvailability(true);
@@ -541,19 +563,20 @@ function BookingContent() {
         if (res.ok && Array.isArray(data.available_dates)) {
           setAvailabilityData(data.available_dates);
 
+          // Si ya hay una fecha seleccionada, actualizamos sus horas de forma limpia
           if (selectedDate) {
             const matchDay = data.available_dates.find((d: any) => d.date === selectedDate);
-            if (matchDay) {
-              setAvailableSlotsForDate(matchDay.slots || []);
-            }
+            setAvailableSlotsForDate(matchDay ? matchDay.slots || [] : []);
           }
         } else {
           setAvailabilityData([]);
+          setAvailableSlotsForDate([]);
         }
       } catch (err: any) {
         if (err.name !== "AbortError") {
           console.error("Error obteniendo disponibilidad:", err);
           setAvailabilityData([]);
+          setAvailableSlotsForDate([]);
         }
       } finally {
         setLoadingAvailability(false);
@@ -565,7 +588,9 @@ function BookingContent() {
     return () => {
       controller.abort();
     };
-  }, [selectedService, selectedSede, selectedSpecialist, bookingSubStep]);
+    // 🎯 IMPORTANTE: Quitamos 'selectedSpecialist' si el usuario está en modo 'Cualquier profesional'
+    // para evitar re-consultas innecesarias al marcar la hora.
+  }, [selectedService, selectedSede, bookingSubStep]);
 
   // CATEGORÍAS ORDENADAS
   const categories = useMemo(() => {
@@ -619,7 +644,7 @@ function BookingContent() {
     return `https://wa.me/${LESLIE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
   };
 
-  /* 🎯 SELECCIÓN DE SEDE CON NOTIFICACIÓN ESTILIZADA (REEMPLAZO DE ALERT) */
+  /* 🎯 SELECCIÓN DE SEDE CON NOTIFICACIÓN ESTILIZADA */
   const handleSelectSede = (sedeObj: (typeof SEDES_INFO)[0]) => {
     const hasAvailableDates = sedesAvailabilityMap[sedeObj.name] ?? false;
 
@@ -687,12 +712,22 @@ function BookingContent() {
     }
   };
 
+  /* 🔹 SELECCIÓN DE HORA INSTANTÁNEA Y FLUIDA */
   const handleTimeSelect = (timeValue: string) => {
+    // 1. Marca la hora seleccionada inmediatamente
     setSelectedTime(timeValue);
+
+    // 2. Busca los detalles del turno seleccionado
     const slotDetail = availableSlotsForDate.find((s) => s.time === timeValue);
-    if (slotDetail && !selectedSpecialist) {
-      const specList = slotDetail.available_specialists || [slotDetail.assigned_specialist];
-      setSelectedSpecialist(specList[0] || "Leslie Gutierrez");
+    
+    if (slotDetail) {
+      // Si la clienta no había elegido especialista previa, asignamos la disponible para este turno
+      if (!selectedSpecialist || selectedSpecialist === "Cualquier profesional") {
+        const specList = slotDetail.available_specialists || [slotDetail.assigned_specialist];
+        if (specList.length > 0 && specList[0]) {
+          setSelectedSpecialist(specList[0]);
+        }
+      }
     }
   };
 
@@ -1050,7 +1085,7 @@ function BookingContent() {
                 </div>
               )}
 
-              {/* PASO 2: PROFESIONAL Y SEDE CON FILTRADO DE ESPECIALISTAS Y REGLAS DE SEDE */}
+              {/* PASO 2: PROFESIONAL Y SEDE CON FOTOS DE LAS ESPECIALISTAS */}
               {bookingSubStep === 2 && (selectedService || cartItems.length > 0) && (
                 <div className="space-y-6 animate-in fade-in">
                   <div className="flex items-center justify-between">
@@ -1070,26 +1105,21 @@ function BookingContent() {
                     </button>
                   </div>
 
-                  {/* Selección de Sede con Validación en Tiempo Real */}
+                  {/* Selección de Sede */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase text-zinc-400">
                       Sedes Disponibles
                     </label>
                     <LocationSearch
                       onSedeSeleccionada={(sedeMasCercana) => {
-                        // 🎯 1. Obtenemos el nombre retornado por el componente
                         const nombreBuscado = (sedeMasCercana?.name || "").toLowerCase();
-
-                        // 🎯 2. Buscamos la coincidencia exacta en SEDES_INFO
                         const sedeEncontrada = SEDES_INFO.find(
                           (s) => s.name.toLowerCase() === nombreBuscado
                         );
 
                         if (sedeEncontrada) {
-                          // Asignación directa con el objeto completo (incluye 'isMain')
                           setSelectedSede(sedeEncontrada);
                         } else {
-                          // Fallback seguro si la sede devuelta no coincide exactamente
                           setSelectedSede({
                             name: sedeMasCercana?.name || "Marquetalia",
                             address: sedeMasCercana?.address || "",
@@ -1157,59 +1187,91 @@ function BookingContent() {
                     )}
                   </div>
 
-                  {/* Selección de Profesional */}
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-zinc-400">
+                  {/* Selección de Profesional con Fotos Grandes y Destacadas */}
+                  <div className="space-y-4">
+                    <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">
                       Profesional Capacitado
                     </label>
                     
+                    {/* Opción 'Cualquier profesional' */}
                     <div
                       onClick={() => setSelectedSpecialist("")}
-                      className={`flex items-center justify-between p-4 rounded-3xl border bg-white dark:bg-zinc-900 cursor-pointer transition-all ${
+                      className={`flex items-center justify-between p-5 sm:p-6 rounded-3xl border bg-white dark:bg-zinc-900 cursor-pointer transition-all ${
                         selectedSpecialist === ""
-                          ? "border-rose-500 ring-2 ring-rose-500/20 shadow-xs"
-                          : "border-zinc-200 dark:border-zinc-800"
+                          ? "border-rose-500 ring-2 ring-rose-500/20 shadow-md"
+                          : "border-zinc-200 dark:border-zinc-800 hover:border-rose-200"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center">
-                          <Shuffle size={18} />
+                      <div className="flex items-center gap-4 sm:gap-5">
+                        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-900/40">
+                          <Shuffle size={28} />
                         </div>
                         <div>
-                          <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-50">
+                          <h4 className="font-black text-sm sm:text-base text-zinc-900 dark:text-zinc-50">
                             Cualquier profesional
                           </h4>
-                          <p className="text-[10px] text-zinc-400">Máxima disponibilidad de horarios</p>
+                          <p className="text-xs text-zinc-400 font-medium mt-0.5">
+                            Asigna automáticamente según la máxima disponibilidad de horarios
+                          </p>
                         </div>
                       </div>
-                      {selectedSpecialist === "" && <CheckCircle2 size={16} className="text-rose-500" />}
+                      {selectedSpecialist === "" && <CheckCircle2 size={22} className="text-rose-500 shrink-0" />}
                     </div>
 
-                    {qualifiedSpecialistsForSelectedService.map((spec) => {
-                      const isSelected = selectedSpecialist === spec;
-                      return (
-                        <div
-                          key={spec}
-                          onClick={() => setSelectedSpecialist(spec)}
-                          className={`flex items-center justify-between p-4 rounded-3xl border bg-white dark:bg-zinc-900 cursor-pointer transition-all ${
-                            isSelected
-                              ? "border-rose-500 ring-2 ring-rose-500/20 shadow-xs"
-                              : "border-zinc-200 dark:border-zinc-800"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-rose-500">
-                              <User size={18} />
+                    {/* Grid de Especialistas con Fotos Ampliadas */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {qualifiedSpecialistsForSelectedService.map((spec) => {
+                        const isSelected = selectedSpecialist === spec;
+                        const photoUrl = SPECIALIST_PHOTOS[spec];
+
+                        return (
+                          <div
+                            key={spec}
+                            onClick={() => setSelectedSpecialist(spec)}
+                            className={`flex items-center justify-between p-4 sm:p-5 rounded-3xl border bg-white dark:bg-zinc-900 cursor-pointer transition-all ${
+                              isSelected
+                                ? "border-rose-500 ring-2 ring-rose-500/20 shadow-md"
+                                : "border-zinc-200 dark:border-zinc-800 hover:border-rose-200"
+                            }`}
+                          >
+                            <div className="flex items-center gap-4 sm:gap-5">
+                              {/* Foto Destacada (80px en móvil / 96px en escritorio) */}
+                              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 border-zinc-200 dark:border-zinc-700 shrink-0 bg-zinc-100 dark:bg-zinc-800 shadow-xs">
+                                {photoUrl ? (
+                                  <img
+                                    src={photoUrl}
+                                    alt={spec}
+                                    className="w-full h-full object-cover object-top hover:scale-105 transition-transform duration-300"
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-zinc-400">
+                                    <User size={32} />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Información Nombre y Rol */}
+                              <div className="space-y-1">
+                                <h4 className="font-black text-sm sm:text-base text-zinc-900 dark:text-zinc-50 leading-tight">
+                                  {spec}
+                                </h4>
+                                <p className="text-xs text-rose-500 font-extrabold">
+                                  Especialista en Belleza
+                                </p>
+                                <span className="inline-block text-[10px] font-bold text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md">
+                                  Lehana Studio
+                                </span>
+                              </div>
                             </div>
-                            <div>
-                              <h4 className="font-extrabold text-xs text-zinc-900 dark:text-zinc-50">{spec}</h4>
-                              <p className="text-[10px] text-zinc-400">Especialista en Belleza</p>
-                            </div>
+
+                            {isSelected && <CheckCircle2 size={22} className="text-rose-500 shrink-0 ml-2" />}
                           </div>
-                          {isSelected && <CheckCircle2 size={16} className="text-rose-500" />}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <button
@@ -1591,7 +1653,7 @@ function BookingContent() {
 
       {/* BARRA FLOTANTE INFERIOR MÓVIL ESTILO FRESHA */}
       {!bookingSuccess && cartItems.length > 0 && (
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 p-3.5 shadow-2xl animate-in slide-in-from-bottom duration-200">
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 p-3.5 shadow-2xl animate-in slide-in-from-bottom duration-200">
           <div className="max-w-md mx-auto flex items-center justify-between gap-3">
             <div className="space-y-0.5">
               <div className="text-base font-black text-rose-500">
@@ -1606,17 +1668,19 @@ function BookingContent() {
 
             {bookingSubStep < 4 ? (
               <button
+                type="button"
                 onClick={handleNextStep}
-                className="px-6 py-3 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md cursor-pointer"
+                className="px-6 py-3 rounded-2xl bg-black dark:bg-white text-white dark:text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md cursor-pointer touch-manipulation active:scale-95 transition-transform"
               >
                 <span>Continuar</span>
                 <ChevronRight size={14} />
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleConfirmBooking}
                 disabled={bookingLoading}
-                className="px-6 py-3 rounded-2xl bg-emerald-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-50"
+                className="px-6 py-3 rounded-2xl bg-emerald-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md cursor-pointer touch-manipulation active:scale-95 transition-transform disabled:opacity-50"
               >
                 <span>Finalizar</span>
                 <CheckCircle2 size={14} />
