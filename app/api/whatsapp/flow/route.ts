@@ -217,20 +217,11 @@ export async function POST(req: Request) {
       };
     }
 
-    // PASO 1: Apertura -> Cargar Catálogo Organizado por Categorías
+    // PASO 1: Apertura -> Cargar Servicios en 1 solo Dropdown con Encabezados de Categoría
     else if (action === 'INIT') {
       const { data: servicesDB } = await supabase.from('services').select('*');
 
-      // 1. Emojis identificadores por categoría
-      const categoryEmojis: Record<string, string> = {
-        'Pestañas': '👁️',
-        'Cejas': '🎨',
-        'Micropigmentación': '✨',
-        'Limpieza facial': '💆‍♀️',
-        'Depilación': '🪒'
-      };
-
-      // 2. Orden de prioridad estricto exigido
+      // 1. Prioridad estricta solicitada
       const CATEGORIAS_ORDEN = [
         "Pestañas",
         "Cejas",
@@ -239,54 +230,112 @@ export async function POST(req: Request) {
         "Depilación"
       ];
 
+      const categoryEmojis: Record<string, string> = {
+        'Pestañas': '👁️',
+        'Cejas': '🎨',
+        'Micropigmentación': '✨',
+        'Limpieza facial': '💆‍♀️',
+        'Depilación': '🪒'
+      };
+
       const rawServices = servicesDB || [];
 
-      // 3. Excluir retoques y refuerzos
+      // 2. Filtrar retoques y refuerzos
       const filtered = rawServices.filter((s: any) => {
         const cat = (s.category || '').toLowerCase();
         const name = (s.Servicio || s.servicio || '').toLowerCase();
         return !cat.includes('retoque') && !cat.includes('refuerzo') && !name.includes('retoque') && !name.includes('refuerzo');
       });
 
-      // 4. Ordenar estrictamente según CATEGORIAS_ORDEN
-      filtered.sort((a: any, b: any) => {
-        const catA = a.category || '';
-        const catB = b.category || '';
-        let indexA = CATEGORIAS_ORDEN.indexOf(catA);
-        let indexB = CATEGORIAS_ORDEN.indexOf(catB);
-        
-        if (indexA === -1) indexA = 99;
-        if (indexB === -1) indexB = 99;
-        
-        return indexA - indexB;
+      // 3. Agrupar servicios por categoría
+      const grouped: Record<string, any[]> = {};
+      
+      CATEGORIAS_ORDEN.forEach((cat) => {
+        grouped[cat] = [];
       });
 
-      // 5. Formatear títulos con salto de línea y categoría clara
-      const categorisedServices = filtered.map((s: any) => {
-        const catName = s.category || 'General';
-        const emoji = categoryEmojis[catName] || '📌';
-        const nombreServicio = s.Servicio || s.servicio;
-        
-        return {
-          id: s.SKU || s.id,
-          // Título principal con categoría arriba y nombre abajo
-          title: `${emoji} CATEGORÍA: ${catName.toUpperCase()}\n↳ ${nombreServicio}`,
-          description: `⏱️ ${s.duracion || 45} min • 💳 $${Number(s.Precio || s.precio || 0).toLocaleString('es-CO')} COP`
-        };
+      filtered.forEach((s: any) => {
+        const cat = s.category || 'Otros';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(s);
+      });
+
+      // 4. Construir la lista plana intercalando los Encabezados
+      const formattedList: Array<{ id: string; title: string; description?: string }> = [];
+
+      CATEGORIAS_ORDEN.forEach((cat) => {
+        const items = grouped[cat] || [];
+        if (items.length > 0) {
+          const emoji = categoryEmojis[cat] || '📌';
+          
+          // --- ENCABEZADO DE CATEGORÍA (SEPARADOR VISUAL) ---
+          formattedList.push({
+            id: `HEADER_${cat}`,
+            title: `──────── ${emoji} ${cat.toUpperCase()} ────────`,
+            description: '👇 Selecciona un procedimiento de esta sección'
+          });
+
+          // --- SERVICIOS DE ESTA CATEGORÍA ---
+          items.forEach((s: any) => {
+            formattedList.push({
+              id: s.SKU || s.id,
+              title: `  ↳ ${s.Servicio || s.servicio}`,
+              description: `⏱️ ${s.duracion || 45} min • 💳 $${Number(s.Precio || s.precio || 0).toLocaleString('es-CO')} COP`
+            });
+          });
+        }
       });
 
       responsePayload = {
         version: '3.0',
         screen: 'SERVICES_SCREEN',
         data: {
-          services_list: categorisedServices.length > 0 ? categorisedServices : [
-            { 
-              id: 'lash_clasicas', 
-              title: '👁️ CATEGORÍA: PESTAÑAS\n↳ Pestañas pelo a pelo CLASICAS NATURAL', 
-              description: '⏱️ 120 min • 💳 $90.000 COP' 
-            }
-          ]
+          services_list: formattedList
         },
+      };
+    }
+
+    // PASO 2: Control por si el usuario selecciona un Header en lugar de un servicio
+    else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
+      const selectedServiceId = data.selected_service;
+
+      // Validación de seguridad si toca un separador
+      if (selectedServiceId && selectedServiceId.startsWith('HEADER_')) {
+        const { data: servicesDB } = await supabase.from('services').select('*');
+        // (Devolver la lista pidiendo seleccionar un servicio real)
+        return NextResponse.json({
+          version: '3.0',
+          screen: 'SERVICES_SCREEN',
+          data: {
+            services_list: responsePayload.data?.services_list || []
+          }
+        });
+      }
+
+      // Proceso normal de carga de especialistas...
+      const { data: service } = await supabase
+        .from('services')
+        .select('especialistas')
+        .or(`id.eq.${selectedServiceId},SKU.eq.${selectedServiceId}`)
+        .single();
+
+      let serviceEspecialistas: string[] = [];
+      if (service && service.especialistas) {
+        if (typeof service.especialistas === 'string') {
+          try { serviceEspecialistas = JSON.parse(service.especialistas); } catch { serviceEspecialistas = [service.especialistas]; }
+        } else if (Array.isArray(service.especialistas)) {
+          serviceEspecialistas = service.especialistas;
+        }
+      }
+
+      const specialistsList: Array<{ id: string; title: string; description?: string }> = [
+        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad' },
+      ];
+      serviceEspecialistas.forEach((name) => specialistsList.push({ id: name, title: `🌸 ${name}` }));
+
+      responsePayload = {
+        screen: 'SPECIALIST_SCREEN',
+        data: { selected_service: selectedServiceId, specialists_list: specialistsList },
       };
     }
 
