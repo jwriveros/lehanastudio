@@ -287,7 +287,7 @@ export default function DailyPaymentsReport() {
     setLoading(true);
     const { data: appointments, error } = await supabase
       .from("appointments")
-      .select("id, price, especialista, estado, servicio, cliente, appointment_at")
+      .select("id, price, price_final, especialista, estado, servicio, cliente, appointment_at")
       .eq("estado", "Cita pagada")
       .filter("appointment_at", "gte", `${dateRange.start}T00:00:00+00`)
       .filter("appointment_at", "lte", `${dateRange.end}T23:59:59+00`)
@@ -319,7 +319,7 @@ export default function DailyPaymentsReport() {
 
       const detalles = citasSp.map(cita => {
         const porcentaje = sp.excepciones_comision?.[cita.servicio] ?? sp.comision_base ?? 50;
-        const valorCita = Number(cita.price) || 0;
+        const valorCita = Number(cita.price_final) || 0;
         const gananciaSp = (valorCita * porcentaje) / 100;
         return { fecha: cita.appointment_at, cliente: cita.cliente, servicio: cita.servicio, subtotal: valorCita, comisionEfectiva: gananciaSp, porcentaje };
       });
