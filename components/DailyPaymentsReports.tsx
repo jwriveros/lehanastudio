@@ -290,7 +290,9 @@ export default function DailyPaymentsReport() {
       .select("id, price, especialista, estado, servicio, cliente, appointment_at")
       .eq("estado", "Cita pagada")
       .filter("appointment_at", "gte", `${dateRange.start}T00:00:00+00`)
-      .filter("appointment_at", "lte", `${dateRange.end}T23:59:59+00`);
+      .filter("appointment_at", "lte", `${dateRange.end}T23:59:59+00`)
+      .order("appointment_at", { ascending: true });
+      
 
     if (error) { setLoading(false); return; }
 
