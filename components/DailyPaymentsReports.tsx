@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import domtoimage from 'dom-to-image-more';
 
 const MESES_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -361,44 +362,130 @@ export default function DailyPaymentsReport() {
     window.open(`https://wa.me/${phone}?text=${message}`, "_blank");
   };
 
+  // 🎯 Función auxiliar para sanear colores en formato Oklab / Oklch antes de pasar a html2canvas
+  const cleanStylesForCanvas = (clonedDoc: Document) => {
+    const reportElement = clonedDoc.getElementById("printable-report");
+    if (!reportElement) return;
+
+    // 1. Inyectamos estilos con valores Hexadecimales puros para anular Tailwind oklab
+    const style = clonedDoc.createElement("style");
+    style.innerHTML = `
+      #printable-report, #printable-report * {
+        font-family: Arial, sans-serif !important;
+        box-sizing: border-box !important;
+      }
+      #printable-report {
+        background-color: #ffffff !important;
+        color: #18181b !important;
+      }
+      #printable-report .bg-rose-500 {
+        background-color: #f43f5e !important;
+        color: #ffffff !important;
+      }
+      #printable-report .text-rose-500 {
+        color: #f43f5e !important;
+      }
+      #printable-report .bg-zinc-50, #printable-report .bg-zinc-50\\/50 {
+        background-color: #f8f8f8 !important;
+      }
+      #printable-report .bg-zinc-100, #printable-report .bg-zinc-100\\/70 {
+        background-color: #f4f4f5 !important;
+      }
+      #printable-report .bg-white {
+        background-color: #ffffff !important;
+      }
+      #printable-report .text-zinc-900 {
+        color: #18181b !important;
+      }
+      #printable-report .text-zinc-800 {
+        color: #27272a !important;
+      }
+      #printable-report .text-zinc-600 {
+        color: #52525b !important;
+      }
+      #printable-report .text-zinc-500 {
+        color: #71717a !important;
+      }
+      #printable-report .text-zinc-400 {
+        color: #a1a1aa !important;
+      }
+      #printable-report .border-zinc-200, #printable-report .border-zinc-200\\/80 {
+        border-color: #e4e4e7 !important;
+      }
+      #printable-report .border-zinc-900 {
+        border-color: #18181b !important;
+      }
+    `;
+    clonedDoc.head.appendChild(style);
+
+    // 2. Recorremos los nodos y reemplazamos computadamente cualquier color 'oklab' o 'oklch'
+    const elements = reportElement.querySelectorAll("*");
+    elements.forEach((node) => {
+      const el = node as HTMLElement;
+      const computedBg = window.getComputedStyle(el).backgroundColor;
+      const computedColor = window.getComputedStyle(el).color;
+      const computedBorder = window.getComputedStyle(el).borderColor;
+
+      // Si detectamos oklab u oklch en los estilos calculados, asignamos fallbacks seguros
+      if (computedBg.includes("oklab") || computedBg.includes("oklch")) {
+        if (el.classList.contains("bg-rose-500")) {
+          el.style.backgroundColor = "#f43f5e";
+        } else if (el.classList.contains("bg-zinc-100") || el.classList.contains("bg-zinc-100/70")) {
+          el.style.backgroundColor = "#f4f4f5";
+        } else if (el.classList.contains("bg-zinc-50") || el.classList.contains("bg-zinc-50/50")) {
+          el.style.backgroundColor = "#f8f8f8";
+        } else {
+          el.style.backgroundColor = "#ffffff";
+        }
+      }
+
+      if (computedColor.includes("oklab") || computedColor.includes("oklch")) {
+        if (el.classList.contains("text-rose-500")) {
+          el.style.color = "#f43f5e";
+        } else if (el.classList.contains("text-zinc-400")) {
+          el.style.color = "#a1a1aa";
+        } else if (el.classList.contains("text-zinc-500") || el.classList.contains("text-zinc-600")) {
+          el.style.color = "#52525b";
+        } else {
+          el.style.color = "#18181b";
+        }
+      }
+
+      if (computedBorder.includes("oklab") || computedBorder.includes("oklch")) {
+        el.style.borderColor = "#e4e4e7";
+      }
+    });
+  };
+
+  // 🎯 Exportar a PDF usando dom-to-image-more (Compatible al 100% con Tailwind v4 y oklab)
   const exportPDF = async (shouldSendWhatsApp = false) => {
     if (!reportRef.current) return;
     setLoading(true);
+
     try {
-      const canvas = await html2canvas(reportRef.current, {
-        scale: 3,
-        backgroundColor: "#ffffff",
-        useCORS: true,
-        logging: false,
-        onclone: (clonedDoc) => {
-          const style = clonedDoc.createElement('style');
-          style.innerHTML = `
-            #printable-report, #printable-report * {
-              color: #18181b !important;
-              border-color: #e4e4e7 !important;
-              background-color: transparent !important;
-              box-shadow: none !important;
-              text-shadow: none !important;
-              color-scheme: light !important;
-            }
-            .bg-rose-500 { background-color: #f43f5e !important; color: #ffffff !important; }
-            .bg-zinc-50 { background-color: #f8f8f8 !important; }
-            .bg-white { background-color: #ffffff !important; }
-            .text-rose-500 { color: #f43f5e !important; }
-            .font-black, .font-bold { font-weight: 900 !important; }
-            * { font-family: sans-serif !important; }
-          `;
-          clonedDoc.head.appendChild(style);
+      // Convertimos el elemento HTML a PNG usando el renderizador SVG nativo del navegador
+      const dataUrl = await domtoimage.toPng(reportRef.current, {
+        bgcolor: "#ffffff",
+        quality: 0.95,
+        style: {
+          transform: "scale(1)",
+          transformOrigin: "top left",
+          width: `${reportRef.current.offsetWidth}px`,
+          height: `${reportRef.current.offsetHeight}px`
         }
       });
-      
-      const imgData = canvas.toDataURL("image/png");
+
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
       
+      // Creamos una imagen temporal para obtener las dimensiones proporcionales
+      const img = new Image();
+      img.src = dataUrl;
+      await new Promise((resolve) => { img.onload = resolve; });
+
+      const pdfHeight = (img.height * pdfWidth) / img.width;
+      pdf.addImage(dataUrl, "PNG", 0, 0, pdfWidth, pdfHeight);
+
       if (shouldSendWhatsApp) {
         handleWhatsAppShare();
       } else {
@@ -406,38 +493,26 @@ export default function DailyPaymentsReport() {
       }
     } catch (err) {
       console.error("Error crítico PDF:", err);
-      alert("Hubo un problema al procesar el documento. Intenta usar 'Guardar JPG'.");
+      alert("Hubo un error al generar el PDF. Por favor reintenta.");
     } finally {
       setLoading(false);
     }
   };
-
+  // 🎯 Capturar e descargar JPG corregido (sin error de oklab)
   const downloadImage = async () => {
     if (!reportRef.current) return;
     try {
       const canvas = await html2canvas(reportRef.current, {
-        scale: 3,
+        scale: 2,
         backgroundColor: "#ffffff",
         useCORS: true,
         logging: false,
         onclone: (clonedDoc) => {
-          const reportElement = clonedDoc.getElementById("printable-report");
-          if (reportElement) {
-            const elements = reportElement.querySelectorAll("*");
-            elements.forEach((node) => {
-              const el = node as HTMLElement;
-              const style = window.getComputedStyle(el);
-              if (style.color.includes("lab") || style.color.includes("oklch")) el.style.color = "#18181b";
-              if (style.backgroundColor.includes("lab") || style.backgroundColor.includes("oklch")) {
-                el.style.backgroundColor = el.classList.contains("bg-rose-500") ? "#f43f5e" : "transparent";
-              }
-            });
-            reportElement.style.fontFamily = "sans-serif";
-          }
-        }
+          cleanStylesForCanvas(clonedDoc);
+        },
       });
-      
-      const image = canvas.toDataURL("image/jpeg", 1.0);
+
+      const image = canvas.toDataURL("image/jpeg", 0.95);
       const link = document.createElement("a");
       link.href = image;
       link.download = `Nomina_${selectedSpecialist}_${dateRange.start}_al_${dateRange.end}.jpg`;
@@ -679,18 +754,49 @@ export default function DailyPaymentsReport() {
                         <th className="py-2 px-1.5 text-right text-rose-500">Comisión</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-100">
-                      {item.detalles.map((det: any, dIdx: number) => (
-                        <tr key={dIdx}>
-                          <td className="py-2 px-1.5 text-zinc-500 font-medium">
-                            {det.fecha ? new Date(det.fecha).toLocaleDateString('es-CO') : '--'}
-                          </td>
-                          <td className="py-2 px-1.5 font-extrabold text-zinc-800 uppercase">{det.servicio}</td>
-                          <td className="py-2 px-1.5 text-zinc-500 font-bold uppercase">{det.cliente}</td>
-                          <td className="py-2 px-1.5 text-right text-zinc-400 font-bold tracking-tight">${det.subtotal.toLocaleString("es-CO")}</td>
-                          <td className="py-2 px-1.5 text-right font-black text-rose-500 tabular-nums">${det.comisionEfectiva.toLocaleString("es-CO")}</td>
-                        </tr>
-                      ))}
+                    <tbody className="divide-y divide-zinc-200">
+                      {(() => {
+                        // Variables para llevar el control de los grupos por fecha
+                        let currentGroupIndex = 0;
+                        let lastDateStr = "";
+
+                        return item.detalles.map((det: any, dIdx: number) => {
+                          // Extraemos solo la parte de la fecha YYYY-MM-DD para comparar días
+                          const currentDateStr = det.fecha ? det.fecha.split("T")[0] : "";
+
+                          // Si es el primer elemento o la fecha cambió respecto al anterior, cambiamos de grupo
+                          if (dIdx === 0) {
+                            lastDateStr = currentDateStr;
+                          } else if (currentDateStr !== lastDateStr) {
+                            currentGroupIndex += 1;
+                            lastDateStr = currentDateStr;
+                          }
+
+                          // Si el índice del grupo es par, usamos fondo gris suave; si es impar, blanco
+                          const isEvenGroup = currentGroupIndex % 2 === 0;
+                          const rowBgClass = isEvenGroup ? "bg-zinc-100/70" : "bg-white";
+
+                          return (
+                            <tr key={dIdx} className={`${rowBgClass} transition-colors`}>
+                              <td className="py-2.5 px-2 text-zinc-600 font-bold">
+                                {det.fecha ? new Date(det.fecha).toLocaleDateString("es-CO") : "--"}
+                              </td>
+                              <td className="py-2.5 px-2 font-black text-zinc-900 uppercase">
+                                {det.servicio}
+                              </td>
+                              <td className="py-2.5 px-2 text-zinc-600 font-extrabold uppercase">
+                                {det.cliente}
+                              </td>
+                              <td className="py-2.5 px-2 text-right text-zinc-500 font-bold tracking-tight">
+                                ${det.subtotal.toLocaleString("es-CO")}
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-black text-rose-500 tabular-nums">
+                                ${det.comisionEfectiva.toLocaleString("es-CO")}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-zinc-900 bg-zinc-50/50">
