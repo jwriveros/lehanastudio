@@ -38,7 +38,6 @@ interface UnpaidBookingsModalProps {
 function formatExactLocalTime(isoString: string): string {
   if (!isoString) return "—";
 
-  // Intentar parsear hora en formato "YYYY-MM-DDTHH:mm:ss"
   const timePart = isoString.includes("T") ? isoString.split("T")[1] : isoString.split(" ")[1];
   if (!timePart) return "—";
 
@@ -67,7 +66,6 @@ function formatExactLocalDate(isoString: string): string {
   const [year, month, day] = datePart.split("-").map(Number);
   if (!year || !month || !day) return "—";
 
-  // Crear objeto Date usando hora local estricta
   const localDate = new Date(year, month - 1, day);
   return localDate.toLocaleDateString("es-CO", {
     weekday: "short",
@@ -86,7 +84,6 @@ export default function UnpaidBookingsModal({
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  // Asegura que se ejecute solo en el cliente para el Portal de React
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -114,7 +111,6 @@ export default function UnpaidBookingsModal({
 
   if (!isOpen || !mounted) return null;
 
-  // Renderizar usando createPortal en document.body para evitar que el header lo corte
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-xl max-h-[85vh] flex flex-col rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl overflow-hidden text-zinc-900 dark:text-zinc-100">
@@ -161,18 +157,16 @@ export default function UnpaidBookingsModal({
             </div>
           ) : (
             bookings.map((b) => {
-              // Extracción exacta sin desfase UTC
               const formattedDate = formatExactLocalDate(b.appointment_at);
               const formattedTime = formatExactLocalTime(b.appointment_at);
 
-              // Fecha para navegación en la Agenda
               const datePart = b.appointment_at.split("T")[0] || b.appointment_at.split(" ")[0];
               const [y, m, d] = datePart.split("-").map(Number);
               const navDate = new Date(y, m - 1, d);
 
-              const valorFinal = Number(b.price_final ?? b.price ?? 0);
-              const valorAbono = Number(b.abono ?? 0);
-              const saldoPendiente = Math.max(0, valorFinal - valorAbono);
+              // 🎯 PRECIO FINAL COMPLETO (Sin restar el abono)
+              const valorFinalTotal = Number(b.price_final ?? b.price ?? 0);
+              const valorAbonoInformativo = Number(b.abono ?? 0);
 
               return (
                 <div
@@ -206,16 +200,17 @@ export default function UnpaidBookingsModal({
                     </p>
                   </div>
 
-                  {/* PRECIOS Y BOTÓN NAVEGAR */}
+                  {/* 🎯 PRECIOS MOSTRADOS SIN RESTAR EL ABONO */}
                   <div className="flex sm:flex-col items-end justify-between w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100 dark:border-zinc-800 shrink-0">
                     <div className="text-right space-y-0.5">
                       <div className="text-xs sm:text-sm font-black text-rose-500">
-                        ${saldoPendiente.toLocaleString("es-CO")} COP
+                        ${valorFinalTotal.toLocaleString("es-CO")} COP
                       </div>
-                      <div className="text-[9px] font-semibold text-zinc-400">
-                        Total: ${valorFinal.toLocaleString("es-CO")}
-                        {valorAbono > 0 && ` (Abono: $${valorAbono.toLocaleString("es-CO")})`}
-                      </div>
+                      {valorAbonoInformativo > 0 && (
+                        <div className="text-[9px] font-semibold text-zinc-400">
+                          Abono previo: ${valorAbonoInformativo.toLocaleString("es-CO")}
+                        </div>
+                      )}
                     </div>
 
                     <span className="mt-1.5 text-[10px] font-black text-rose-500 group-hover:underline flex items-center gap-1 uppercase tracking-wider">
