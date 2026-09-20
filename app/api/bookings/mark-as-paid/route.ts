@@ -4,10 +4,10 @@ import { supabaseAdmin } from "@/lib/supabaseClient";
 export async function POST(request: Request) {
     try {
         const payload = await request.json();
-        // 1. Extraemos el ID y la lista de servicios con sus precios/descuentos
+        // 1. Extraemos el ID de la cita y la lista de servicios actualizados
         const { appointmentId, serviceUpdates } = payload; 
 
-        // Asignación local para evitar problemas de tipos en TypeScript
+        // Asignación local para evitar problemas de tipos con Supabase Admin
         const adminClient = supabaseAdmin;
 
         if (!adminClient) {
@@ -23,19 +23,20 @@ export async function POST(request: Request) {
         // 2. Procesamiento de actualización con desglose financiero
         if (serviceUpdates && Array.isArray(serviceUpdates)) {
             const updatePromises = serviceUpdates.map(item => {
-                // Preparamos el objeto con los valores financieros
+                // Preparamos los valores financieros recibidos
                 const priceBase = item.price !== undefined ? String(item.price) : undefined;
                 const descuentoVal = item.descuento !== undefined ? String(item.descuento) : "0";
                 const abonoVal = item.abono !== undefined ? String(item.abono) : "0";
                 
-                // Si no envían price_final, lo calculamos: Base - Descuento - Abono
+                // 🎯 CÁLCULO AJUSTADO: Calculamos el Precio Final (Base - Descuento) SIN restar el Abono
                 let finalPrice = item.price_final;
                 if (finalPrice === undefined && item.price !== undefined) {
                     const base = Number(item.price) || 0;
                     const desc = Number(item.descuento) || 0;
-                    const ab = Number(item.abono) || 0;
                     const descMonto = base * (desc / 100);
-                    finalPrice = Math.max(0, base - descMonto - ab);
+                    
+                    // El precio final es el valor con descuento aplicado
+                    finalPrice = Math.max(0, base - descMonto);
                 }
 
                 return adminClient
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
                     .update({ 
                         price: priceBase,
                         descuento: descuentoVal,
-                        abono: abonoVal,
+                        abono: abonoVal, // Guardamos el abono solo como dato informativo
                         price_final: finalPrice !== undefined ? String(finalPrice) : priceBase,
                         estado: "Cita pagada",
                         updated_at: new Date().toISOString()
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error: "Error al actualizar algunos cobros." }, { status: 500 });
             }
         } else {
-            // Lógica de respaldo: Actualizar grupo completo a "Cita pagada"
+            // Lógica de respaldo: Actualizar la cita o el grupo completo a "Cita pagada"
             const { data: current } = await adminClient
                 .from("appointments")
                 .select("appointment_id")
@@ -77,13 +78,13 @@ export async function POST(request: Request) {
                 .or(groupId ? `appointment_id.eq.${groupId}` : `id.eq.${appointmentId}`);
         }
 
-        // 3. Obtenemos las filas actualizadas para la notificación a n8n
+        // 3. Obtenemos las filas actualizadas para construir la notificación a n8n
         const { data: updatedRows } = await adminClient
             .from("appointments")
             .select("*")
             .eq("id", appointmentId);
 
-        // 4. Notificar a n8n
+        // 4. Notificar al webhook de n8n para enviar la confirmación por WhatsApp
         if (process.env.N8N_WEBHOOK_URL && updatedRows && updatedRows.length > 0) {
             try {
                 const mainAppt = updatedRows[0];
@@ -101,13 +102,13 @@ export async function POST(request: Request) {
                         servicio: mainAppt.servicio,
                         groupId: mainAppt.appointment_id,
                         appointment_at: mainAppt.appointment_at,
-                        price_final: mainAppt.price_final,
-                        abono: mainAppt.abono,
+                        price_final: mainAppt.price_final, // Refleja el total con descuento
+                        abono: mainAppt.abono,              // Muestra el abono registrado
                         descuento: mainAppt.descuento
                     }),
                 });
             } catch (webhookError) {
-                console.error("⚠️ Webhook n8n falló, pero el pago se registró:", webhookError);
+                console.error("⚠️ Webhook n8n falló, pero el pago se registró en la base de datos:", webhookError);
             }
         }
 

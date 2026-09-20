@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import FichaTecnicaEditor from "./FichaTecnicaEditor";
 
-import CustomDialog from "@/components/ui/CustomDIalog"
+import CustomDialog from "@/components/ui/CustomDIalog";
 import {
   User,
   Scissors,
@@ -50,7 +50,7 @@ export default function ReservationDetails({
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [showCancelMenu, setShowCancelMenu] = useState(false);
 
-  // 🔴 Estado para nuestro Modal de Alerta / Confirmación estilizado
+  // Estado para el Modal de Alerta y Confirmación
   const [dialog, setDialog] = useState<{
     isOpen: boolean;
     type: "alert" | "confirm";
@@ -65,11 +65,20 @@ export default function ReservationDetails({
     message: "",
   });
 
-  const showAlert = (title: string, message: string, variant: "danger" | "warning" | "info" | "success" = "danger") => {
+  const showAlert = (
+    title: string,
+    message: string,
+    variant: "danger" | "warning" | "info" | "success" = "danger"
+  ) => {
     setDialog({ isOpen: true, type: "alert", variant, title, message });
   };
 
-  const showConfirm = (title: string, message: string, onConfirm: () => void, variant: "danger" | "warning" | "info" | "success" = "warning") => {
+  const showConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    variant: "danger" | "warning" | "info" | "success" = "warning"
+  ) => {
     setDialog({ isOpen: true, type: "confirm", variant, title, message, onConfirm });
   };
 
@@ -78,7 +87,7 @@ export default function ReservationDetails({
   const isPaid = currentStatus === "cita pagada";
   const isInactive = ["cita cancelada", "no se presentó", "pago anulado"].includes(currentStatus);
 
-  /* PERMISOS DE USUARIO EN LOCALSTORAGE */
+  /* VERIFICACIÓN DE PERMISOS DE USUARIO */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -95,8 +104,10 @@ export default function ReservationDetails({
 
           try {
             const jsonParseado = JSON.parse(contenido);
-            if (jsonParseado?.state?.session?.email?.toLowerCase().trim() === emailObjetivo ||
-                jsonParseado?.user?.email?.toLowerCase().trim() === emailObjetivo) {
+            if (
+              jsonParseado?.state?.session?.email?.toLowerCase().trim() === emailObjetivo ||
+              jsonParseado?.user?.email?.toLowerCase().trim() === emailObjetivo
+            ) {
               accesoConcedido = true;
               break;
             }
@@ -140,8 +151,22 @@ export default function ReservationDetails({
       setLoadingServices(true);
       try {
         const baseDate = new Date(appointmentData.start || data.appointment_at || new Date());
-        const startOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0).toISOString();
-        const endOfDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59).toISOString();
+        const startOfDay = new Date(
+          baseDate.getFullYear(),
+          baseDate.getMonth(),
+          baseDate.getDate(),
+          0,
+          0,
+          0
+        ).toISOString();
+        const endOfDay = new Date(
+          baseDate.getFullYear(),
+          baseDate.getMonth(),
+          baseDate.getDate(),
+          23,
+          59,
+          59
+        ).toISOString();
 
         const celularCliente = data?.celular;
         const nombreCliente = data?.cliente;
@@ -152,9 +177,15 @@ export default function ReservationDetails({
         if (groupId) {
           query = query.eq("appointment_id", groupId);
         } else if (celularCliente) {
-          query = query.eq("celular", celularCliente).gte("appointment_at", startOfDay).lte("appointment_at", endOfDay);
+          query = query
+            .eq("celular", celularCliente)
+            .gte("appointment_at", startOfDay)
+            .lte("appointment_at", endOfDay);
         } else if (nombreCliente) {
-          query = query.eq("cliente", nombreCliente).gte("appointment_at", startOfDay).lte("appointment_at", endOfDay);
+          query = query
+            .eq("cliente", nombreCliente)
+            .gte("appointment_at", startOfDay)
+            .lte("appointment_at", endOfDay);
         } else {
           query = query.eq("id", appointmentData.id);
         }
@@ -165,7 +196,7 @@ export default function ReservationDetails({
 
         if (isMounted) {
           if (list && list.length > 0) {
-            const initialized = list.map(item => ({
+            const initialized = list.map((item) => ({
               ...item,
               price: item.price || 0,
               descuento: item.descuento || 0,
@@ -173,12 +204,14 @@ export default function ReservationDetails({
             }));
             setAssociatedServices(initialized);
           } else {
-            setAssociatedServices([{
-              ...data,
-              price: data.price || 0,
-              descuento: data.descuento || 0,
-              abono: data.abono || 0,
-            }]);
+            setAssociatedServices([
+              {
+                ...data,
+                price: data.price || 0,
+                descuento: data.descuento || 0,
+                abono: data.abono || 0,
+              },
+            ]);
           }
         }
       } catch (err) {
@@ -198,17 +231,18 @@ export default function ReservationDetails({
     };
   }, [appointmentData, data.appointment_id, data.celular, data.cliente]);
 
-  /* ACTUALIZACIÓN LOCAL DE VALORES FINANCIEROS */
+  /* 🎯 ACTUALIZACIÓN LOCAL DE VALORES FINANCIEROS (SIN RESTAR EL ABONO) */
   const updateServiceFinance = (id: number, field: string, val: string) => {
-    setAssociatedServices(prev =>
-      prev.map(s => {
+    setAssociatedServices((prev) =>
+      prev.map((s) => {
         if (s.id === id) {
           const updated = { ...s, [field]: val };
           const base = Number(updated.price) || 0;
           const descPercent = Number(updated.descuento) || 0;
-          const abonoVal = Number(updated.abono) || 0;
           const descAmount = base * (descPercent / 100);
-          updated.price_final = Math.max(0, base - descAmount - abonoVal);
+
+          // 🎯 CORRECCIÓN: El precio final es base menos descuento (el abono ya no resta)
+          updated.price_final = Math.max(0, base - descAmount);
           return updated;
         }
         return s;
@@ -216,15 +250,16 @@ export default function ReservationDetails({
     );
   };
 
-  /* CÁLCULO DINÁMICO DEL TOTAL SELECCIONADO */
+  /* 🎯 CÁLCULO DINÁMICO DEL TOTAL SELECCIONADO (SIN RESTAR EL ABONO) */
   const currentTotal = associatedServices
     .filter((s) => selectedServiceIds.includes(s.id))
     .reduce((acc, s) => {
       const base = Number(s.price) || 0;
       const descPercent = Number(s.descuento) || 0;
-      const abonoVal = Number(s.abono) || 0;
       const descAmount = base * (descPercent / 100);
-      const finalPrice = Math.max(0, base - descAmount - abonoVal);
+
+      // 🎯 CORRECCIÓN: El subtotal de cada ítem solo descuenta el porcentaje
+      const finalPrice = Math.max(0, base - descAmount);
       return acc + finalPrice;
     }, 0);
 
@@ -280,13 +315,15 @@ export default function ReservationDetails({
             const descPercent = Number(s.descuento) || 0;
             const abonoVal = Number(s.abono) || 0;
             const descAmount = base * (descPercent / 100);
-            const priceFinal = Math.max(0, base - descAmount - abonoVal);
+
+            // 🎯 CORRECCIÓN: 'price_final' enviado al backend es base - descuento
+            const priceFinal = Math.max(0, base - descAmount);
 
             return {
               id: s.id,
               price: base,
               descuento: descPercent,
-              abono: abonoVal,
+              abono: abonoVal, // Se guarda como dato informativo de auditoría
               price_final: priceFinal,
             };
           }),
@@ -460,6 +497,11 @@ export default function ReservationDetails({
             <div className="space-y-3">
               {associatedServices.map((s) => {
                 const isSelected = selectedServiceIds.includes(s.id);
+                
+                // 🎯 Cálculo directo para la vista de la tarjeta individual
+                const base = Number(s.price) || 0;
+                const desc = Number(s.descuento) || 0;
+                const priceFinalCalculated = Math.max(0, base - (base * (desc / 100)));
 
                 return (
                   <div key={s.id} className="bg-zinc-50/80 dark:bg-zinc-950 p-3 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 space-y-2">
@@ -497,7 +539,7 @@ export default function ReservationDetails({
                             isSelected ? "text-rose-500" : "text-zinc-400 line-through"
                           }`}
                         >
-                          ${(s.price_final ? Number(s.price_final) : Number(s.price || 0)).toLocaleString("es-CO")}
+                          ${priceFinalCalculated.toLocaleString("es-CO")}
                         </span>
                       )}
                     </div>
@@ -661,7 +703,7 @@ export default function ReservationDetails({
         </div>
       </div>
 
-      {/* 🔴 MODAL DE ALERTA Y CONFIRMACIÓN ESTILIZADO */}
+      {/* MODAL DE ALERTA Y CONFIRMACIÓN ESTILIZADO */}
       <CustomDialog
         isOpen={dialog.isOpen}
         type={dialog.type}

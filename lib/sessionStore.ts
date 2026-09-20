@@ -1,20 +1,23 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { createBrowserClient } from '@supabase/ssr'
+import { createBrowserClient } from '@supabase/ssr';
 
 export type Role = "ADMIN" | "ESPECIALISTA";
 
 export const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+);
 
-type Session = {
+// 🎯 Actualizamos la estructura de la Sesión con los campos opcionales
+export type Session = {
   id: string;
   email: string;
   name: string;
   role: Role;
   comision_base: number;
+  excepciones_comision?: Record<string, number>;
+  telefono?: string;
   color?: string;
 };
 
@@ -27,7 +30,6 @@ type SessionState = {
   setUser: (session: Session) => void;
 };
 
-// CAMBIO AQUÍ: Quitamos los paréntesis extras para ajustarnos a tu lib/zustand.ts
 export const useSessionStore = create<SessionState>(
   persist(
     (set) => ({
@@ -60,13 +62,16 @@ export const useSessionStore = create<SessionState>(
             throw new Error("Usuario no registrado en la base de datos.");
           }
 
+          // 🎯 Mapeamos las excepciones y el teléfono rescatados desde Supabase
           const newSession: Session = {
             id: user.id,
             email: userData.email,
             name: userData.name,
             role: userData.role as Role,
-            comision_base: userData.comision_base || 0, // Mapeo del dato
-            color: userData.color
+            comision_base: userData.comision_base || 0,
+            excepciones_comision: userData.excepciones_comision || null,
+            telefono: userData.telefono || "",
+            color: userData.color,
           };
 
           set({ session: newSession, isLoading: false });
@@ -94,5 +99,5 @@ export const useSessionStore = create<SessionState>(
     {
       name: 'session-storage', 
     }
-  ) as any // Usamos 'as any' temporalmente si el middleware choca con tu create local
+  ) as any
 );

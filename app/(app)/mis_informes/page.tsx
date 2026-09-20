@@ -291,17 +291,31 @@ export default function MisInformes() {
         .order('appointment_at', { ascending: true });
 
       if (citas) {
-        const comisionFactor = (session.comision_base || 40) / 100;
         let totalP = 0, totalH = 0, countConf = 0;
+        // Obtenemos la fecha de hoy en formato YYYY-MM-DD local
         const currentToday = new Date().toLocaleDateString('en-CA');
 
         citas.forEach(cita => {
           const estadoNorm = cita.estado?.toLowerCase().trim();
+
           if (estadoNorm === 'cita pagada') {
-            const val = (parseFloat(cita.price) || 0) * comisionFactor;
-            totalP += val;
-            if (cita.appointment_at?.startsWith(currentToday)) totalH += val;
+            // 🎯 1. Obtenemos el porcentaje (Excepción de la especialista o Comisión Base)
+            const porcentaje = session.excepciones_comision?.[cita.servicio] ?? session.comision_base ?? 40;
+            const comisionFactor = porcentaje / 100;
+
+            // 🎯 2. Priorizamos 'price_final' (con descuento) sobre 'price'
+            const valorReal = Number(cita.price_final ?? cita.price) || 0;
+            const gananciaEfectiva = valorReal * comisionFactor;
+
+            totalP += gananciaEfectiva;
+
+            // 🎯 3. Comparación precisa de la fecha del servicio con la fecha de hoy
+            const fechaCitacorta = cita.appointment_at ? cita.appointment_at.split(/[ T]/)[0] : '';
+            if (fechaCitacorta === currentToday) {
+              totalH += gananciaEfectiva;
+            }
           }
+
           if (estadoNorm === 'cita confirmada' || estadoNorm === 'nueva reserva creada') {
             countConf++;
           }
@@ -310,7 +324,9 @@ export default function MisInformes() {
         setStats({ totalPeriodo: totalP, hoy: totalH, totalCitas: citas.length, confirmadas: countConf });
         setAppointments(citas);
       }
-    } finally { setLoading(false); }
+    } finally { 
+      setLoading(false); 
+    }
   }, [session, dateRange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -437,6 +453,13 @@ export default function MisInformes() {
                   const badge = getStatusStyles(cita.estado);
                   const esPagada = cita.estado?.toLowerCase().trim() === 'cita pagada';
 
+                  // 🎯 Porcentaje específico o base
+                  const porcentaje = session?.excepciones_comision?.[cita.servicio] ?? session?.comision_base ?? 40;
+                  
+                  // 🎯 Precio final con descuento
+                  const valorReal = Number(cita.price_final ?? cita.price) || 0;
+                  const gananciaCalculada = valorReal * (porcentaje / 100);
+
                   return (
                     <tr 
                       key={cita.id} 
@@ -474,7 +497,7 @@ export default function MisInformes() {
 
                       <td className="px-6 py-4 text-right font-extrabold">
                         <span className={esPagada ? 'text-rose-500 text-sm' : 'text-zinc-400'}>
-                          {esPagada ? `+$${(Number(cita.price) * ((session?.comision_base || 40) / 100)).toLocaleString()} COP` : '$0 COP'}
+                          {esPagada ? `+$${gananciaCalculada.toLocaleString('es-CO')} COP` : '$0 COP'}
                         </span>
                       </td>
                     </tr>
