@@ -191,7 +191,20 @@ export default function BotDashboard() {
                 </button>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-zinc-100 dark:border-zinc-800 [&_*]:!text-zinc-900 dark:[&_*]:!text-zinc-100">
+              {/* 🎯 CORRECCIÓN ESTÍLICA PARA REACT-DATE-RANGE SIN BARRAS NEGRAS */}
+              <div className="overflow-hidden rounded-2xl border border-zinc-100 dark:border-zinc-800 
+                [&_.rdrCalendarWrapper]:!bg-transparent 
+                [&_.rdrMonth]:!bg-transparent 
+                [&_.rdrDayInRange]:!bg-rose-500/20 
+                [&_.rdrDayInRange_.rdrDayNumber_span]:!text-rose-600 
+                [&_.rdrDayStartOfWeek]:!bg-rose-500 
+                [&_.rdrDayStartOfWeek_.rdrDayNumber_span]:!text-white 
+                [&_.rdrDayEndOfWeek]:!bg-rose-500 
+                [&_.rdrDayEndOfWeek_.rdrDayNumber_span]:!text-white 
+                [&_.rdrSelected]:!bg-rose-500 
+                [&_.rdrSelected_.rdrDayNumber_span]:!text-white
+                [&_.rdrDayStartPreview]:!bg-rose-500 
+                [&_.rdrDayEndPreview]:!bg-rose-500">
                 <DateRange
                   editableDateInputs={true}
                   onChange={handleSelectRange}
