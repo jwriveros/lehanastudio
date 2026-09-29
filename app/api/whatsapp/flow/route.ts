@@ -406,68 +406,56 @@ export async function POST(req: Request) {
         data: { services_list: formattedList },
       };
     }
-    else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
-      const rawSelectedServiceId = String(data.selected_service || '');
+    else if (action === 'INIT') {
+      const { data: servicesDB } = await supabase.from('services').select('*');
 
-      const { data: allServicesDB } = await supabase.from('services').select('*');
+      const CATEGORIAS_ORDEN = ["Pestañas", "Cejas", "Micropigmentación", "Limpieza facial", "Depilación"];
+      const categoryEmojis: Record<string, string> = {
+        'Pestañas': '👁️', 'Cejas': '🎨', 'Micropigmentación': '✨', 'Limpieza facial': '💆‍♀️', 'Depilación': '🪒'
+      };
 
-      const matchedService = (allServicesDB || []).find((s: any) => {
-        const skuStr = String(s.SKU || '');
-        const idStr = String(s.id || '');
-        return skuStr === rawSelectedServiceId || idStr === rawSelectedServiceId;
+      const rawServices = servicesDB || [];
+      const filtered = rawServices.filter((s: any) => {
+        const cat = (s.category || '').toLowerCase();
+        const name = (s.Servicio || s.servicio || '').toLowerCase();
+        return !cat.includes('retoque') && !cat.includes('refuerzo') && !name.includes('retoque') && !name.includes('refuerzo');
       });
 
-      let serviceEspecialistas: string[] = [];
+      const grouped: Record<string, any[]> = {};
+      CATEGORIAS_ORDEN.forEach((cat) => { grouped[cat] = []; });
+      filtered.forEach((s: any) => {
+        const cat = s.category || 'Otros';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(s);
+      });
 
-      if (matchedService && matchedService.especialistas) {
-        if (typeof matchedService.especialistas === 'string') {
-          try {
-            serviceEspecialistas = JSON.parse(matchedService.especialistas);
-          } catch {
-            serviceEspecialistas = [matchedService.especialistas];
-          }
-        } else if (Array.isArray(matchedService.especialistas)) {
-          serviceEspecialistas = matchedService.especialistas;
-        }
-      }
+      // 🎯 LISTA LIMPIA: Únicamente 'id' y 'title' para el Dropdown
+      const formattedList: Array<{ id: string; title: string }> = [];
 
-      const { data: usersDB } = await supabase
-        .from('app_users')
-        .select('name')
-        .neq('role', 'ADMIN');
+      CATEGORIAS_ORDEN.forEach((cat) => {
+        const items = grouped[cat] || [];
+        if (items.length > 0) {
+          const emoji = categoryEmojis[cat] || '📌';
+          formattedList.push({
+            id: `HEADER_${cat}`,
+            title: `──────── ${emoji} ${cat.toUpperCase()} ────────`
+          });
 
-      const appUserNames = (usersDB || []).map((u: any) => u.name);
-
-      const qualifiedNames = serviceEspecialistas.filter((name) =>
-        appUserNames.includes(name)
-      );
-
-      const finalNames = qualifiedNames.length > 0 ? qualifiedNames : serviceEspecialistas;
-
-      const specialistsList: Array<{ id: string; title: string; description?: string }> = [
-        {
-          id: 'Cualquier profesional',
-          title: '🔀 Cualquier profesional',
-          description: '✨ Máxima disponibilidad de horarios'
-        }
-      ];
-
-      finalNames.forEach((name) => {
-        if (name && typeof name === 'string' && name.trim()) {
-          specialistsList.push({
-            id: name.trim(),
-            title: `🌸 ${name.trim()}`,
-            description: 'Especialista capacitada'
+          items.forEach((s: any) => {
+            const dur = s.duracion || 45;
+            const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
+            formattedList.push({
+              id: String(s.SKU || s.id),
+              title: `${s.Servicio || s.servicio} (${dur} min - $${precio} COP)`
+            });
           });
         }
       });
 
       responsePayload = {
-        screen: 'SPECIALIST_SCREEN',
-        data: {
-          selected_service: rawSelectedServiceId,
-          specialists_list: specialistsList
-        }
+        version: '3.0',
+        screen: 'SERVICES_SCREEN',
+        data: { services_list: formattedList },
       };
     }
     else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
