@@ -409,7 +409,7 @@ export default function ModalEspecialista({
                   className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors cursor-pointer"
                 >
                   <option value="ESPECIALISTA">ESPECIALISTA (Acceso delimitado por permisos)</option>
-                  <option value="ESPECIALISTA">MARKETING (Acceso delimitado por permisos)</option>
+                  <option value="MARKETING">MARKETING (Acceso delimitado por permisos)</option>
                   <option value="ADMIN">ADMINISTRADOR (Acceso total a todos los módulos)</option>
                 </select>
               </div>
