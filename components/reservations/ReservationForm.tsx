@@ -797,88 +797,114 @@ export default function ReservationForm({
     return sum * (Number(form.cantidad) || 1);
   }, [form.lines, form.cantidad]);
 
-  /* ENVÍO DE DATOS CON MANEJO DE DESCUENTO EN PORCENTAJE Y PRICE_FINAL */
+  /* 🎯 FUNCIÓN MODIFICADA: PROCESAMIENTO DE GUARDADO CON LÓGICA DE EXCLUSIÓN MUTUA */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.cliente.trim() || !form.celular.trim()) { alert("Faltan datos obligatorios"); return; }
+    if (!form.cliente.trim() || !form.celular.trim()) { 
+      alert("Faltan datos obligatorios"); 
+      return; 
+    }
+
     setSaving(true);
     try {
       const lines = form.lines.filter((l) => l.servicio.trim());
       const cleanPhone = String(form.celular).replace(/\D/g, "");
       const cleanIndicativo = formatIndicativo(form.indicativo);
-      const fullPhone = `${cleanIndicativo}${cleanPhone}`;
-
+      const mainLine = lines[0] || {};
+      const estadoNormalizado = form.estado.trim();
 
       if (isEditing) {
+        // 1. Eliminar líneas borradas en el formulario si existen
         if (deletedLineIds.length > 0) {
           await supabase.from("appointments").delete().in("id", deletedLineIds);
         }
 
-        const updatePromises = lines.map((l) => {
-          const basePrice = Number(l.precio || 0);
-          const discountPct = Number(l.descuento || 0);
-          const computedFinal = calculatePriceFinal(basePrice, discountPct);
-
-          const updates = {
-            cliente: form.cliente.trim(),
-            celular: cleanPhone,             
-            indicativo: cleanIndicativo,
-            sede: form.sede,
-            servicio: l.servicio,
-            especialista: l.especialista,
-            duration: l.duracion,
-            price: basePrice,
-            descuento: discountPct,        // Guarda el entero del porcentaje (ej. 10)
-            price_final: computedFinal,     // Guarda el precio resultante en COP (ej. 81000)
-            abono: Number(l.abono || 0),
-            appointment_at: localDateTimeToUTC(l.appointment_at),
-            estado: form.estado,
-          };
-
-          if (l.id) {
-            return supabase.from("appointments").update(updates).eq("id", l.id);
-          } else {
-            return supabase.from("appointments").insert({
-                ...updates,
-                appointment_id: (appointmentData.raw as any).appointment_id
-            });
-          }
-        });
-
-        await Promise.all(updatePromises);
-
-        if (notifyOnEdit) {
-          try {
-            const l = lines[0];
+        // 🎯 CASO A: Si el estado es "Cita pagada", notifica obligatoriamente vía /api/bookings/mark-as-paid
+        if (estadoNormalizado === "Cita pagada") {
+          const serviceUpdates = lines.map((l) => {
             const baseP = Number(l.precio || 0);
             const discountPct = Number(l.descuento || 0);
-            const computedFinal = calculatePriceFinal(baseP, discountPct);
+            return {
+              id: l.id || appointmentData.id,
+              price: baseP,
+              descuento: discountPct,
+              abono: Number(l.abono || 0),
+              price_final: calculatePriceFinal(baseP, discountPct),
+            };
+          });
 
-            await fetch("/api/bookings/notify-update", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "EDITED",
-                appointmentId: appointmentData.id,
-                cliente: form.cliente.trim(),
-                celular: cleanPhone,
-                indicativo: cleanIndicativo,
-                fullPhone: fullPhone,
-                sede: form.sede,
-                servicio: l.servicio,
-                especialista: l.especialista,
-                duration: l.duracion,
-                price: baseP,
-                descuento: discountPct,
-                price_final: computedFinal,
-                total: totalEstimado, 
-                appointment_at: localDateTimeToUTC(l.appointment_at),
-                estado: form.estado
-              }),
-            });
-          } catch (webhookErr) {
-            console.error("Error enviando notificación:", webhookErr);
+          const paidRes = await fetch("/api/bookings/mark-as-paid", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              appointmentId: appointmentData.id,
+              serviceUpdates: serviceUpdates,
+            }),
+          });
+
+          if (!paidRes.ok) {
+            const paidJson = await paidRes.json();
+            throw new Error(paidJson.error || "Error al procesar el pago de la cita.");
           }
+
+          onSuccess?.();
+          closeReservationDrawer();
+          return; // 👈 Finaliza para no ejecutar otras peticiones HTTP
+        } 
+
+        // 🎯 CASO B: Si el estado es cancelado/inactivo, notifica obligatoriamente vía /api/bookings/cancel
+        if (["Cita cancelada", "No se presentó", "Pago anulado"].includes(estadoNormalizado)) {
+          const cancelRes = await fetch("/api/bookings/cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              appointmentId: appointmentData.id,
+              estado: estadoNormalizado,
+            }),
+          });
+
+          if (!cancelRes.ok) {
+            const cancelJson = await cancelRes.json();
+            throw new Error(cancelJson.error || "Error al procesar la cancelación de la cita.");
+          }
+
+          onSuccess?.();
+          closeReservationDrawer();
+          return; // 👈 Finaliza para no ejecutar otras peticiones HTTP
+        } 
+
+        // 🎯 CASO C: Edición general de datos. Notifica a WhatsApp SOLO si notifyOnEdit es true
+        const updatePayload = {
+          appointmentId: appointmentData.id,
+          cliente: form.cliente.trim(),
+          celular: cleanPhone,
+          indicativo: cleanIndicativo,
+          servicio: mainLine.servicio,
+          especialista: mainLine.especialista,
+          duration: mainLine.duracion,
+          appointment_at: localDateTimeToUTC(mainLine.appointment_at),
+          estado: form.estado,
+          sede: form.sede,
+          price: Number(mainLine.precio || 0),
+          descuento: Number(mainLine.descuento || 0),
+          price_final: calculatePriceFinal(Number(mainLine.precio || 0), Number(mainLine.descuento || 0)),
+          abono: Number(mainLine.abono || 0),
+          notifyOnEdit: notifyOnEdit, // 👈 Se envía el estado del switch (true / false)
+        };
+
+        const res = await fetch("/api/bookings/notify-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatePayload),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Error en el servidor al actualizar (${res.status}).`);
+        }
+
+        const json = await res.json();
+        if (json.error) {
+          throw new Error(json.error);
         }
 
         onSuccess?.();
@@ -886,39 +912,44 @@ export default function ReservationForm({
         return;
       }
 
+      // 4. Lógica para la creación de una nueva reserva
       const payload = {
         action: "CREATE",
         cliente: form.cliente.trim(),
         celular: cleanPhone,
         indicativo: cleanIndicativo,
-        fullPhone: fullPhone,
+        fullPhone: `+${cleanIndicativo}${cleanPhone}`,
         sede: form.sede,
         cantidad: String(form.cantidad),
         items: lines.map((l) => {
           const baseP = Number(l.precio || 0);
           const discountPct = Number(l.descuento || 0);
-          const computedFinal = calculatePriceFinal(baseP, discountPct);
-
           return {
             servicio: l.servicio,
             especialista: l.especialista,
             duration: l.duracion,
             price: baseP,
             descuento: discountPct,
-            price_final: computedFinal,
+            price_final: calculatePriceFinal(baseP, discountPct),
             appointment_at: localDateTimeToUTC(l.appointment_at),
           };
         }),
       };
 
-      const res = await fetch("/api/bookings/create", {
+      const createRes = await fetch("/api/bookings/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Error creando la reserva");
+      if (!createRes.ok) {
+        throw new Error(`Error en el servidor al crear la reserva (${createRes.status}).`);
+      }
+
+      const createJson = await createRes.json();
+      if (!createJson?.ok) {
+        throw new Error(createJson?.error || "Error creando la reserva");
+      }
       
       onSuccess?.();
       closeReservationDrawer();

@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseClient";
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
-    const { appointmentId } = payload;
+    const { appointmentId, notifyOnEdit } = payload; // 👈 1. Extraemos la variable del interruptor
 
     console.log("📩 Payload recibido en API:", payload);
 
@@ -16,10 +16,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Falta appointmentId" }, { status: 400 });
     }
 
-    /* 1. FILTRADO ESTRICTO PARA LA BASE DE DATOS
-       Solo extraemos los campos que REALMENTE existen en tu tabla de Supabase.
-       Esto evita el error "Could not find the 'action' column".
-    */
+    /* 2. FILTRADO DE CAMPOS PARA LA BASE DE DATOS */
     const dbUpdateData = {
       cliente: payload.cliente,
       celular: payload.celular,
@@ -30,15 +27,19 @@ export async function POST(request: Request) {
       appointment_at: payload.appointment_at,
       estado: payload.estado,
       sede: payload.sede,
+      price: payload.price,
+      descuento: payload.descuento,
+      price_final: payload.price_final,
+      abono: payload.abono,
       updated_at: new Date().toISOString()
     };
 
-    // Eliminamos campos indefinidos para no sobreescribir con null por error
+    // Eliminamos campos indefinidos
     Object.keys(dbUpdateData).forEach(key => 
       (dbUpdateData as any)[key] === undefined && delete (dbUpdateData as any)[key]
     );
 
-    // 2. Ejecutar la actualización en Supabase
+    // 3. Ejecutar la actualización siempre en Supabase
     const { data: updatedAppointment, error: dbError } = await supabaseAdmin
       .from("appointments")
       .update(dbUpdateData)
@@ -47,20 +48,19 @@ export async function POST(request: Request) {
       .single();
 
     if (dbError) {
-      console.error("❌ Error real de Supabase:", dbError);
+      console.error("❌ Error en Supabase:", dbError);
       return NextResponse.json({ error: dbError.message }, { status: 500 });
     }
 
-    // 3. NOTIFICAR A n8n
+    // 🎯 4. NOTIFICAR A n8n ÚNICAMENTE SI EL USUARIO TIENE 'notifyOnEdit' EN TRUE
     const webhookUrl = process.env.N8N_WEBHOOK_URL;
-    if (webhookUrl && updatedAppointment) {
+    
+    if (notifyOnEdit && webhookUrl && updatedAppointment) { // 👈 Condicional controlado
       
-      // Normalización de teléfono
       const rawPhone = String(updatedAppointment.celular || "").replace(/\D/g, "");
       const rawIndicativo = String(updatedAppointment.indicativo || "57").replace(/\D/g, "");
       const normalizedPhone = `+${rawIndicativo}${rawPhone}`;
 
-      // Formateo de fecha y hora para el WhatsApp
       const dateObj = new Date(updatedAppointment.appointment_at);
       const fechaEspanol = dateObj.toLocaleDateString("es-CO", {
         weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC"
@@ -82,13 +82,15 @@ export async function POST(request: Request) {
         appointmentId: updatedAppointment.id,
       };
 
-      console.log("📤 Enviando limpio a n8n:", n8nPayload);
+      console.log("📤 Enviando notificación opcional a n8n:", n8nPayload);
 
       await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(n8nPayload),
       });
+    } else {
+      console.log("🤫 Notificación desactivada por el usuario o falta Webhook URL. Se actualizó solo en base de datos.");
     }
 
     return NextResponse.json({ success: true, data: updatedAppointment });
