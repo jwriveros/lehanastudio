@@ -248,7 +248,7 @@ export async function POST(req: Request) {
 
           items.forEach((s: any) => {
             formattedList.push({
-              id: s.SKU || s.id,
+              id: String(s.SKU || s.id),
               title: `  ↳ ${s.Servicio || s.servicio}`,
               description: `⏱️ ${s.duracion || 45} min • 💳 $${Number(s.Precio || s.precio || 0).toLocaleString('es-CO')} COP`
             });
@@ -262,66 +262,72 @@ export async function POST(req: Request) {
         data: { services_list: formattedList },
       };
     }
+    // 🎯 PASO 2: SELECCIÓN DE SERVICIO ➔ CARGAR ESPECIALISTAS DINÁMICAS EXACTAS
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
-      const selectedServiceId = data.selected_service;
+      const rawSelectedServiceId = String(data.selected_service || '');
 
-      const { data: service } = await supabase
-        .from("services")
-        .select("*")
-        .or(`id.eq.${selectedServiceId},SKU.eq.${selectedServiceId}`)
-        .maybeSingle();
+      // 1. Obtener la lista de todos los servicios para garantizar búsqueda flexible
+      const { data: allServicesDB } = await supabase.from('services').select('*');
+
+      const matchedService = (allServicesDB || []).find((s: any) => {
+        const skuStr = String(s.SKU || '');
+        const idStr = String(s.id || '');
+        return skuStr === rawSelectedServiceId || idStr === rawSelectedServiceId;
+      });
 
       let serviceEspecialistas: string[] = [];
 
-      if (service && service.especialistas) {
-        if (typeof service.especialistas === "string") {
+      if (matchedService && matchedService.especialistas) {
+        if (typeof matchedService.especialistas === 'string') {
           try {
-            serviceEspecialistas = JSON.parse(service.especialistas);
-          } catch (e) {
-            serviceEspecialistas = [service.especialistas];
+            serviceEspecialistas = JSON.parse(matchedService.especialistas);
+          } catch {
+            serviceEspecialistas = [matchedService.especialistas];
           }
-        } else if (Array.isArray(service.especialistas)) {
-          serviceEspecialistas = service.especialistas;
+        } else if (Array.isArray(matchedService.especialistas)) {
+          serviceEspecialistas = matchedService.especialistas;
         }
       }
 
-      const { data: specialists } = await supabase
-        .from("app_users")
-        .select("id, name, role")
-        .eq("role", "ESPECIALISTA");
+      // 2. Traer especialistas activas desde app_users
+      const { data: usersDB } = await supabase
+        .from('app_users')
+        .select('name')
+        .neq('role', 'ADMIN');
 
-      let qualifiedSpecialists = (specialists || []).filter((sp) =>
-        serviceEspecialistas.includes(sp.name)
+      const appUserNames = (usersDB || []).map((u: any) => u.name);
+
+      // 3. Filtrar únicamente las capacitadas que están registradas en app_users
+      const qualifiedNames = serviceEspecialistas.filter((name) =>
+        appUserNames.includes(name)
       );
 
+      // Usar fallback con el arreglo extraído si no coincide estrictamente con app_users
+      const finalNames = qualifiedNames.length > 0 ? qualifiedNames : serviceEspecialistas;
+
+      // 4. Construir la lista para el RadioButtonsGroup de WhatsApp
       const specialistsList: Array<{ id: string; title: string; description?: string }> = [
-        { id: 'Cualquier profesional', title: '🔀 Cualquier profesional', description: '✨ Máxima disponibilidad de horarios' }
+        {
+          id: 'Cualquier profesional',
+          title: '🔀 Cualquier profesional',
+          description: '✨ Máxima disponibilidad de horarios'
+        }
       ];
 
-      if (qualifiedSpecialists.length > 0) {
-        qualifiedSpecialists.forEach((sp) => {
+      finalNames.forEach((name) => {
+        if (name && typeof name === 'string' && name.trim()) {
           specialistsList.push({
-            id: sp.name,
-            title: `🌸 ${sp.name}`,
+            id: name.trim(),
+            title: `🌸 ${name.trim()}`,
             description: 'Especialista capacitada'
           });
-        });
-      } else {
-        serviceEspecialistas.forEach((name) => {
-          if (name) {
-            specialistsList.push({
-              id: name,
-              title: `🌸 ${name}`,
-              description: 'Especialista capacitada'
-            });
-          }
-        });
-      }
+        }
+      });
 
       responsePayload = {
         screen: 'SPECIALIST_SCREEN',
         data: {
-          selected_service: selectedServiceId,
+          selected_service: rawSelectedServiceId,
           specialists_list: specialistsList
         }
       };
