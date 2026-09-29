@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { 
   X, Save, User, Mail, Lock, Phone, Percent, Palette, Scissors, 
-  Sparkles, Check, CheckSquare, Square, Layers, ShieldCheck, ShieldAlert 
+  Check, CheckSquare, Square, Layers, ShieldCheck, ShieldAlert 
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -48,13 +48,23 @@ const MODULOS_SISTEMA = [
   { id: "settings", label: "Configuración", desc: "Ajustes generales del estudio" },
 ];
 
-const DEFAULT_PERMISSIONS: Record<string, boolean> = {
+const DEFAULT_PERMISSIONS_ESPECIALISTA: Record<string, boolean> = {
   inicio: true,
   agenda: true,
   business: false,
   finanzas: false,
   bot: false,
   mis_informes: false,
+  settings: false,
+};
+
+const DEFAULT_PERMISSIONS_MARKETING: Record<string, boolean> = {
+  inicio: true,
+  agenda: true,
+  business: false,
+  finanzas: false,
+  bot: true,          // Habilitado para Marketing
+  mis_informes: true, // Habilitado para Marketing
   settings: false,
 };
 
@@ -66,7 +76,7 @@ const EMPTY_ESPECIALISTA: EspecialistaPayload = {
   color: "#F687B3",
   comision_base: 50,
   role: "ESPECIALISTA",
-  permissions: DEFAULT_PERMISSIONS,
+  permissions: DEFAULT_PERMISSIONS_ESPECIALISTA,
 };
 
 export default function ModalEspecialista({
@@ -100,7 +110,7 @@ export default function ModalEspecialista({
           color: formData.color || "#F687B3",
           comision_base: formData.comision_base || 50,
           role: formData.role || "ESPECIALISTA",
-          permissions: formData.permissions || DEFAULT_PERMISSIONS,
+          permissions: formData.permissions || DEFAULT_PERMISSIONS_ESPECIALISTA,
         });
         setActiveTab("datos");
       }
@@ -142,11 +152,25 @@ export default function ModalEspecialista({
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Manejador de cambio de rol con preset automático de permisos
+  const handleRoleChange = (newRole: string) => {
+    let presetPermissions = DEFAULT_PERMISSIONS_ESPECIALISTA;
+    if (newRole === "MARKETING") {
+      presetPermissions = DEFAULT_PERMISSIONS_MARKETING;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      role: newRole,
+      permissions: presetPermissions,
+    }));
+  };
+
   const handleTogglePermission = (moduleId: string) => {
     setForm((prev) => ({
       ...prev,
       permissions: {
-        ...(prev.permissions || DEFAULT_PERMISSIONS),
+        ...(prev.permissions || DEFAULT_PERMISSIONS_ESPECIALISTA),
         [moduleId]: !prev.permissions?.[moduleId],
       },
     }));
@@ -224,6 +248,7 @@ export default function ModalEspecialista({
 
     try {
       if (mode === "create") {
+        // Crear nuevo usuario vía API
         const authRes = await fetch("/api/admin/create-user", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -239,8 +264,30 @@ export default function ModalEspecialista({
         if (!authRes.ok || !authData.ok) {
           console.warn("Aviso en la creación de usuario Auth:", authData.error);
         }
+      } else if (mode === "edit" && form.id) {
+        // 🎯 ACTUALIZAR USUARIO EXISTENTE (Incluye actualización del ROL a MARKETING)
+        const updateRes = await fetch("/api/admin/update-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: form.id,
+            email: form.email,
+            name: form.name,
+            role: form.role || "ESPECIALISTA",
+            color: form.color,
+            comision_base: form.comision_base,
+            telefono: form.telefono,
+            permissions: form.permissions,
+          }),
+        });
+
+        const updateData = await updateRes.json();
+        if (!updateRes.ok || !updateData.ok) {
+          console.warn("Aviso al actualizar usuario en la API:", updateData.error);
+        }
       }
 
+      // Ejecutar callback padre de guardado y sincronizar servicios
       await onSave(form);
       await syncServicesEspecialistas(form.name);
 
@@ -268,7 +315,7 @@ export default function ModalEspecialista({
                 {mode === "create" ? "Nueva Especialista / Usuario" : "Editar Usuario"}
               </h2>
               <p className="text-[10px] font-semibold text-zinc-400">
-                {mode === "create" ? "Registra una integrante del equipo" : `Modificando perfil de ${form.name || "Especialista"}`}
+                {mode === "create" ? "Registra una integrante del equipo" : `Modificando perfil de ${form.name || "Usuario"}`}
               </p>
             </div>
           </div>
@@ -398,18 +445,18 @@ export default function ModalEspecialista({
                 </div>
               </div>
 
-              {/* ROL DE USUARIO */}
+              {/* ROL DE USUARIO CON OPCIÓN MARKETING CORREGIDA */}
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider flex items-center gap-1">
                   <ShieldCheck size={11} className="text-rose-400" /> Rol de Usuario en el CRM
                 </label>
                 <select
                   value={form.role || "ESPECIALISTA"}
-                  onChange={(e) => handleChange("role", e.target.value)}
+                  onChange={(e) => handleRoleChange(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 p-3 rounded-2xl outline-none text-xs font-bold text-zinc-100 focus:border-rose-500 transition-colors cursor-pointer"
                 >
                   <option value="ESPECIALISTA">ESPECIALISTA (Acceso delimitado por permisos)</option>
-                  <option value="MARKETING">MARKETING (Acceso delimitado por permisos)</option>
+                  <option value="MARKETING">MARKETING (Acceso a Métricas, Bot e Informes)</option>
                   <option value="ADMIN">ADMINISTRADOR (Acceso total a todos los módulos)</option>
                 </select>
               </div>
@@ -506,7 +553,7 @@ export default function ModalEspecialista({
             </div>
           )}
 
-          {/* 🌸 PESTAÑA PERMISOS DE MÓDULOS */}
+          {/* PESTAÑA PERMISOS DE MÓDULOS */}
           {activeTab === "permisos" && (
             <div className="space-y-4 animate-in fade-in duration-200">
               <div className="p-3.5 bg-zinc-950 rounded-2xl border border-zinc-800 flex items-center gap-2">
@@ -576,7 +623,7 @@ export default function ModalEspecialista({
             className="flex-[1.5] py-3 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white text-xs font-bold rounded-2xl shadow-lg shadow-rose-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <Save size={16} /> 
-            <span>{saving ? "Guardando..." : mode === "create" ? "Registrar Especialista" : "Guardar Cambios"}</span>
+            <span>{saving ? "Guardando..." : mode === "create" ? "Registrar Usuario" : "Guardar Cambios"}</span>
           </button>
         </div>
       </div>

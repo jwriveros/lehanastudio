@@ -246,7 +246,11 @@ export default function BusinessPage() {
         setServices(data || []);
         setTotalRecords(count || 0);
       } else {
-        let query = supabase.from("app_users").select("*", { count: "exact" }).in("role", ["ESPECIALISTA", "SPECIALIST"]);
+        // 🎯 Incluimos 'MARKETING' en el filtro para que los usuarios de marketing aparezcan en la tabla
+        let query = supabase
+          .from("app_users")
+          .select("*", { count: "exact" })
+          .in("role", ["ESPECIALISTA", "SPECIALIST", "MARKETING"]);
 
         if (sortState.column && sortState.direction) {
           query = query.order(sortState.column, { ascending: sortState.direction === "asc" });
@@ -992,10 +996,27 @@ export default function BusinessPage() {
         mode={mode === "view" ? "edit" : mode}
         formData={specialistForm} 
         onSave={async (data: any) => { 
-          if (mode === "edit") await supabase.from("app_users").update(data).eq("id", data.id); 
-          else await supabase.from("app_users").insert([{...data, role: 'ESPECIALISTA'}]); 
+          if (mode === "edit" || data.id) {
+            // 🎯 Enviamos la petición a la API administrativa
+            const res = await fetch("/api/admin/update-user", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+
+            const resJson = await res.json();
+            if (!res.ok || !resJson.ok) {
+              alert("Error al actualizar: " + (resJson.error || "Error desconocido"));
+              return;
+            }
+          } else {
+            // Creación de usuario nuevo
+            const { id, ...newData } = data;
+            await supabase.from("app_users").insert([{ ...newData, role: data.role || "ESPECIALISTA" }]); 
+          }
+
           setModalEspecialistaOpen(false); 
-          loadData(); 
+          await loadData(); // Recargamos los datos actualizados desde la BD
         }} 
       />
 
