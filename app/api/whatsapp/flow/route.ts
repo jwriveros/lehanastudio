@@ -346,15 +346,18 @@ export async function POST(req: Request) {
     decipher.update(forge.util.createBuffer(encryptedPayload));
     decipher.finish();
 
-    const decryptedBody = JSON.parse(forge.util.decodeUtf8(decipher.output.getBytes()));
+    const decryptedBody = JSON.parse(forge.util.encodeUtf8(decipher.output.getBytes()));
     const { action, screen, data } = decryptedBody;
 
     let responsePayload: any = {};
 
     if (action === 'ping') {
-      responsePayload = { data: { status: 'active' } };
+      responsePayload = { 
+        version: '3.0',
+        data: { status: 'active' } 
+      };
     }
-    // 🎯 INIT: SÓLO id Y title EN LOS ÍTEMS DEL DROPDOWN
+    // 🎯 INIT: OBJETOS CON SOLO 'id' Y 'title' (ESTRICTO PARA DROPDOWN)
     else if (action === 'INIT') {
       const { data: servicesDB } = await supabase.from('services').select('*');
 
@@ -394,7 +397,7 @@ export async function POST(req: Request) {
             const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
             formattedList.push({
               id: String(s.SKU || s.id),
-              title: `↳ ${s.Servicio || s.servicio} (${dur}m - $${precio})`
+              title: `${s.Servicio || s.servicio} (${dur}m • $${precio} COP)`
             });
           });
         }
@@ -406,56 +409,69 @@ export async function POST(req: Request) {
         data: { services_list: formattedList },
       };
     }
-    else if (action === 'INIT') {
-      const { data: servicesDB } = await supabase.from('services').select('*');
+    else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
+      const rawSelectedServiceId = String(data.selected_service || '');
 
-      const CATEGORIAS_ORDEN = ["Pestañas", "Cejas", "Micropigmentación", "Limpieza facial", "Depilación"];
-      const categoryEmojis: Record<string, string> = {
-        'Pestañas': '👁️', 'Cejas': '🎨', 'Micropigmentación': '✨', 'Limpieza facial': '💆‍♀️', 'Depilación': '🪒'
-      };
+      const { data: allServicesDB } = await supabase.from('services').select('*');
 
-      const rawServices = servicesDB || [];
-      const filtered = rawServices.filter((s: any) => {
-        const cat = (s.category || '').toLowerCase();
-        const name = (s.Servicio || s.servicio || '').toLowerCase();
-        return !cat.includes('retoque') && !cat.includes('refuerzo') && !name.includes('retoque') && !name.includes('refuerzo');
+      const matchedService = (allServicesDB || []).find((s: any) => {
+        const skuStr = String(s.SKU || '');
+        const idStr = String(s.id || '');
+        return skuStr === rawSelectedServiceId || idStr === rawSelectedServiceId;
       });
 
-      const grouped: Record<string, any[]> = {};
-      CATEGORIAS_ORDEN.forEach((cat) => { grouped[cat] = []; });
-      filtered.forEach((s: any) => {
-        const cat = s.category || 'Otros';
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(s);
-      });
+      let serviceEspecialistas: string[] = [];
 
-      // 🎯 LISTA LIMPIA: Únicamente 'id' y 'title' para el Dropdown
-      const formattedList: Array<{ id: string; title: string }> = [];
+      if (matchedService && matchedService.especialistas) {
+        if (typeof matchedService.especialistas === 'string') {
+          try {
+            serviceEspecialistas = JSON.parse(matchedService.especialistas);
+          } catch {
+            serviceEspecialistas = [matchedService.especialistas];
+          }
+        } else if (Array.isArray(matchedService.especialistas)) {
+          serviceEspecialistas = matchedService.especialistas;
+        }
+      }
 
-      CATEGORIAS_ORDEN.forEach((cat) => {
-        const items = grouped[cat] || [];
-        if (items.length > 0) {
-          const emoji = categoryEmojis[cat] || '📌';
-          formattedList.push({
-            id: `HEADER_${cat}`,
-            title: `──────── ${emoji} ${cat.toUpperCase()} ────────`
-          });
+      const { data: usersDB } = await supabase
+        .from('app_users')
+        .select('name')
+        .neq('role', 'ADMIN');
 
-          items.forEach((s: any) => {
-            const dur = s.duracion || 45;
-            const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-            formattedList.push({
-              id: String(s.SKU || s.id),
-              title: `${s.Servicio || s.servicio} (${dur} min - $${precio} COP)`
-            });
+      const appUserNames = (usersDB || []).map((u: any) => u.name);
+
+      const qualifiedNames = serviceEspecialistas.filter((name) =>
+        appUserNames.includes(name)
+      );
+
+      const finalNames = qualifiedNames.length > 0 ? qualifiedNames : serviceEspecialistas;
+
+      const specialistsList: Array<{ id: string; title: string; description?: string }> = [
+        {
+          id: 'Cualquier profesional',
+          title: '🔀 Cualquier profesional',
+          description: '✨ Máxima disponibilidad de horarios'
+        }
+      ];
+
+      finalNames.forEach((name) => {
+        if (name && typeof name === 'string' && name.trim()) {
+          specialistsList.push({
+            id: name.trim(),
+            title: `🌸 ${name.trim()}`,
+            description: 'Especialista capacitada'
           });
         }
       });
 
       responsePayload = {
         version: '3.0',
-        screen: 'SERVICES_SCREEN',
-        data: { services_list: formattedList },
+        screen: 'SPECIALIST_SCREEN',
+        data: {
+          selected_service: rawSelectedServiceId,
+          specialists_list: specialistsList
+        }
       };
     }
     else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
@@ -478,6 +494,7 @@ export async function POST(req: Request) {
       if (activeSedesMap['Santa Marta']) locationsList.push({ id: 'Santa Marta', title: '📍 Santa Marta', description: 'Centro Histórico' });
 
       responsePayload = {
+        version: '3.0',
         screen: 'LOCATION_SCREEN',
         data: {
           selected_service: data.selected_service,
@@ -495,6 +512,7 @@ export async function POST(req: Request) {
       maxDate.setDate(colombiaToday.getDate() + 30);
 
       responsePayload = {
+        version: '3.0',
         screen: 'DATE_SCREEN',
         data: {
           selected_service: data.selected_service,
@@ -526,6 +544,7 @@ export async function POST(req: Request) {
       ];
 
       responsePayload = {
+        version: '3.0',
         screen: 'TIME_SCREEN',
         data: {
           selected_service: serviceId,
@@ -541,6 +560,7 @@ export async function POST(req: Request) {
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
 
       responsePayload = {
+        version: '3.0',
         screen: 'SUMMARY_SCREEN',
         data: {
           summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n📍 *Sede:* ${data.selected_sede}\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
@@ -548,7 +568,11 @@ export async function POST(req: Request) {
       };
     }
     else if (action === 'complete') {
-      responsePayload = { screen: 'SUCCESS', data: { extension_message_response: { params: { status: 'booked' } } } };
+      responsePayload = { 
+        version: '3.0',
+        screen: 'SUCCESS', 
+        data: { extension_message_response: { params: { status: 'booked' } } } 
+      };
     }
 
     let flippedIv = '';
