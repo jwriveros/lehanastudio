@@ -373,7 +373,7 @@ export async function POST(req: Request) {
         data: { categories_list: categoriesList },
       };
     }
-    // 🎯 PASO 2: RECIBIR CATEGORÍAS ➔ FILTRADO ROBUSTO POR COLUMNAS, RAÍCES Y PALABRAS CLAVE
+    // 🎯 PASO 2: FILTRADO ESTRICTO POR COLUMNA DE CATEGORÍA DE SUPABASE
     else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
       let rawCategories = data.selected_categories || [];
       let selectedCategories: string[] = [];
@@ -392,7 +392,7 @@ export async function POST(req: Request) {
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
 
-      // Helper para normalizar cadenas (elimina tildes, mayúsculas y espacios extra)
+      // Helper para normalizar texto (elimina tildes, mayúsculas y espacios)
       const norm = (str: any) =>
         String(str || "")
           .toLowerCase()
@@ -400,36 +400,36 @@ export async function POST(req: Request) {
           .replace(/[\u0300-\u036f]/g, "")
           .trim();
 
-      // Mapeo de raíces y palabras clave por categoría para garantizar coincidencia
-      const categoryKeywords: Record<string, string[]> = {
+      // Raíces para filtrar EXCLUSIVAMENTE contra el campo de categoría en la BD
+      const categoryRoots: Record<string, string[]> = {
         "pestanas": ["pestan", "lash"],
         "cejas": ["cej", "brow"],
-        "micropigmentacion": ["micropigm", "micro", "polvo", "labios"],
-        "limpieza facial": ["limpieza", "facial", "hidratac"],
-        "depilacion": ["depil", "epil", "cera"]
+        "micropigmentacion": ["micropigm", "microblading", "microshading"],
+        "limpieza facial": ["limpieza", "facial"],
+        "depilacion": ["depil", "epil"]
       };
 
       const normalizedSelected = selectedCategories.map(norm);
 
       const filtered = rawServices.filter((s: any) => {
-        // Revisa todas las variaciones de nombres de columna en Supabase
-        const cat = norm(s.category || s.categoria || s.Category || s.Categoria || '');
-        const name = norm(s.Servicio || s.servicio || s.Name || s.name || '');
+        // Extraer únicamente la columna de categoría de Supabase
+        const dbCat = norm(s.category || s.categoria || s.Category || s.Categoria || '');
+        const dbName = norm(s.Servicio || s.servicio || s.Name || s.name || '');
 
         // Excluir retoques y refuerzos
-        const isExcluded = name.includes('retoque') || name.includes('refuerzo') || cat.includes('retoque');
+        const isExcluded = dbName.includes('retoque') || dbName.includes('refuerzo') || dbCat.includes('retoque');
         if (isExcluded) return false;
 
-        // Comprobar coincidencia contra cada categoría seleccionada por la clienta
+        // Validar si la CATEGORÍA guardada en la BD coincide con lo seleccionado
         return normalizedSelected.some((selectedCat) => {
-          // 1. Coincidencia directa de texto en la columna de categoría
-          if (cat && (cat.includes(selectedCat) || selectedCat.includes(cat))) {
-            return true;
+          const roots = categoryRoots[selectedCat] || [selectedCat];
+
+          if (dbCat.length > 0) {
+            return roots.some((root) => dbCat.includes(root));
           }
 
-          // 2. Coincidencia por raíces / palabras clave (busca en categoría O en el nombre del servicio)
-          const keywords = categoryKeywords[selectedCat] || [selectedCat];
-          return keywords.some((kw) => cat.includes(kw) || name.includes(kw));
+          // Fallback únicamente para registros sin categoría en la BD
+          return roots.some((root) => dbName.includes(root));
         });
       });
 
