@@ -31,12 +31,14 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
+// 🎯 HELPER 1: Hora Colombia (UTC-5)
 function getColombiaNow(): Date {
   const now = new Date();
   const colStr = now.toLocaleString("en-US", { timeZone: "America/Bogota" });
   return new Date(colStr);
 }
 
+// 🎯 HELPER 2: Formato YYYY-MM-DD
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -44,6 +46,7 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+// 🎯 HELPER 3: Desempaquetado seguro de horario semanal
 function safeParseSchedule(rawSchedule: any): any {
   if (!rawSchedule) return {};
   let current = rawSchedule;
@@ -53,12 +56,13 @@ function safeParseSchedule(rawSchedule: any): any {
       if (trimmed.startsWith('"') && trimmed.endsWith('"')) trimmed = trimmed.slice(1, -1);
       current = JSON.parse(trimmed.replace(/\\"/g, '"'));
     } catch {
-      break;
+      try { current = JSON.parse(current); } catch { break; }
     }
   }
   return typeof current === "object" && current !== null ? current : {};
 }
 
+// 🎯 HELPER 4: Conversión a minutos
 function timeToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
   const cleanTime = timeStr.trim().split(" ")[0].split("T").pop() || "";
@@ -68,7 +72,31 @@ function timeToMinutes(timeStr: string): number {
   return hours * 60 + minutes;
 }
 
-async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialist: string | null) {
+// 🎯 HELPER 5: Formateo de hora 12h para visualización en WhatsApp
+function formatTime12h(time24: string): string {
+  if (!time24) return "";
+  const [hStr, mStr] = time24.split(":");
+  let hours = parseInt(hStr, 10);
+  const minutes = mStr || "00";
+  const modifier = hours >= 12 ? "PM" : "AM";
+  if (hours === 0) hours = 12;
+  else if (hours > 12) hours -= 12;
+  return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
+}
+
+// 🎯 MOTOR EXACTO REPLICADO DE /api/availability
+async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialistInput: string | null) {
+  let explicitSpecialist = explicitSpecialistInput;
+  if (
+    explicitSpecialist === "undefined" ||
+    explicitSpecialist === "null" ||
+    explicitSpecialist === "Cualquier profesional" ||
+    !explicitSpecialist?.trim()
+  ) {
+    explicitSpecialist = null;
+  }
+
+  // 1. Obtener servicio
   const { data: service } = await supabase
     .from("services")
     .select("*")
@@ -78,6 +106,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
   if (!service) return [];
 
   const duration = parseInt(service.duracion || "60", 10);
+  const serviceSku = service.SKU || service.id;
 
   let serviceEspecialistas: string[] = [];
   if (typeof service.especialistas === "string") {
@@ -86,15 +115,24 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     serviceEspecialistas = service.especialistas;
   }
 
-  const { data: specialists } = await supabase.from("app_users").select("id, name, horario_semanal");
-  let qualifiedSpecialists = (specialists || []).filter((sp) => serviceEspecialistas.includes(sp.name));
+  // 2. Obtener especialistas habilitadas desde app_users
+  const { data: specialists } = await supabase
+    .from("app_users")
+    .select("id, name, horario_semanal");
 
-  if (explicitSpecialist && explicitSpecialist !== "Cualquier profesional") {
-    qualifiedSpecialists = qualifiedSpecialists.filter((sp) => sp.name.toLowerCase() === explicitSpecialist.toLowerCase());
+  let qualifiedSpecialists = (specialists || []).filter((sp) =>
+    serviceEspecialistas.includes(sp.name)
+  );
+
+  if (explicitSpecialist) {
+    qualifiedSpecialists = qualifiedSpecialists.filter(
+      (sp) => sp.name.toLowerCase() === explicitSpecialist.toLowerCase()
+    );
   }
 
   if (qualifiedSpecialists.length === 0) return [];
 
+  // 3. Rango de fechas (Próximos 15 días)
   const colombiaToday = getColombiaNow();
   const startDate = new Date(colombiaToday);
   startDate.setDate(colombiaToday.getDate() + 1);
@@ -107,7 +145,13 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
   const startDateStr = formatLocalDate(startDate);
   const endDateStr = formatLocalDate(endDate);
 
-  const { data: overrides } = await supabase.from("specialist_overrides").select("*").gte("date", startDateStr).lte("date", endDateStr);
+  // 4. Reglas overrides y citas existentes
+  const { data: overrides } = await supabase
+    .from("specialist_overrides")
+    .select("*")
+    .gte("date", startDateStr)
+    .lte("date", endDateStr);
+
   const { data: existingAppts } = await supabase
     .from("appointments")
     .select("appointment_at, duration, especialista, sede, estado")
@@ -117,8 +161,9 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     .lte("appointment_at", `${endDateStr} 23:59:59`);
 
   const daysOfWeekEs = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+
   const candidateSlots: string[] = [];
-  for (let m = 9 * 60; m <= 18 * 60; m += 30) {
+  for (let m = 9 * 60; m <= 18 * 60; m += 15) {
     const hh = Math.floor(m / 60);
     const mm = m % 60;
     candidateSlots.push(`${hh < 10 ? `0${hh}` : hh}:${mm < 10 ? `0${mm}` : mm}`);
@@ -131,11 +176,21 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     const dateStr = formatLocalDate(d);
     const dayName = daysOfWeekEs[d.getDay()];
 
-    const dayAppts = (existingAppts || []).filter((appt) => (appt.appointment_at || "").replace(" ", "T").startsWith(dateStr));
+    const dayAppts = (existingAppts || []).filter((appt) => {
+      const normalizedApptAt = (appt.appointment_at || "").replace(" ", "T");
+      const [apptDate] = normalizedApptAt.split("T");
+      return apptDate === dateStr;
+    });
+
+    const hasAnyApptInDay = dayAppts.length > 0;
     const apptsBySpecialist: Record<string, { start: number; end: number }[]> = {};
     dayAppts.forEach((appt) => {
-      const apptStartMin = timeToMinutes(appt.appointment_at || "00:00");
-      const apptEndMin = apptStartMin + parseInt(appt.duration || "60", 10);
+      const normalizedApptAt = (appt.appointment_at || "").replace(" ", "T");
+      const [, apptTimePart] = normalizedApptAt.split("T");
+      const apptStartMin = timeToMinutes(apptTimePart || "00:00");
+      const apptDuration = parseInt(appt.duration || "60", 10);
+      const apptEndMin = apptStartMin + apptDuration;
+
       if (!apptsBySpecialist[appt.especialista]) apptsBySpecialist[appt.especialista] = [];
       apptsBySpecialist[appt.especialista].push({ start: apptStartMin, end: apptEndMin });
     });
@@ -143,35 +198,124 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     for (const slot of candidateSlots) {
       const slotStartMin = timeToMinutes(slot);
       const slotEndMin = slotStartMin + duration;
-      let hasAvailableSpecialist = false;
+      const freeSpecialistsForSlot: string[] = [];
 
       for (const sp of qualifiedSpecialists) {
+        const spOverrides = (overrides || []).filter((b) => {
+          const isSameSp = b.specialist_id === sp.id || b.especialista === sp.name;
+          return isSameSp && b.date === dateStr;
+        });
+
         let isAvailableInSede = false;
+
         if (isMainSede) {
           const scheduleObj = safeParseSchedule(sp.horario_semanal);
           const dayConfig = scheduleObj[dayName];
-          if (dayConfig && dayConfig.estado === "abierto") isAvailableInSede = true;
+
+          if (dayConfig && dayConfig.estado === "abierto") {
+            const workStartMin = timeToMinutes(dayConfig.inicio || "09:00");
+            const lastSlotAllowedMin = timeToMinutes(dayConfig.fin || "18:00");
+            if (slotStartMin >= workStartMin && slotStartMin <= lastSlotAllowedMin) {
+              isAvailableInSede = true;
+            }
+          }
+
+          const hasConflictOverride = spOverrides.some((rule) => {
+            const bStartMin = timeToMinutes(rule.start_time || "00:00");
+            const bEndMin = timeToMinutes(rule.end_time || "23:59");
+            const inTimeRange = slotStartMin < bEndMin && slotEndMin > bStartMin;
+
+            if (!inTimeRange) return false;
+            if (rule.type === "blocked") return true;
+            if (rule.type === "assigned_sede" && rule.sede?.toLowerCase() !== "marquetalia") return true;
+            return false;
+          });
+
+          if (hasConflictOverride) isAvailableInSede = false;
         } else {
-          const assignedSedeOverride = (overrides || []).find(
-            (rule) => rule.type === "assigned_sede" && rule.sede?.toLowerCase() === sede.toLowerCase() && rule.date === dateStr
-          );
-          if (assignedSedeOverride) isAvailableInSede = true;
+          const assignedSedeOverride = spOverrides.find((rule) => {
+            if (rule.type !== "assigned_sede") return false;
+            if (!rule.sede || rule.sede.toLowerCase() !== sede.toLowerCase()) return false;
+            const bStartMin = timeToMinutes(rule.start_time || "00:00");
+            const bEndMin = timeToMinutes(rule.end_time || "23:59");
+            return slotStartMin >= bStartMin && slotStartMin <= bEndMin;
+          });
+
+          if (assignedSedeOverride) {
+            if (
+              assignedSedeOverride.allowed_services &&
+              Array.isArray(assignedSedeOverride.allowed_services) &&
+              assignedSedeOverride.allowed_services.length > 0
+            ) {
+              const isServiceAllowed =
+                assignedSedeOverride.allowed_services.includes(serviceSku) ||
+                assignedSedeOverride.allowed_services.includes(service.id);
+              if (isServiceAllowed) isAvailableInSede = true;
+            } else {
+              isAvailableInSede = true;
+            }
+          }
         }
 
         if (!isAvailableInSede) continue;
-        const spAppts = apptsBySpecialist[sp.name] || [];
-        const isOccupied = spAppts.some((appt) => slotStartMin < appt.end && slotEndMin > appt.start);
 
-        if (!isOccupied) {
-          hasAvailableSpecialist = true;
-          break;
+        const spAppts = apptsBySpecialist[sp.name] || [];
+        const isOccupied = spAppts.some(
+          (appt) => slotStartMin < appt.end && slotEndMin > appt.start
+        );
+
+        if (isOccupied) continue;
+
+        if (!hasAnyApptInDay) {
+          freeSpecialistsForSlot.push(sp.name);
+          continue;
+        }
+
+        const spHasApptsToday = spAppts.length > 0;
+
+        if (explicitSpecialist) {
+          if (!spHasApptsToday) {
+            const isStartOfShift = slotStartMin === 9 * 60 || slotStartMin === 14 * 60;
+            if (isStartOfShift) freeSpecialistsForSlot.push(sp.name);
+          } else {
+            const isAllowedAnchor = spAppts.some((appt) => {
+              const isRightAfter = appt.end === slotStartMin;
+              const isRightBefore = slotEndMin === appt.start;
+              const isOneHourAfter = slotStartMin === appt.end + 60;
+              return isRightAfter || isRightBefore || isOneHourAfter;
+            });
+            if (isAllowedAnchor) freeSpecialistsForSlot.push(sp.name);
+          }
+        } else {
+          if (spHasApptsToday) {
+            const isMorningSlot = slotStartMin >= 9 * 60 && slotStartMin < 13 * 60;
+            const isAfternoonSlot = slotStartMin >= 13 * 60 && slotStartMin <= 18 * 60;
+
+            const hasApptInMorning = spAppts.some((a) => a.start < 13 * 60);
+            const hasApptInAfternoon = spAppts.some((a) => a.end > 13 * 60);
+
+            if ((isMorningSlot && hasApptInMorning) || (isAfternoonSlot && hasApptInAfternoon)) {
+              freeSpecialistsForSlot.push(sp.name);
+            } else {
+              const isAllowedAnchor = spAppts.some((appt) => {
+                const isRightAfter = appt.end === slotStartMin;
+                const isRightBefore = slotEndMin === appt.start;
+                const isOneHourAfter = slotStartMin === appt.end + 60;
+                return isRightAfter || isRightBefore || isOneHourAfter;
+              });
+              if (isAllowedAnchor) freeSpecialistsForSlot.push(sp.name);
+            }
+          } else {
+            const isStartOfShift = slotStartMin === 9 * 60 || slotStartMin === 14 * 60;
+            if (isStartOfShift) freeSpecialistsForSlot.push(sp.name);
+          }
         }
       }
 
-      if (hasAvailableSpecialist) {
+      if (freeSpecialistsForSlot.length > 0) {
         slotsList.push({
           id: `${dateStr}T${slot}`,
-          title: `📅 ${dateStr} — ⏰ ${slot}`,
+          title: `📅 ${dateStr} — ⏰ ${formatTime12h(slot)}`
         });
       }
     }
@@ -262,11 +406,9 @@ export async function POST(req: Request) {
         data: { services_list: formattedList },
       };
     }
-    // 🎯 PASO 2: SELECCIÓN DE SERVICIO ➔ CARGAR ESPECIALISTAS DINÁMICAS EXACTAS
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
       const rawSelectedServiceId = String(data.selected_service || '');
 
-      // 1. Obtener la lista de todos los servicios para garantizar búsqueda flexible
       const { data: allServicesDB } = await supabase.from('services').select('*');
 
       const matchedService = (allServicesDB || []).find((s: any) => {
@@ -289,7 +431,6 @@ export async function POST(req: Request) {
         }
       }
 
-      // 2. Traer especialistas activas desde app_users
       const { data: usersDB } = await supabase
         .from('app_users')
         .select('name')
@@ -297,15 +438,12 @@ export async function POST(req: Request) {
 
       const appUserNames = (usersDB || []).map((u: any) => u.name);
 
-      // 3. Filtrar únicamente las capacitadas que están registradas en app_users
       const qualifiedNames = serviceEspecialistas.filter((name) =>
         appUserNames.includes(name)
       );
 
-      // Usar fallback con el arreglo extraído si no coincide estrictamente con app_users
       const finalNames = qualifiedNames.length > 0 ? qualifiedNames : serviceEspecialistas;
 
-      // 4. Construir la lista para el RadioButtonsGroup de WhatsApp
       const specialistsList: Array<{ id: string; title: string; description?: string }> = [
         {
           id: 'Cualquier profesional',
