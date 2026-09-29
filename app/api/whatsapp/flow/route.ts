@@ -373,11 +373,12 @@ export async function POST(req: Request) {
         data: { categories_list: categoriesList },
       };
     }
-    // 🎯 PASO 2: FILTRADO ESTRICTO POR COLUMNA DE CATEGORÍA DE SUPABASE
+    // 🎯 PASO 2: FILTRADO ESTRICTO CONTRA LA COLUMNA 'category' DE SUPABASE
     else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
       let rawCategories = data.selected_categories || [];
       let selectedCategories: string[] = [];
 
+      // Desempaquetado seguro del CheckboxGroup
       if (Array.isArray(rawCategories)) {
         selectedCategories = rawCategories;
       } else if (typeof rawCategories === 'string') {
@@ -392,51 +393,38 @@ export async function POST(req: Request) {
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
 
-      // Helper para normalizar texto (elimina tildes, mayúsculas y espacios)
-      const norm = (str: any) =>
+      // Helper para quitar tildes y convertir a minúsculas
+      const normalize = (str: any) =>
         String(str || "")
           .toLowerCase()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .trim();
 
-      // Raíces para filtrar EXCLUSIVAMENTE contra el campo de categoría en la BD
-      const categoryRoots: Record<string, string[]> = {
-        "pestanas": ["pestan", "lash"],
-        "cejas": ["cej", "brow"],
-        "micropigmentacion": ["micropigm", "microblading", "microshading"],
-        "limpieza facial": ["limpieza", "facial"],
-        "depilacion": ["depil", "epil"]
-      };
-
-      const normalizedSelected = selectedCategories.map(norm);
+      const normalizedSelectedCats = selectedCategories.map(normalize);
 
       const filtered = rawServices.filter((s: any) => {
-        // Extraer únicamente la columna de categoría de Supabase
-        const dbCat = norm(s.category || s.categoria || s.Category || s.Categoria || '');
-        const dbName = norm(s.Servicio || s.servicio || s.Name || s.name || '');
+        const itemCategory = normalize(s.category);
+        const itemName = normalize(s.Servicio || s.servicio);
 
-        // Excluir retoques y refuerzos
-        const isExcluded = dbName.includes('retoque') || dbName.includes('refuerzo') || dbCat.includes('retoque');
-        if (isExcluded) return false;
+        // Excluir retoques y refuerzos implícitos
+        if (
+          itemName.includes('retoque') || 
+          itemName.includes('refuerzo') || 
+          itemCategory.includes('retoque') || 
+          itemCategory.includes('refuerzo')
+        ) {
+          return false;
+        }
 
-        // Validar si la CATEGORÍA guardada en la BD coincide con lo seleccionado
-        return normalizedSelected.some((selectedCat) => {
-          const roots = categoryRoots[selectedCat] || [selectedCat];
-
-          if (dbCat.length > 0) {
-            return roots.some((root) => dbCat.includes(root));
-          }
-
-          // Fallback únicamente para registros sin categoría en la BD
-          return roots.some((root) => dbName.includes(root));
-        });
+        // COINCIDENCIA EXACTA: Valida que la columna 'category' coincida con las elegidas por el usuario
+        return normalizedSelectedCats.includes(itemCategory);
       });
 
       const servicesList = filtered.map((s: any) => {
         const dur = s.duracion || 45;
         const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-        const catName = s.category || s.categoria || s.Category || 'Servicio';
+        const catName = s.category || 'Servicio';
 
         return {
           id: String(s.SKU || s.id),
