@@ -31,14 +31,12 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
-// 🎯 HELPER 1: Obtiene la fecha y hora actual en la zona horaria oficial de Colombia (America/Bogota)[cite: 3]
 function getColombiaNow(): Date {
   const now = new Date();
   const colStr = now.toLocaleString("en-US", { timeZone: "America/Bogota" });
   return new Date(colStr);
 }
 
-// 🎯 HELPER 2: Formatea un objeto Date a YYYY-MM-DD en hora local de Colombia[cite: 3]
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -46,7 +44,6 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// Desempaqueta el horario base semanal[cite: 3]
 function safeParseSchedule(rawSchedule: any): any {
   if (!rawSchedule) return {};
   let current = rawSchedule;
@@ -62,7 +59,6 @@ function safeParseSchedule(rawSchedule: any): any {
   return typeof current === "object" && current !== null ? current : {};
 }
 
-// Convierte HH:MM a minutos transcurridos desde medianoche[cite: 3]
 function timeToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
   const cleanTime = timeStr.trim().split(" ")[0].split("T").pop() || "";
@@ -72,7 +68,6 @@ function timeToMinutes(timeStr: string): number {
   return hours * 60 + minutes;
 }
 
-// Formateo de hora 12h para WhatsApp[cite: 4]
 function formatTime12h(time24: string): string {
   if (!time24) return "";
   const [hStr, mStr] = time24.split(":");
@@ -84,8 +79,8 @@ function formatTime12h(time24: string): string {
   return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
 }
 
-// 🎯 MOTOR EXACTO REPLICADO DE /api/availability[cite: 3]
-async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialistInput: string | null) {
+// 🎯 MOTOR DE DISPONIBILIDAD FILTRADO POR LA FECHA DEL DATEPICKER
+async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialistInput: string | null, filterDate: string | null = null) {
   let explicitSpecialist = explicitSpecialistInput;
   if (
     explicitSpecialist === "undefined" ||
@@ -96,7 +91,6 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     explicitSpecialist = null;
   }
 
-  // 1. Obtener servicio de forma segura (evita fallos de sintaxis UUID en Supabase)
   const { data: allServicesDB } = await supabase.from("services").select("*");
   const service = (allServicesDB || []).find(
     (s: any) => String(s.SKU) === String(serviceId) || String(s.id) === String(serviceId)
@@ -114,7 +108,6 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     serviceEspecialistas = service.especialistas;
   }
 
-  // 2. Obtener especialistas desde app_users[cite: 3]
   const { data: specialists } = await supabase
     .from("app_users")
     .select("id, name, horario_semanal");
@@ -131,20 +124,27 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
 
   if (qualifiedSpecialists.length === 0) return [];
 
-  // 3. Rango de fechas (30 días hacia adelante, alineado con la web)[cite: 3]
+  let startDate: Date;
+  let endDate: Date;
   const colombiaToday = getColombiaNow();
-  const startDate = new Date(colombiaToday);
-  startDate.setDate(colombiaToday.getDate() + 1);
-  startDate.setHours(0, 0, 0, 0);
 
-  const endDate = new Date(colombiaToday);
-  endDate.setDate(colombiaToday.getDate() + 30);
-  endDate.setHours(23, 59, 59, 999);
+  if (filterDate) {
+    const [fY, fM, fD] = filterDate.split("-").map(Number);
+    startDate = new Date(fY, fM - 1, fD, 0, 0, 0);
+    endDate = new Date(fY, fM - 1, fD, 23, 59, 59);
+  } else {
+    startDate = new Date(colombiaToday);
+    startDate.setDate(colombiaToday.getDate() + 1);
+    startDate.setHours(0, 0, 0, 0);
+
+    endDate = new Date(colombiaToday);
+    endDate.setDate(colombiaToday.getDate() + 30);
+    endDate.setHours(23, 59, 59, 999);
+  }
 
   const startDateStr = formatLocalDate(startDate);
   const endDateStr = formatLocalDate(endDate);
 
-  // 4. Consultar reglas en specialist_overrides y citas activas en appointments[cite: 3]
   const { data: overrides } = await supabase
     .from("specialist_overrides")
     .select("*")
@@ -171,7 +171,6 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
   const slotsList: Array<{ id: string; title: string }> = [];
   const isMainSede = sede.toLowerCase() === "marquetalia";
 
-  // 5. Recorrer día a día evaluando la lógica de anclaje de la web[cite: 3]
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     const dateStr = formatLocalDate(d);
     const dayName = daysOfWeekEs[d.getDay()];
@@ -209,7 +208,6 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
 
         let isAvailableInSede = false;
 
-        /* REGLA DE SEDES */
         if (isMainSede) {
           const scheduleObj = safeParseSchedule(sp.horario_semanal);
           const dayConfig = scheduleObj[dayName];
@@ -268,7 +266,6 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
 
         if (isOccupied) continue;
 
-        /* REGLAS DE NEGOCIO Y DISPONIBILIDAD */
         if (!hasAnyApptInDay) {
           freeSpecialistsForSlot.push(sp.name);
           continue;
@@ -317,8 +314,8 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
 
       if (freeSpecialistsForSlot.length > 0) {
         slotsList.push({
-          id: `${dateStr}T${slot}`,
-          title: `📅 ${dateStr} — ⏰ ${formatTime12h(slot)}`
+          id: slot,
+          title: `⏰ ${formatTime12h(slot)}`
         });
       }
     }
@@ -501,13 +498,35 @@ export async function POST(req: Request) {
         },
       };
     }
+    // PASO 4: SELECCIÓN DE SEDE ➔ MOSTRAR DATEPICKER
     else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
+      const colombiaToday = getColombiaNow();
+      const tomorrow = new Date(colombiaToday);
+      tomorrow.setDate(colombiaToday.getDate() + 1);
+
+      const maxDate = new Date(colombiaToday);
+      maxDate.setDate(colombiaToday.getDate() + 30);
+
+      responsePayload = {
+        screen: 'DATE_SCREEN',
+        data: {
+          selected_service: data.selected_service,
+          selected_specialist: data.selected_specialist,
+          selected_sede: data.selected_sede || 'Marquetalia',
+          min_date: formatLocalDate(tomorrow),
+          max_date: formatLocalDate(maxDate),
+        },
+      };
+    }
+    // PASO 5: SELECCIÓN DE FECHA ➔ MOSTRAR HORAS DISPONIBLES DE ESE DÍA
+    else if (action === 'data_exchange' && screen === 'DATE_SCREEN') {
       const serviceId = data.selected_service;
       const specialist = data.selected_specialist;
       const sede = data.selected_sede || 'Marquetalia';
+      const selectedDate = data.selected_date;
 
-      const slotsList = await getAvailableSlots(serviceId, sede, specialist);
-      const finalSlots = slotsList.length > 0 ? slotsList : [{ id: 'NONE', title: 'Sin turnos libres en estos días' }];
+      const slotsList = await getAvailableSlots(serviceId, sede, specialist, selectedDate);
+      const finalSlots = slotsList.length > 0 ? slotsList : [{ id: 'NONE', title: 'Sin turnos libres en esta fecha' }];
 
       const countryCodes = [
         { id: '57', title: '🇨🇴 Colombia (+57)' },
@@ -521,21 +540,25 @@ export async function POST(req: Request) {
       ];
 
       responsePayload = {
-        screen: 'DATETIME_SCREEN',
+        screen: 'TIME_SCREEN',
         data: {
+          selected_service: serviceId,
+          selected_specialist: specialist,
+          selected_sede: sede,
+          selected_date: selectedDate,
           slots_list: finalSlots,
           country_codes: countryCodes
         },
       };
     }
-    else if (action === 'data_exchange' && screen === 'DATETIME_SCREEN') {
-      const [datePart, timePart] = (data.selected_time || '').split('T');
+    // PASO 6: SELECCIÓN DE HORA Y CONTACTO ➔ MOSTRAR RESUMEN FINAL
+    else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
 
       responsePayload = {
         screen: 'SUMMARY_SCREEN',
         data: {
-          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n📅 *Fecha:* ${datePart || 'Día seleccionado'}\n⏰ *Hora:* ${timePart || 'Hora seleccionada'}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
+          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n📍 *Sede:* ${data.selected_sede}\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
         },
       };
     }
