@@ -373,12 +373,11 @@ export async function POST(req: Request) {
         data: { categories_list: categoriesList },
       };
     }
-    // 🎯 PASO 2: RECIBIR CATEGORÍAS ➔ FILTRAR Y MOSTRAR SERVICIOS CON BÚSQUEDA FLEXIBLE Y NORMALIZADA
+    // 🎯 PASO 2: RECIBIR CATEGORÍAS ➔ FILTRADO ROBUSTO POR COLUMNAS, RAÍCES Y PALABRAS CLAVE
     else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
       let rawCategories = data.selected_categories || [];
       let selectedCategories: string[] = [];
 
-      // Desempaquetado seguro del arreglo proveniente del CheckboxGroup
       if (Array.isArray(rawCategories)) {
         selectedCategories = rawCategories;
       } else if (typeof rawCategories === 'string') {
@@ -393,28 +392,51 @@ export async function POST(req: Request) {
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
 
-      // Helper para normalizar texto (elimina tildes, mayúsculas y espacios extra)
-      const norm = (str: string) => 
-        (str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      // Helper para normalizar cadenas (elimina tildes, mayúsculas y espacios extra)
+      const norm = (str: any) =>
+        String(str || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .trim();
+
+      // Mapeo de raíces y palabras clave por categoría para garantizar coincidencia
+      const categoryKeywords: Record<string, string[]> = {
+        "pestanas": ["pestan", "lash"],
+        "cejas": ["cej", "brow"],
+        "micropigmentacion": ["micropigm", "micro", "polvo", "labios"],
+        "limpieza facial": ["limpieza", "facial", "hidratac"],
+        "depilacion": ["depil", "epil", "cera"]
+      };
 
       const normalizedSelected = selectedCategories.map(norm);
 
       const filtered = rawServices.filter((s: any) => {
-        // Revisa ambas columnas posibles de Supabase (category o categoria)
-        const cat = norm(s.category || s.categoria || '');
-        const name = norm(s.Servicio || s.servicio || '');
-        
+        // Revisa todas las variaciones de nombres de columna en Supabase
+        const cat = norm(s.category || s.categoria || s.Category || s.Categoria || '');
+        const name = norm(s.Servicio || s.servicio || s.Name || s.name || '');
+
+        // Excluir retoques y refuerzos
         const isExcluded = name.includes('retoque') || name.includes('refuerzo') || cat.includes('retoque');
         if (isExcluded) return false;
 
-        // Coincidencia flexible para tolerar plurales/singulares (ej. "Pestaña" / "Pestañas")
-        return normalizedSelected.some((sc) => cat.includes(sc) || sc.includes(cat));
+        // Comprobar coincidencia contra cada categoría seleccionada por la clienta
+        return normalizedSelected.some((selectedCat) => {
+          // 1. Coincidencia directa de texto en la columna de categoría
+          if (cat && (cat.includes(selectedCat) || selectedCat.includes(cat))) {
+            return true;
+          }
+
+          // 2. Coincidencia por raíces / palabras clave (busca en categoría O en el nombre del servicio)
+          const keywords = categoryKeywords[selectedCat] || [selectedCat];
+          return keywords.some((kw) => cat.includes(kw) || name.includes(kw));
+        });
       });
 
       const servicesList = filtered.map((s: any) => {
         const dur = s.duracion || 45;
         const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-        const catName = s.category || s.categoria || 'General';
+        const catName = s.category || s.categoria || s.Category || 'Servicio';
 
         return {
           id: String(s.SKU || s.id),
@@ -423,8 +445,8 @@ export async function POST(req: Request) {
         };
       });
 
-      const finalServicesList = servicesList.length > 0 
-        ? servicesList.slice(0, 25) 
+      const finalServicesList = servicesList.length > 0
+        ? servicesList.slice(0, 25)
         : [{ id: "NONE", title: "Sin servicios disponibles", description: "Intenta seleccionando otras categorías" }];
 
       responsePayload = {
