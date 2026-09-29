@@ -357,114 +357,72 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
-    // 🎯 INIT: OBJETOS CON SOLO 'id' Y 'title' (ESTRICTO PARA DROPDOWN)
+    // 🎯 PASO 1: INIT ➔ MOSTRAR CATEGORÍAS PARA CHECKBOXGROUP
     else if (action === 'INIT') {
-      const { data: servicesDB } = await supabase.from('services').select('*');
-
-      const CATEGORIAS_ORDEN = ["Pestañas", "Cejas", "Micropigmentación", "Limpieza facial", "Depilación"];
-      const categoryEmojis: Record<string, string> = {
-        'Pestañas': '👁️', 'Cejas': '🎨', 'Micropigmentación': '✨', 'Limpieza facial': '💆‍♀️', 'Depilación': '🪒'
-      };
-
-      const rawServices = servicesDB || [];
-      const filtered = rawServices.filter((s: any) => {
-        const cat = (s.category || '').toLowerCase();
-        const name = (s.Servicio || s.servicio || '').toLowerCase();
-        return !cat.includes('retoque') && !cat.includes('refuerzo') && !name.includes('retoque') && !name.includes('refuerzo');
-      });
-
-      const grouped: Record<string, any[]> = {};
-      CATEGORIAS_ORDEN.forEach((cat) => { grouped[cat] = []; });
-      filtered.forEach((s: any) => {
-        const cat = s.category || 'Otros';
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(s);
-      });
-
-      const formattedList: Array<{ id: string; title: string }> = [];
-
-      CATEGORIAS_ORDEN.forEach((cat) => {
-        const items = grouped[cat] || [];
-        if (items.length > 0) {
-          const emoji = categoryEmojis[cat] || '📌';
-          formattedList.push({
-            id: `HEADER_${cat}`,
-            title: `${emoji} ${cat.toUpperCase()}`
-          });
-
-          items.forEach((s: any) => {
-            const dur = s.duracion || 45;
-            const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-            formattedList.push({
-              id: String(s.SKU || s.id),
-              title: `${s.Servicio || s.servicio} (${dur}m • $${precio} COP)`
-            });
-          });
-        }
-      });
+      const categoriesList = [
+        { id: "Pestañas", title: "👁️ Pestañas", description: "Extensiones clásicas, volumen, lifting" },
+        { id: "Cejas", title: "🎨 Cejas", description: "Diseño, depilación, sombreado y laminado" },
+        { id: "Micropigmentación", title: "✨ Micropigmentación", description: "Efecto polvo, labios y delineado" },
+        { id: "Limpieza facial", title: "💆‍♀️ Limpieza facial", description: "Limpieza profunda e hidratación" },
+        { id: "Depilación", title: "🪒 Depilación", description: "Epilación con cera suave facial y corporal" }
+      ];
 
       responsePayload = {
         version: '3.0',
-        screen: 'SERVICES_SCREEN',
-        data: { services_list: formattedList },
-      };
-    }// 🎯 INIT: CATEGORÍAS INTEGRADAS DIRECTAMENTE EN EL TÍTULO (SIN CABECERAS SELECCIONABLES)
-    else if (action === 'INIT') {
-      const { data: servicesDB } = await supabase.from('services').select('*');
-
-      const CATEGORIAS_ORDEN = ["Pestañas", "Cejas", "Micropigmentación", "Limpieza facial", "Depilación"];
-      const categoryEmojis: Record<string, string> = {
-        'Pestañas': '👁️', 'Cejas': '🎨', 'Micropigmentación': '✨', 'Limpieza facial': '💆‍♀️', 'Depilación': '🪒'
-      };
-
-      const rawServices = servicesDB || [];
-      const filtered = rawServices.filter((s: any) => {
-        const cat = (s.category || '').toLowerCase();
-        const name = (s.Servicio || s.servicio || '').toLowerCase();
-        return !cat.includes('retoque') && !cat.includes('refuerzo') && !name.includes('retoque') && !name.includes('refuerzo');
-      });
-
-      const grouped: Record<string, any[]> = {};
-      CATEGORIAS_ORDEN.forEach((cat) => { grouped[cat] = []; });
-      filtered.forEach((s: any) => {
-        const cat = s.category || 'Otros';
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(s);
-      });
-
-      const formattedList: Array<{ id: string; title: string }> = [];
-
-      CATEGORIAS_ORDEN.forEach((cat) => {
-        const items = grouped[cat] || [];
-        if (items.length > 0) {
-          const emoji = categoryEmojis[cat] || '📌';
-
-          items.forEach((s: any) => {
-            const dur = s.duracion || 45;
-            const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-            
-            // 💡 El nombre de la categoría queda integrado en el título como etiqueta visual
-            formattedList.push({
-              id: String(s.SKU || s.id),
-              title: `${emoji} [${cat.toUpperCase()}] ${s.Servicio || s.servicio} (${dur}m • $${precio} COP)`
-            });
-          });
-        }
-      });
-
-      responsePayload = {
-        version: '3.0',
-        screen: 'SERVICES_SCREEN',
-        data: { services_list: formattedList },
+        screen: 'CATEGORIES_SCREEN',
+        data: { categories_list: categoriesList },
       };
     }
+    // 🎯 PASO 2: RECIBIR CATEGORÍAS ➔ FILTRAR Y MOSTRAR SERVICIOS EN RADIOBUTTONSGROUP
+    else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
+      let rawCategories = data.selected_categories || [];
+      if (typeof rawCategories === 'string') {
+        try { rawCategories = JSON.parse(rawCategories); } catch { rawCategories = [rawCategories]; }
+      }
+
+      const selectedCategories: string[] = Array.isArray(rawCategories) ? rawCategories : [rawCategories];
+
+      const { data: servicesDB } = await supabase.from('services').select('*');
+      const rawServices = servicesDB || [];
+
+      const filtered = rawServices.filter((s: any) => {
+        const cat = (s.category || '').trim();
+        const name = (s.Servicio || s.servicio || '').toLowerCase();
+        
+        const isExcluded = name.includes('retoque') || name.includes('refuerzo') || cat.toLowerCase().includes('retoque');
+        if (isExcluded) return false;
+
+        return selectedCategories.some((sc) => sc.toLowerCase() === cat.toLowerCase());
+      });
+
+      const servicesList = filtered.map((s: any) => {
+        const dur = s.duracion || 45;
+        const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
+        const catName = s.category || 'General';
+
+        return {
+          id: String(s.SKU || s.id),
+          title: `[${catName.toUpperCase()}] ${s.Servicio || s.servicio}`,
+          description: `⏱️ ${dur} min • 💳 $${precio} COP`
+        };
+      });
+
+      const finalServicesList = servicesList.length > 0 
+        ? servicesList 
+        : [{ id: "NONE", title: "Sin servicios disponibles", description: "Intenta seleccionando otras categorías" }];
+
+      responsePayload = {
+        version: '3.0',
+        screen: 'SERVICES_SCREEN',
+        data: {
+          selected_categories: selectedCategories,
+          services_list: finalServicesList
+        }
+      };
+    }
+    // 🎯 PASO 3: RECIBIR SERVICIO ➔ MOSTRAR ESPECIALISTAS CALIFICADAS
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
       const rawSelectedServiceId = String(data.selected_service || '');
-
-      // 🛑 Validación de seguridad en caso de que envíen una cabecera de sesión previa
-      if (rawSelectedServiceId.startsWith('HEADER_')) {
-        return new NextResponse("Selección de categoría no válida como servicio.", { status: 400 });
-      }
 
       const { data: allServicesDB } = await supabase.from('services').select('*');
 
