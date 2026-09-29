@@ -373,32 +373,48 @@ export async function POST(req: Request) {
         data: { categories_list: categoriesList },
       };
     }
-    // 🎯 PASO 2: RECIBIR CATEGORÍAS ➔ FILTRAR Y MOSTRAR SERVICIOS EN RADIOBUTTONSGROUP
+    // 🎯 PASO 2: RECIBIR CATEGORÍAS ➔ FILTRAR Y MOSTRAR SERVICIOS CON BÚSQUEDA FLEXIBLE Y NORMALIZADA
     else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
       let rawCategories = data.selected_categories || [];
-      if (typeof rawCategories === 'string') {
-        try { rawCategories = JSON.parse(rawCategories); } catch { rawCategories = [rawCategories]; }
-      }
+      let selectedCategories: string[] = [];
 
-      const selectedCategories: string[] = Array.isArray(rawCategories) ? rawCategories : [rawCategories];
+      // Desempaquetado seguro del arreglo proveniente del CheckboxGroup
+      if (Array.isArray(rawCategories)) {
+        selectedCategories = rawCategories;
+      } else if (typeof rawCategories === 'string') {
+        try {
+          const parsed = JSON.parse(rawCategories);
+          selectedCategories = Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          selectedCategories = rawCategories.split(',').map((c: string) => c.trim());
+        }
+      }
 
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
 
+      // Helper para normalizar texto (elimina tildes, mayúsculas y espacios extra)
+      const norm = (str: string) => 
+        (str || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+      const normalizedSelected = selectedCategories.map(norm);
+
       const filtered = rawServices.filter((s: any) => {
-        const cat = (s.category || '').trim();
-        const name = (s.Servicio || s.servicio || '').toLowerCase();
+        // Revisa ambas columnas posibles de Supabase (category o categoria)
+        const cat = norm(s.category || s.categoria || '');
+        const name = norm(s.Servicio || s.servicio || '');
         
-        const isExcluded = name.includes('retoque') || name.includes('refuerzo') || cat.toLowerCase().includes('retoque');
+        const isExcluded = name.includes('retoque') || name.includes('refuerzo') || cat.includes('retoque');
         if (isExcluded) return false;
 
-        return selectedCategories.some((sc) => sc.toLowerCase() === cat.toLowerCase());
+        // Coincidencia flexible para tolerar plurales/singulares (ej. "Pestaña" / "Pestañas")
+        return normalizedSelected.some((sc) => cat.includes(sc) || sc.includes(cat));
       });
 
       const servicesList = filtered.map((s: any) => {
         const dur = s.duracion || 45;
         const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-        const catName = s.category || 'General';
+        const catName = s.category || s.categoria || 'General';
 
         return {
           id: String(s.SKU || s.id),
@@ -408,7 +424,7 @@ export async function POST(req: Request) {
       });
 
       const finalServicesList = servicesList.length > 0 
-        ? servicesList 
+        ? servicesList.slice(0, 25) 
         : [{ id: "NONE", title: "Sin servicios disponibles", description: "Intenta seleccionando otras categorías" }];
 
       responsePayload = {
