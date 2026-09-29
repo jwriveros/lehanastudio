@@ -79,7 +79,6 @@ function formatTime12h(time24: string): string {
   return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
 }
 
-// 🎯 MOTOR DE DISPONIBILIDAD FILTRADO POR LA FECHA DEL DATEPICKER
 async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialistInput: string | null, filterDate: string | null = null) {
   let explicitSpecialist = explicitSpecialistInput;
   if (
@@ -347,7 +346,7 @@ export async function POST(req: Request) {
     decipher.update(forge.util.createBuffer(encryptedPayload));
     decipher.finish();
 
-    const decryptedBody = JSON.parse(forge.util.encodeUtf8(decipher.output.getBytes()));
+    const decryptedBody = JSON.parse(forge.util.decodeUtf8(decipher.output.getBytes()));
     const { action, screen, data } = decryptedBody;
 
     let responsePayload: any = {};
@@ -355,6 +354,7 @@ export async function POST(req: Request) {
     if (action === 'ping') {
       responsePayload = { data: { status: 'active' } };
     }
+    // 🎯 INIT: SÓLO id Y title EN LOS ÍTEMS DEL DROPDOWN
     else if (action === 'INIT') {
       const { data: servicesDB } = await supabase.from('services').select('*');
 
@@ -378,7 +378,7 @@ export async function POST(req: Request) {
         grouped[cat].push(s);
       });
 
-      const formattedList: Array<{ id: string; title: string; description?: string }> = [];
+      const formattedList: Array<{ id: string; title: string }> = [];
 
       CATEGORIAS_ORDEN.forEach((cat) => {
         const items = grouped[cat] || [];
@@ -386,15 +386,15 @@ export async function POST(req: Request) {
           const emoji = categoryEmojis[cat] || '📌';
           formattedList.push({
             id: `HEADER_${cat}`,
-            title: `──────── ${emoji} ${cat.toUpperCase()} ────────`,
-            description: '👇 Selecciona un procedimiento de esta sección'
+            title: `──────── ${emoji} ${cat.toUpperCase()} ────────`
           });
 
           items.forEach((s: any) => {
+            const dur = s.duracion || 45;
+            const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
             formattedList.push({
               id: String(s.SKU || s.id),
-              title: `  ↳ ${s.Servicio || s.servicio}`,
-              description: `⏱️ ${s.duracion || 45} min • 💳 $${Number(s.Precio || s.precio || 0).toLocaleString('es-CO')} COP`
+              title: `↳ ${s.Servicio || s.servicio} (${dur}m - $${precio})`
             });
           });
         }
@@ -498,7 +498,6 @@ export async function POST(req: Request) {
         },
       };
     }
-    // PASO 4: SELECCIÓN DE SEDE ➔ MOSTRAR DATEPICKER
     else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
       const colombiaToday = getColombiaNow();
       const tomorrow = new Date(colombiaToday);
@@ -518,7 +517,6 @@ export async function POST(req: Request) {
         },
       };
     }
-    // PASO 5: SELECCIÓN DE FECHA ➔ MOSTRAR HORAS DISPONIBLES DE ESE DÍA
     else if (action === 'data_exchange' && screen === 'DATE_SCREEN') {
       const serviceId = data.selected_service;
       const specialist = data.selected_specialist;
@@ -551,7 +549,6 @@ export async function POST(req: Request) {
         },
       };
     }
-    // PASO 6: SELECCIÓN DE HORA Y CONTACTO ➔ MOSTRAR RESUMEN FINAL
     else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
 
