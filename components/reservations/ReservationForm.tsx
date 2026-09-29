@@ -974,23 +974,36 @@ export default function ReservationForm({
       
       {/* PANEL IZQUIERDO: DETALLES DEL CLIENTE */}
       {showDetails && form.celular && (
-        <div className="w-full md:w-[450px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300 custom-scrollbar">
-          <div className="sticky top-0 z-20 bg-white/90 p-4 backdrop-blur-md dark:bg-zinc-900/90 border-b border-zinc-100 dark:border-zinc-800">
-            <h2 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 mb-2.5">
+        <div className="w-full md:w-[450px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col h-full shrink-0 custom-scrollbar z-30">
+          <div className="sticky top-0 z-20 bg-white/90 p-4 backdrop-blur-md dark:bg-zinc-900/90 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+            
+            {/* 🎯 BOTÓN DE REGRESO PARA MÓVIL */}
+            <button
+              type="button"
+              onClick={() => setShowDetails(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500 text-white rounded-xl text-xs font-bold shadow-xs hover:bg-rose-600 transition-all cursor-pointer shrink-0"
+              title="Volver a la Reserva"
+            >
+              <ChevronLeft size={16} />
+              <span>Regresar</span>
+            </button>
+
+            <h2 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 truncate">
               Perfil del Cliente
             </h2>
-            <div className="flex p-1 bg-zinc-100 dark:bg-zinc-950 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
+
+            <div className="flex p-1 bg-zinc-100 dark:bg-zinc-950 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 shrink-0">
               <button 
                 type="button"
                 onClick={() => setActiveTab('fichas')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-[11px] font-extrabold rounded-xl transition-all cursor-pointer ${activeTab === 'fichas' ? 'bg-white shadow-xs text-rose-500 dark:bg-zinc-800 dark:text-rose-400' : 'text-zinc-400'}`}
+                className={`flex items-center justify-center gap-2 px-3 py-1 text-[10px] font-extrabold rounded-xl transition-all cursor-pointer ${activeTab === 'fichas' ? 'bg-white shadow-xs text-rose-500 dark:bg-zinc-800 dark:text-rose-400' : 'text-zinc-400'}`}
               >
-                <ClipboardList size={14} /> Ficha Técnica
+                <ClipboardList size={13} /> Ficha
               </button>
             </div>
           </div>
 
-          <div className="p-4">
+          <div className="p-4 flex-1">
             {activeTab === 'fichas' ? (
               <FichaTecnicaEditor celular={form.celular} />
             ) : (
@@ -1003,14 +1016,15 @@ export default function ReservationForm({
       {/* PANEL DERECHO: FORMULARIO */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         
+        {/* 🎯 BOTÓN FLOTANTE ROSADO VISIBLE SIEMPRE QUE HAYA TELÉFONO */}
         {form.celular && (
           <button
             type="button"
             onClick={() => setShowDetails(!showDetails)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-30 bg-rose-500 text-white p-2 rounded-r-2xl shadow-md shadow-rose-500/20 hover:bg-rose-600 transition-all cursor-pointer"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-40 bg-rose-500 text-white p-2.5 rounded-r-2xl shadow-lg shadow-rose-500/30 hover:bg-rose-600 transition-all cursor-pointer active:scale-95"
             title={showDetails ? "Ocultar detalles" : "Ver detalles del cliente"}
           >
-            {showDetails ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            {showDetails ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
           </button>
         )}
 

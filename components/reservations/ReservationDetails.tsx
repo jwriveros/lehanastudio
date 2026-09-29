@@ -409,9 +409,28 @@ export default function ReservationDetails({
   return (
     <div className="flex h-full w-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased">
       
-      {/* PANEL IZQUIERDO DESLIZABLE (FICHA TÉCNICA) */}
+      {/* PANEL IZQUIERDO DESLIZABLE (FICHA TÉCNICA Y PERFIL) */}
       {showHistory && data.celular && (
-        <div className="w-full md:w-[420px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col h-full shrink-0 custom-scrollbar">
+        <div className="w-full md:w-[420px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col h-full shrink-0 custom-scrollbar z-30">
+          
+          {/* 🎯 CABECERA CON BOTÓN DE REGRESO PARA MÓVIL */}
+          <div className="sticky top-0 z-20 bg-white/90 p-4 backdrop-blur-md dark:bg-zinc-900/90 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setShowHistory(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500 text-white rounded-xl text-xs font-bold shadow-xs hover:bg-rose-600 transition-all cursor-pointer shrink-0 active:scale-95"
+              title="Volver a los Detalles de la Reserva"
+            >
+              <ArrowLeft size={15} />
+              <span>Regresar</span>
+            </button>
+
+            <h2 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 truncate">
+              Perfil del Cliente
+            </h2>
+          </div>
+
+          {/* CONTENIDO DE LA FICHA TÉCNICA */}
           <div className="p-4 flex-1 overflow-y-auto">
             <FichaTecnicaEditor celular={String(data.celular)} />
           </div>
