@@ -31,14 +31,14 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
-// 🎯 HELPER 1: Hora Colombia (UTC-5)
+// 🎯 HELPER 1: Obtiene la fecha y hora actual en la zona horaria oficial de Colombia (America/Bogota)[cite: 3]
 function getColombiaNow(): Date {
   const now = new Date();
   const colStr = now.toLocaleString("en-US", { timeZone: "America/Bogota" });
   return new Date(colStr);
 }
 
-// 🎯 HELPER 2: Formato YYYY-MM-DD
+// 🎯 HELPER 2: Formatea un objeto Date a YYYY-MM-DD en hora local de Colombia[cite: 3]
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -46,7 +46,7 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// 🎯 HELPER 3: Desempaquetado seguro de horario semanal
+// Desempaqueta el horario base semanal[cite: 3]
 function safeParseSchedule(rawSchedule: any): any {
   if (!rawSchedule) return {};
   let current = rawSchedule;
@@ -62,7 +62,7 @@ function safeParseSchedule(rawSchedule: any): any {
   return typeof current === "object" && current !== null ? current : {};
 }
 
-// 🎯 HELPER 4: Conversión a minutos
+// Convierte HH:MM a minutos transcurridos desde medianoche[cite: 3]
 function timeToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
   const cleanTime = timeStr.trim().split(" ")[0].split("T").pop() || "";
@@ -72,7 +72,7 @@ function timeToMinutes(timeStr: string): number {
   return hours * 60 + minutes;
 }
 
-// 🎯 HELPER 5: Formateo de hora 12h para visualización en WhatsApp
+// Formateo de hora 12h para WhatsApp[cite: 4]
 function formatTime12h(time24: string): string {
   if (!time24) return "";
   const [hStr, mStr] = time24.split(":");
@@ -84,7 +84,7 @@ function formatTime12h(time24: string): string {
   return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
 }
 
-// 🎯 MOTOR EXACTO REPLICADO DE /api/availability
+// 🎯 MOTOR EXACTO REPLICADO DE /api/availability[cite: 3]
 async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialistInput: string | null) {
   let explicitSpecialist = explicitSpecialistInput;
   if (
@@ -96,12 +96,11 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     explicitSpecialist = null;
   }
 
-  // 1. Obtener servicio
-  const { data: service } = await supabase
-    .from("services")
-    .select("*")
-    .or(`id.eq.${serviceId},SKU.eq.${serviceId}`)
-    .maybeSingle();
+  // 1. Obtener servicio de forma segura (evita fallos de sintaxis UUID en Supabase)
+  const { data: allServicesDB } = await supabase.from("services").select("*");
+  const service = (allServicesDB || []).find(
+    (s: any) => String(s.SKU) === String(serviceId) || String(s.id) === String(serviceId)
+  );
 
   if (!service) return [];
 
@@ -115,7 +114,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     serviceEspecialistas = service.especialistas;
   }
 
-  // 2. Obtener especialistas habilitadas desde app_users
+  // 2. Obtener especialistas desde app_users[cite: 3]
   const { data: specialists } = await supabase
     .from("app_users")
     .select("id, name, horario_semanal");
@@ -132,20 +131,20 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
 
   if (qualifiedSpecialists.length === 0) return [];
 
-  // 3. Rango de fechas (Próximos 15 días)
+  // 3. Rango de fechas (30 días hacia adelante, alineado con la web)[cite: 3]
   const colombiaToday = getColombiaNow();
   const startDate = new Date(colombiaToday);
   startDate.setDate(colombiaToday.getDate() + 1);
   startDate.setHours(0, 0, 0, 0);
 
   const endDate = new Date(colombiaToday);
-  endDate.setDate(colombiaToday.getDate() + 15);
+  endDate.setDate(colombiaToday.getDate() + 30);
   endDate.setHours(23, 59, 59, 999);
 
   const startDateStr = formatLocalDate(startDate);
   const endDateStr = formatLocalDate(endDate);
 
-  // 4. Reglas overrides y citas existentes
+  // 4. Consultar reglas en specialist_overrides y citas activas en appointments[cite: 3]
   const { data: overrides } = await supabase
     .from("specialist_overrides")
     .select("*")
@@ -172,6 +171,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
   const slotsList: Array<{ id: string; title: string }> = [];
   const isMainSede = sede.toLowerCase() === "marquetalia";
 
+  // 5. Recorrer día a día evaluando la lógica de anclaje de la web[cite: 3]
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     const dateStr = formatLocalDate(d);
     const dayName = daysOfWeekEs[d.getDay()];
@@ -183,6 +183,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
     });
 
     const hasAnyApptInDay = dayAppts.length > 0;
+
     const apptsBySpecialist: Record<string, { start: number; end: number }[]> = {};
     dayAppts.forEach((appt) => {
       const normalizedApptAt = (appt.appointment_at || "").replace(" ", "T");
@@ -208,6 +209,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
 
         let isAvailableInSede = false;
 
+        /* REGLA DE SEDES */
         if (isMainSede) {
           const scheduleObj = safeParseSchedule(sp.horario_semanal);
           const dayConfig = scheduleObj[dayName];
@@ -266,6 +268,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
 
         if (isOccupied) continue;
 
+        /* REGLAS DE NEGOCIO Y DISPONIBILIDAD */
         if (!hasAnyApptInDay) {
           freeSpecialistsForSlot.push(sp.name);
           continue;
