@@ -389,7 +389,7 @@ export async function POST(req: Request) {
           const emoji = categoryEmojis[cat] || '📌';
           formattedList.push({
             id: `HEADER_${cat}`,
-            title: `──────── ${emoji} ${cat.toUpperCase()} ────────`
+            title: `${emoji} ${cat.toUpperCase()}`
           });
 
           items.forEach((s: any) => {
