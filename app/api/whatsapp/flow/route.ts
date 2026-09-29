@@ -79,6 +79,40 @@ function formatTime12h(time24: string): string {
   return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
 }
 
+// 🛠️ Limpiador universal para las entradas recibidas desde CheckboxGroup de Meta Flows
+function parseSelectedCategories(raw: any): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.flatMap(item => parseSelectedCategories(item));
+  }
+  if (typeof raw === 'string') {
+    let str = raw.trim();
+    try {
+      const parsed = JSON.parse(str);
+      if (Array.isArray(parsed)) return parsed.map(s => String(s));
+      if (typeof parsed === 'string') str = parsed;
+    } catch {}
+
+    return str
+      .replace(/^\[\vert{}\]$/g, '')
+      .replace(/["']/g, '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+  return [String(raw)];
+}
+
+// 🛠️ Normalizador de texto (quita tildes, símbolos y mayúsculas)
+function normalizeText(str: any): string {
+  return String(str || '')
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim();
+}
+
 async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialistInput: string | null, filterDate: string | null = null) {
   let explicitSpecialist = explicitSpecialistInput;
   if (
@@ -357,7 +391,7 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
-    // 🎯 PASO 1: INIT ➔ MOSTRAR CATEGORÍAS PARA CHECKBOXGROUP
+    // 🎯 PASO 1: INIT ➔ LISTA DE CATEGORÍAS
     else if (action === 'INIT') {
       const categoriesList = [
         { id: "Pestañas", title: "👁️ Pestañas", description: "Extensiones clásicas, volumen, lifting" },
@@ -373,58 +407,45 @@ export async function POST(req: Request) {
         data: { categories_list: categoriesList },
       };
     }
-    // 🎯 PASO 2: FILTRADO ESTRICTO CONTRA LA COLUMNA 'category' DE SUPABASE
+    // 🎯 PASO 2: DESENPAQUETADO SEGURO Y FILTRADO MULTI-CATEGORÍA
     else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
-      let rawCategories = data.selected_categories || [];
-      let selectedCategories: string[] = [];
+      const selectedCategories = parseSelectedCategories(data.selected_categories);
+      const normalizedSelectedCats = selectedCategories.map(normalizeText);
 
-      // Desempaquetado seguro del CheckboxGroup
-      if (Array.isArray(rawCategories)) {
-        selectedCategories = rawCategories;
-      } else if (typeof rawCategories === 'string') {
-        try {
-          const parsed = JSON.parse(rawCategories);
-          selectedCategories = Array.isArray(parsed) ? parsed : [parsed];
-        } catch {
-          selectedCategories = rawCategories.split(',').map((c: string) => c.trim());
-        }
-      }
+      // Raíces clave para garantizar que la categoría de Supabase coincida sin ambigüedad
+      const categoryRoots: Record<string, string[]> = {
+        "pestanas": ["pestana", "pestan", "lash"],
+        "cejas": ["ceja", "cej", "brow"],
+        "micropigmentacion": ["micropigmentacion", "micropigm", "microblading", "microshading"],
+        "limpieza facial": ["limpieza", "facial", "hidra"],
+        "depilacion": ["depilacion", "depil", "epil"]
+      };
 
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
 
-      // Helper para quitar tildes y convertir a minúsculas
-      const normalize = (str: any) =>
-        String(str || "")
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .trim();
-
-      const normalizedSelectedCats = selectedCategories.map(normalize);
-
       const filtered = rawServices.filter((s: any) => {
-        const itemCategory = normalize(s.category);
-        const itemName = normalize(s.Servicio || s.servicio);
+        const dbCat = normalizeText(s.category || s.categoria);
+        const dbName = normalizeText(s.Servicio || s.servicio);
 
-        // Excluir retoques y refuerzos implícitos
-        if (
-          itemName.includes('retoque') || 
-          itemName.includes('refuerzo') || 
-          itemCategory.includes('retoque') || 
-          itemCategory.includes('refuerzo')
-        ) {
-          return false;
-        }
+        // Excluir retoques y refuerzos
+        const isExcluded = dbName.includes('retoque') || dbName.includes('refuerzo') || dbCat.includes('retoque') || dbCat.includes('refuerzo');
+        if (isExcluded) return false;
 
-        // COINCIDENCIA EXACTA: Valida que la columna 'category' coincida con las elegidas por el usuario
-        return normalizedSelectedCats.includes(itemCategory);
+        // Validar si la categoría del servicio en la BD coincide con alguna seleccionada
+        return normalizedSelectedCats.some((selCat) => {
+          if (dbCat && (dbCat.includes(selCat) || selCat.includes(dbCat))) {
+            return true;
+          }
+          const roots = categoryRoots[selCat] || [selCat];
+          return roots.some((root) => dbCat.includes(root));
+        });
       });
 
       const servicesList = filtered.map((s: any) => {
         const dur = s.duracion || 45;
         const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-        const catName = s.category || 'Servicio';
+        const catName = s.category || s.categoria || 'Servicio';
 
         return {
           id: String(s.SKU || s.id),
@@ -446,7 +467,7 @@ export async function POST(req: Request) {
         }
       };
     }
-    // 🎯 PASO 3: RECIBIR SERVICIO ➔ MOSTRAR ESPECIALISTAS CALIFICADAS
+    // 🎯 PASO 3: RECIBIR SERVICIO ➔ MOSTRAR ESPECIALISTAS
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
       const rawSelectedServiceId = String(data.selected_service || '');
 
