@@ -11,6 +11,7 @@ import {
   Bot,
   Briefcase,
   BarChart2,
+  BarChart3, // 🌸 Icono importado para el nuevo menú de Reportes
   DollarSign,
   Settings,
   LogOut,
@@ -21,24 +22,43 @@ interface AppSidebarProps {
   onClose?: () => void;
 }
 
+/* =========================================================
+   🔹 LISTADO DE ELEMENTOS DEL MENÚ PRINCIPAL
+========================================================= */
 const MENU_ITEMS = [
   { id: "inicio", name: "Inicio", href: "/inicio", icon: Home },
   { id: "agenda", name: "Agenda", href: "/agenda", icon: Calendar },
   { id: "bot", name: "Bot", href: "/bot", icon: Bot },
   { id: "business", name: "Negocio", href: "/business", icon: Briefcase },
   { id: "mis_informes", name: "Informes", href: "/mis_informes", icon: BarChart2 },
+  { id: "reportes", name: "Reportes", href: "/reportes", icon: BarChart3 }, // 👈 🎯 ÍTEM DE REPORTES AGREGADO
   { id: "finanzas", name: "Finanzas", href: "/finanzas", icon: DollarSign },
   { id: "settings", name: "Ajustes", href: "/settings", icon: Settings },
 ];
 
+/* =========================================================
+   🔹 CONFIGURACIÓN DE PERMISOS POR DEFECTO Y ROLES
+========================================================= */
 const FULL_PERMISSIONS: Record<string, boolean> = {
   inicio: true,
   agenda: true,
   bot: true,
   business: true,
   mis_informes: true,
+  reportes: true, // 👈 Habilitado para administradores
   finanzas: true,
   settings: true,
+};
+
+const MARKETING_PERMISSIONS: Record<string, boolean> = {
+  inicio: true,
+  agenda: true,
+  bot: true,
+  business: false,
+  mis_informes: true,
+  reportes: true, // 👈 Habilitado por defecto para rol MARKETING
+  finanzas: false,
+  settings: false,
 };
 
 const DEFAULT_PERMISSIONS: Record<string, boolean> = {
@@ -47,6 +67,7 @@ const DEFAULT_PERMISSIONS: Record<string, boolean> = {
   bot: false,
   business: false,
   mis_informes: true,
+  reportes: true, // 👈 Habilitado por defecto
   finanzas: false,
   settings: true,
 };
@@ -84,11 +105,21 @@ export default function AppSidebar({ isCollapsed = false, onClose }: AppSidebarP
           const cleanEmail = session.email.trim().toLowerCase();
           const mainAdminEmail = "lesliegutierrezpmu@gmail.com";
           const isMasterAdmin = cleanEmail === mainAdminEmail.toLowerCase();
-          const isRoleAdmin = (session.role || "").toUpperCase() === "ADMIN";
+          const roleUpperSession = (session.role || "").toString().toUpperCase();
+
+          const isRoleAdmin = roleUpperSession === "ADMIN" || roleUpperSession === "ADMINISTRADOR";
+          const isRoleMarketing = roleUpperSession === "MARKETING";
 
           if (isMasterAdmin || isRoleAdmin) {
             setIsAdmin(true);
             setUserPermissions(FULL_PERMISSIONS);
+            setLoadingPermissions(false);
+            return;
+          }
+
+          if (isRoleMarketing) {
+            setIsAdmin(false);
+            setUserPermissions(MARKETING_PERMISSIONS);
             setLoadingPermissions(false);
             return;
           }
@@ -100,13 +131,16 @@ export default function AppSidebar({ isCollapsed = false, onClose }: AppSidebarP
             .maybeSingle();
 
           if (!error && data) {
-            const roleUpper = (data.role || "").toString().toUpperCase();
-            const esAdminBD = roleUpper === "ADMIN" || roleUpper === "ADMINISTRADOR";
+            const roleUpperBD = (data.role || "").toString().toUpperCase();
+            const esAdminBD = roleUpperBD === "ADMIN" || roleUpperBD === "ADMINISTRADOR";
+            const esMarketingBD = roleUpperBD === "MARKETING";
 
             setIsAdmin(esAdminBD);
 
             if (esAdminBD) {
               setUserPermissions(FULL_PERMISSIONS);
+            } else if (esMarketingBD) {
+              setUserPermissions(MARKETING_PERMISSIONS);
             } else {
               setUserPermissions(parsePermissions(data.permissions));
             }
@@ -153,6 +187,7 @@ export default function AppSidebar({ isCollapsed = false, onClose }: AppSidebarP
     }
   };
 
+  // Filtrar los elementos del menú visibles según permisos del usuario
   const visibleMenuItems = MENU_ITEMS.filter((item) => {
     if (isAdmin) return true;
     return userPermissions[item.id] === true;
