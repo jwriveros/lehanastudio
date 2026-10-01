@@ -79,7 +79,7 @@ function formatTime12h(time24: string): string {
   return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
 }
 
-// 🛠️ Recorta títulos para cumplir con el límite estricto de Meta (30 caracteres)
+// 🛠️ Trunca el título a un máximo de 30 caracteres para cumplir con la norma de Meta Flows
 function truncateTitle(str: string, maxLen: number = 30): string {
   if (!str) return '';
   const trimmed = str.trim();
@@ -87,11 +87,11 @@ function truncateTitle(str: string, maxLen: number = 30): string {
   return trimmed.substring(0, maxLen - 1) + '…';
 }
 
-// 🛠️ Limpiador universal para las entradas recibidas desde CheckboxGroup de Meta Flows
-function parseSelectedCategories(raw: any): string[] {
+// 🛠️ Normalizador de arrays recibidos desde CheckboxGroup de Meta Flows
+function parseSelectedArray(raw: any): string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) {
-    return raw.flatMap(item => parseSelectedCategories(item));
+    return raw.flatMap(item => parseSelectedArray(item));
   }
   if (typeof raw === 'string') {
     let str = raw.trim();
@@ -110,7 +110,7 @@ function parseSelectedCategories(raw: any): string[] {
   return [String(raw)];
 }
 
-// 🛠️ Normalizador de texto (quita tildes, símbolos y mayúsculas)
+// 🛠️ Normalizador de texto (remueve tildes y convierte a minúsculas)
 function normalizeText(str: any): string {
   return String(str || '')
     .toLowerCase()
@@ -120,7 +120,12 @@ function normalizeText(str: any): string {
     .trim();
 }
 
-async function getAvailableSlots(serviceId: string, sede: string, explicitSpecialistInput: string | null, filterDate: string | null = null) {
+async function getAvailableSlots(
+  serviceIds: string[],
+  sede: string,
+  explicitSpecialistInput: string | null,
+  filterDate: string | null = null
+) {
   let explicitSpecialist = explicitSpecialistInput;
   if (
     explicitSpecialist === "undefined" ||
@@ -132,28 +137,44 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
   }
 
   const { data: allServicesDB } = await supabase.from("services").select("*");
-  const service = (allServicesDB || []).find(
-    (s: any) => String(s.SKU) === String(serviceId) || String(s.id) === String(serviceId)
+  const rawServices = allServicesDB || [];
+
+  // Obtener los objetos de todos los servicios seleccionados
+  const matchedServices = rawServices.filter(
+    (s: any) => serviceIds.includes(String(s.SKU)) || serviceIds.includes(String(s.id))
   );
 
-  if (!service) return [];
+  if (matchedServices.length === 0) return [];
 
-  const duration = parseInt(service.duracion || "60", 10);
-  const serviceSku = service.SKU || service.id;
+  // Duración total sumando los servicios elegidos
+  const totalDuration = matchedServices.reduce(
+    (sum: number, s: any) => sum + parseInt(s.duracion || "60", 10),
+    0
+  );
 
-  let serviceEspecialistas: string[] = [];
-  if (typeof service.especialistas === "string") {
-    try { serviceEspecialistas = JSON.parse(service.especialistas); } catch { serviceEspecialistas = [service.especialistas]; }
-  } else if (Array.isArray(service.especialistas)) {
-    serviceEspecialistas = service.especialistas;
-  }
+  // Encontrar especialistas capacitadas que coincidan con TODOS los servicios seleccionados
+  let commonSpecialists: string[] = [];
+  matchedServices.forEach((s: any, idx: number) => {
+    let list: string[] = [];
+    if (typeof s.especialistas === "string") {
+      try { list = JSON.parse(s.especialistas); } catch { list = [s.especialistas]; }
+    } else if (Array.isArray(s.especialistas)) {
+      list = s.especialistas;
+    }
+
+    if (idx === 0) {
+      commonSpecialists = list;
+    } else {
+      commonSpecialists = commonSpecialists.filter((spName) => list.includes(spName));
+    }
+  });
 
   const { data: specialists } = await supabase
     .from("app_users")
     .select("id, name, horario_semanal");
 
   let qualifiedSpecialists = (specialists || []).filter((sp) =>
-    serviceEspecialistas.includes(sp.name)
+    commonSpecialists.includes(sp.name)
   );
 
   if (explicitSpecialist) {
@@ -237,7 +258,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
 
     for (const slot of candidateSlots) {
       const slotStartMin = timeToMinutes(slot);
-      const slotEndMin = slotStartMin + duration;
+      const slotEndMin = slotStartMin + totalDuration;
       const freeSpecialistsForSlot: string[] = [];
 
       for (const sp of qualifiedSpecialists) {
@@ -255,7 +276,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
           if (dayConfig && dayConfig.estado === "abierto") {
             const workStartMin = timeToMinutes(dayConfig.inicio || "09:00");
             const lastSlotAllowedMin = timeToMinutes(dayConfig.fin || "18:00");
-            if (slotStartMin >= workStartMin && slotStartMin <= lastSlotAllowedMin) {
+            if (slotStartMin >= workStartMin && slotEndMin <= lastSlotAllowedMin) {
               isAvailableInSede = true;
             }
           }
@@ -278,22 +299,11 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
             if (!rule.sede || rule.sede.toLowerCase() !== sede.toLowerCase()) return false;
             const bStartMin = timeToMinutes(rule.start_time || "00:00");
             const bEndMin = timeToMinutes(rule.end_time || "23:59");
-            return slotStartMin >= bStartMin && slotStartMin <= bEndMin;
+            return slotStartMin >= bStartMin && slotEndMin <= bEndMin;
           });
 
           if (assignedSedeOverride) {
-            if (
-              assignedSedeOverride.allowed_services &&
-              Array.isArray(assignedSedeOverride.allowed_services) &&
-              assignedSedeOverride.allowed_services.length > 0
-            ) {
-              const isServiceAllowed =
-                assignedSedeOverride.allowed_services.includes(serviceSku) ||
-                assignedSedeOverride.allowed_services.includes(service.id);
-              if (isServiceAllowed) isAvailableInSede = true;
-            } else {
-              isAvailableInSede = true;
-            }
+            isAvailableInSede = true;
           }
         }
 
@@ -398,7 +408,7 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
-    // 🎯 PASO 1: INIT ➔ LISTA DE CATEGORÍAS
+    // 🎯 PASO 1: INIT ➔ MOSTRAR CATEGORÍAS
     else if (action === 'INIT') {
       const categoriesList = [
         { id: "Pestañas", title: truncateTitle("👁️ Pestañas", 30), description: "Extensiones clásicas, volumen, lifting" },
@@ -414,18 +424,10 @@ export async function POST(req: Request) {
         data: { categories_list: categoriesList },
       };
     }
-    // 🎯 PASO 2: FILTRADO MULTI-CATEGORÍA Y ENVÍO DE SERVICIOS CON TÍTULOS RECORTADOS
+    // 🎯 PASO 2: FILTRADO EXACTO POR CATEGORÍA DE LA BASE DE DATOS
     else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
-      const selectedCategories = parseSelectedCategories(data.selected_categories);
+      const selectedCategories = parseSelectedArray(data.selected_categories);
       const normalizedSelectedCats = selectedCategories.map(normalizeText);
-
-      const categoryRoots: Record<string, string[]> = {
-        "pestanas": ["pestana", "pestan", "lash"],
-        "cejas": ["ceja", "cej", "brow"],
-        "micropigmentacion": ["micropigmentacion", "micropigm", "microblading", "microshading"],
-        "limpieza facial": ["limpieza", "facial", "hidra"],
-        "depilacion": ["depilacion", "depil", "epil"]
-      };
 
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
@@ -438,14 +440,8 @@ export async function POST(req: Request) {
         const isExcluded = dbName.includes('retoque') || dbName.includes('refuerzo') || dbCat.includes('retoque') || dbCat.includes('refuerzo');
         if (isExcluded) return false;
 
-        // Validar si la categoría o el nombre del servicio coinciden con las opciones seleccionadas
-        return normalizedSelectedCats.some((selCat) => {
-          if (dbCat && (dbCat.includes(selCat) || selCat.includes(dbCat))) return true;
-          if (dbName && (dbName.includes(selCat) || selCat.includes(dbName))) return true;
-
-          const roots = categoryRoots[selCat] || [selCat];
-          return roots.some((root) => dbCat.includes(root) || dbName.includes(root));
-        });
+        // FILTRO EXACTO: Compara únicamente la columna `category` con las categorías seleccionadas
+        return normalizedSelectedCats.some((selCat) => selCat === dbCat);
       });
 
       const servicesList = filtered.map((s: any) => {
@@ -455,7 +451,6 @@ export async function POST(req: Request) {
 
         return {
           id: String(s.SKU || s.id),
-          // Garantiza que ningún título supere el límite de 30 caracteres de WhatsApp
           title: truncateTitle(serviceName, 30),
           description: `⏱️ ${dur} min • 💳 $${precio} COP`
         };
@@ -474,31 +469,33 @@ export async function POST(req: Request) {
         }
       };
     }
-    // 🎯 PASO 3: RECIBIR SERVICIO ➔ MOSTRAR ESPECIALISTAS
+    // 🎯 PASO 3: RECIBIR LISTA DE SERVICIOS SELECCIONADOS ➔ FILTRAR ESPECIALISTAS COMUNES
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
-      const rawSelectedServiceId = String(data.selected_service || '');
+      const selectedServices = parseSelectedArray(data.selected_services);
 
       const { data: allServicesDB } = await supabase.from('services').select('*');
+      const rawServices = allServicesDB || [];
 
-      const matchedService = (allServicesDB || []).find((s: any) => {
-        const skuStr = String(s.SKU || '');
-        const idStr = String(s.id || '');
-        return skuStr === rawSelectedServiceId || idStr === rawSelectedServiceId;
-      });
+      const matchedServices = rawServices.filter(
+        (s: any) => selectedServices.includes(String(s.SKU)) || selectedServices.includes(String(s.id))
+      );
 
-      let serviceEspecialistas: string[] = [];
-
-      if (matchedService && matchedService.especialistas) {
-        if (typeof matchedService.especialistas === 'string') {
-          try {
-            serviceEspecialistas = JSON.parse(matchedService.especialistas);
-          } catch {
-            serviceEspecialistas = [matchedService.especialistas];
-          }
-        } else if (Array.isArray(matchedService.especialistas)) {
-          serviceEspecialistas = matchedService.especialistas;
+      // Hallar especialistas compartidas por TODOS los servicios elegidos
+      let commonSpecialists: string[] = [];
+      matchedServices.forEach((s: any, idx: number) => {
+        let list: string[] = [];
+        if (typeof s.especialistas === 'string') {
+          try { list = JSON.parse(s.especialistas); } catch { list = [s.especialistas]; }
+        } else if (Array.isArray(s.especialistas)) {
+          list = s.especialistas;
         }
-      }
+
+        if (idx === 0) {
+          commonSpecialists = list;
+        } else {
+          commonSpecialists = commonSpecialists.filter((spName) => list.includes(spName));
+        }
+      });
 
       const { data: usersDB } = await supabase
         .from('app_users')
@@ -506,12 +503,8 @@ export async function POST(req: Request) {
         .neq('role', 'ADMIN');
 
       const appUserNames = (usersDB || []).map((u: any) => u.name);
-
-      const qualifiedNames = serviceEspecialistas.filter((name) =>
-        appUserNames.includes(name)
-      );
-
-      const finalNames = qualifiedNames.length > 0 ? qualifiedNames : serviceEspecialistas;
+      const qualifiedNames = commonSpecialists.filter((name) => appUserNames.includes(name));
+      const finalNames = qualifiedNames.length > 0 ? qualifiedNames : commonSpecialists;
 
       const specialistsList: Array<{ id: string; title: string; description?: string }> = [
         {
@@ -535,12 +528,13 @@ export async function POST(req: Request) {
         version: '3.0',
         screen: 'SPECIALIST_SCREEN',
         data: {
-          selected_service: rawSelectedServiceId,
+          selected_services: selectedServices,
           specialists_list: specialistsList
         }
       };
     }
     else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
+      const selectedServices = parseSelectedArray(data.selected_services);
       const todayStr = new Date().toISOString().split('T')[0];
       const { data: overrides } = await supabase.from('specialist_overrides').select('sede').eq('type', 'assigned_sede').gte('date', todayStr);
 
@@ -563,13 +557,14 @@ export async function POST(req: Request) {
         version: '3.0',
         screen: 'LOCATION_SCREEN',
         data: {
-          selected_service: data.selected_service,
+          selected_services: selectedServices,
           selected_specialist: data.selected_specialist,
           locations_list: locationsList,
         },
       };
     }
     else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
+      const selectedServices = parseSelectedArray(data.selected_services);
       const colombiaToday = getColombiaNow();
       const tomorrow = new Date(colombiaToday);
       tomorrow.setDate(colombiaToday.getDate() + 1);
@@ -581,7 +576,7 @@ export async function POST(req: Request) {
         version: '3.0',
         screen: 'DATE_SCREEN',
         data: {
-          selected_service: data.selected_service,
+          selected_services: selectedServices,
           selected_specialist: data.selected_specialist,
           selected_sede: data.selected_sede || 'Marquetalia',
           min_date: formatLocalDate(tomorrow),
@@ -590,12 +585,12 @@ export async function POST(req: Request) {
       };
     }
     else if (action === 'data_exchange' && screen === 'DATE_SCREEN') {
-      const serviceId = data.selected_service;
+      const selectedServices = parseSelectedArray(data.selected_services);
       const specialist = data.selected_specialist;
       const sede = data.selected_sede || 'Marquetalia';
       const selectedDate = data.selected_date;
 
-      const slotsList = await getAvailableSlots(serviceId, sede, specialist, selectedDate);
+      const slotsList = await getAvailableSlots(selectedServices, sede, specialist, selectedDate);
       const finalSlots = slotsList.length > 0 ? slotsList : [{ id: 'NONE', title: truncateTitle('Sin turnos libres en esta fecha', 30) }];
 
       const countryCodes = [
@@ -613,7 +608,7 @@ export async function POST(req: Request) {
         version: '3.0',
         screen: 'TIME_SCREEN',
         data: {
-          selected_service: serviceId,
+          selected_services: selectedServices,
           selected_specialist: specialist,
           selected_sede: sede,
           selected_date: selectedDate,
@@ -624,12 +619,22 @@ export async function POST(req: Request) {
     }
     else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
+      const selectedServices = parseSelectedArray(data.selected_services);
+
+      const { data: allServicesDB } = await supabase.from('services').select('*');
+      const rawServices = allServicesDB || [];
+      const matched = rawServices.filter(
+        (s: any) => selectedServices.includes(String(s.SKU)) || selectedServices.includes(String(s.id))
+      );
+
+      const serviceNames = matched.map((s: any) => s.Servicio || s.servicio).join(', ');
+      const totalPrice = matched.reduce((sum: number, s: any) => sum + Number(s.Precio || s.precio || 0), 0);
 
       responsePayload = {
         version: '3.0',
         screen: 'SUMMARY_SCREEN',
         data: {
-          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n📍 *Sede:* ${data.selected_sede}\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
+          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n💅 *Servicio(s):* ${serviceNames}\n💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP\n📍 *Sede:* ${data.selected_sede}\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
         },
       };
     }
