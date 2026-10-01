@@ -79,7 +79,6 @@ function formatTime12h(time24: string): string {
   return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
 }
 
-// 🛠️ Limita títulos a un máximo de 30 caracteres para cumplir con la API de Meta Flows
 function truncateTitle(str: string, maxLen: number = 30): string {
   if (!str) return '';
   const trimmed = str.trim();
@@ -87,11 +86,10 @@ function truncateTitle(str: string, maxLen: number = 30): string {
   return trimmed.substring(0, maxLen - 1) + '…';
 }
 
-// 🛠️ Convierte entradas diversas (arrays, JSON string, comas) en un array de cadenas
-function parseSelectedArray(raw: any): string[] {
+function parseSelectedCategories(raw: any): string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) {
-    return raw.flatMap(item => parseSelectedArray(item));
+    return raw.flatMap(item => parseSelectedCategories(item));
   }
   if (typeof raw === 'string') {
     let str = raw.trim();
@@ -110,7 +108,6 @@ function parseSelectedArray(raw: any): string[] {
   return [String(raw)];
 }
 
-// 🛠️ Normaliza texto quitando tildes, símbolos y mayúsculas
 function normalizeText(str: any): string {
   return String(str || '')
     .toLowerCase()
@@ -120,37 +117,8 @@ function normalizeText(str: any): string {
     .trim();
 }
 
-// 🛠️ Evalúa si la categoría del servicio en la BD coincide con alguna categoría seleccionada
-function isCategoryMatched(dbCatRaw: string, selectedCatsNormalized: string[]): boolean {
-  const dbCat = normalizeText(dbCatRaw);
-  if (!dbCat) return false;
-
-  const categoryRoots: Record<string, string[]> = {
-    "pestanas": ["pestan", "lash"],
-    "cejas": ["cej", "brow"],
-    "micropigmentacion": ["micro"],
-    "limpieza facial": ["limpieza", "facial", "hidra"],
-    "depilacion": ["depil", "epil"]
-  };
-
-  for (const sel of selectedCatsNormalized) {
-    // Coincidencia directa en la columna category
-    if (sel === dbCat || dbCat.includes(sel) || sel.includes(dbCat)) {
-      return true;
-    }
-    // Coincidencia mediante raíces clave sobre la columna category
-    const roots = categoryRoots[sel] || [sel];
-    for (const root of roots) {
-      if (dbCat.includes(root)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 async function getAvailableSlots(
-  serviceIds: string[],
+  serviceInput: string | string[],
   sede: string,
   explicitSpecialistInput: string | null,
   filterDate: string | null = null
@@ -165,6 +133,8 @@ async function getAvailableSlots(
     explicitSpecialist = null;
   }
 
+  const serviceIds = Array.isArray(serviceInput) ? serviceInput : [serviceInput];
+
   const { data: allServicesDB } = await supabase.from("services").select("*");
   const rawServices = allServicesDB || [];
 
@@ -174,11 +144,13 @@ async function getAvailableSlots(
 
   if (matchedServices.length === 0) return [];
 
-  const totalDuration = matchedServices.reduce(
+  // Suma de la duración total de todos los servicios seleccionados
+  const duration = matchedServices.reduce(
     (sum: number, s: any) => sum + parseInt(s.duracion || "60", 10),
     0
   );
 
+  // Encontrar especialistas que estén capacitadas para TODOS los servicios seleccionados
   let commonSpecialists: string[] = [];
   matchedServices.forEach((s: any, idx: number) => {
     let list: string[] = [];
@@ -284,7 +256,7 @@ async function getAvailableSlots(
 
     for (const slot of candidateSlots) {
       const slotStartMin = timeToMinutes(slot);
-      const slotEndMin = slotStartMin + totalDuration;
+      const slotEndMin = slotStartMin + duration;
       const freeSpecialistsForSlot: string[] = [];
 
       for (const sp of qualifiedSpecialists) {
@@ -329,7 +301,20 @@ async function getAvailableSlots(
           });
 
           if (assignedSedeOverride) {
-            isAvailableInSede = true;
+            if (
+              assignedSedeOverride.allowed_services &&
+              Array.isArray(assignedSedeOverride.allowed_services) &&
+              assignedSedeOverride.allowed_services.length > 0
+            ) {
+              const isServiceAllowed = matchedServices.some(
+                (s: any) =>
+                  assignedSedeOverride.allowed_services.includes(s.SKU) ||
+                  assignedSedeOverride.allowed_services.includes(s.id)
+              );
+              if (isServiceAllowed) isAvailableInSede = true;
+            } else {
+              isAvailableInSede = true;
+            }
           }
         }
 
@@ -434,78 +419,66 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
-    // 🎯 PASO 1: INIT ➔ ENVIAR LISTA DE CATEGORÍAS
+    // 🎯 PASO 1: INIT ➔ CARGAR PANTALLA UNIFICADA DE SERVICIOS
     else if (action === 'INIT') {
-      const categoriesList = [
-        { id: "Pestañas", title: truncateTitle("👁️ Pestañas", 30), description: "Extensiones clásicas, volumen, lifting" },
-        { id: "Cejas", title: truncateTitle("🎨 Cejas", 30), description: "Diseño, depilación, sombreado y laminado" },
-        { id: "Micropigmentación", title: truncateTitle("✨ Micropigmentación", 30), description: "Efecto polvo, labios y delineado" },
-        { id: "Limpieza facial", title: truncateTitle("💆‍♀️ Limpieza facial", 30), description: "Limpieza profunda e hidratación" },
-        { id: "Depilación", title: truncateTitle("🪒 Depilación", 30), description: "Epilación con cera suave facial y corporal" }
-      ];
-
-      responsePayload = {
-        version: '3.0',
-        screen: 'CATEGORIES_SCREEN',
-        data: { categories_list: categoriesList },
-      };
-    }
-    // 🎯 PASO 2: FILTRADO MULTI-CATEGORÍA POR COLUMNA `category`
-    else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
-      const selectedCategories = parseSelectedArray(data.selected_categories);
-      const normalizedSelectedCats = selectedCategories.map(normalizeText);
-
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
 
-      const filtered = rawServices.filter((s: any) => {
-        const dbCatRaw = String(s.category || s.categoria || '');
-        const dbNameRaw = String(s.Servicio || s.servicio || '');
-
-        const dbCatNorm = normalizeText(dbCatRaw);
-        const dbNameNorm = normalizeText(dbNameRaw);
-
-        // Excluir retoques y refuerzos
-        const isExcluded =
-          dbNameNorm.includes('retoque') ||
-          dbNameNorm.includes('refuerzo') ||
-          dbCatNorm.includes('retoque') ||
-          dbCatNorm.includes('refuerzo');
-
-        if (isExcluded) return false;
-
-        // Compara la columna category de la BD con la selección recibida
-        return isCategoryMatched(dbCatRaw, normalizedSelectedCats);
+      // Excluir retoques y refuerzos
+      const cleanServices = rawServices.filter((s: any) => {
+        const dbName = normalizeText(s.Servicio || s.servicio || '');
+        const dbCat = normalizeText(s.category || s.categoria || '');
+        return !dbName.includes('retoque') && !dbName.includes('refuerzo') &&
+               !dbCat.includes('retoque') && !dbCat.includes('refuerzo');
       });
 
-      const servicesList = filtered.map((s: any) => {
-        const dur = s.duracion || 45;
-        const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-        const serviceName = String(s.Servicio || s.servicio || 'Servicio');
-
-        return {
-          id: String(s.SKU || s.id),
-          title: truncateTitle(serviceName, 30),
-          description: `⏱️ ${dur} min • 💳 $${precio} COP`
-        };
+      const formatItem = (s: any) => ({
+        id: String(s.SKU || s.id),
+        title: truncateTitle(String(s.Servicio || s.servicio || 'Servicio'), 30),
+        description: `⏱️ ${s.duracion || 45} min • 💳 $${Number(s.Precio || s.precio || 0).toLocaleString('es-CO')} COP`
       });
 
-      const finalServicesList = servicesList.length > 0
-        ? servicesList.slice(0, 25)
-        : [{ id: "NONE", title: truncateTitle("Sin servicios disponibles", 30), description: "Intenta seleccionando otras categorías" }];
+      const pestanasList = cleanServices
+        .filter((s: any) => normalizeText(s.category || s.categoria) === 'pestanas')
+        .map(formatItem);
+
+      const cejasList = cleanServices
+        .filter((s: any) => normalizeText(s.category || s.categoria) === 'cejas')
+        .map(formatItem);
+
+      const microList = cleanServices
+        .filter((s: any) => normalizeText(s.category || s.categoria) === 'micropigmentacion')
+        .map(formatItem);
+
+      const limpiezaList = cleanServices
+        .filter((s: any) => normalizeText(s.category || s.categoria) === 'limpieza facial')
+        .map(formatItem);
+
+      const depilacionList = cleanServices
+        .filter((s: any) => normalizeText(s.category || s.categoria) === 'depilacion')
+        .map(formatItem);
 
       responsePayload = {
         version: '3.0',
         screen: 'SERVICES_SCREEN',
         data: {
-          selected_categories: selectedCategories,
-          services_list: finalServicesList
-        }
+          pestanas_list: pestanasList,
+          cejas_list: cejasList,
+          micro_list: microList,
+          limpieza_list: limpiezaList,
+          depilacion_list: depilacionList
+        },
       };
     }
-    // 🎯 PASO 3: SERVICIOS SELECCIONADOS ➔ ESPECIALISTAS
+    // 🎯 PASO 2: CONSOLIDAR SELECCIONES MÚLTIPLES Y CARGAR ESPECIALISTAS
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
-      const selectedServices = parseSelectedArray(data.selected_services);
+      const p1 = parseSelectedCategories(data.selected_pestanas);
+      const p2 = parseSelectedCategories(data.selected_cejas);
+      const p3 = parseSelectedCategories(data.selected_micro);
+      const p4 = parseSelectedCategories(data.selected_limpieza);
+      const p5 = parseSelectedCategories(data.selected_depilacion);
+
+      const selectedServices = [...p1, ...p2, ...p3, ...p4, ...p5];
 
       const { data: allServicesDB } = await supabase.from('services').select('*');
       const rawServices = allServicesDB || [];
@@ -514,6 +487,7 @@ export async function POST(req: Request) {
         (s: any) => selectedServices.includes(String(s.SKU)) || selectedServices.includes(String(s.id))
       );
 
+      // Filtrar especialistas que realizan TODOS los servicios seleccionados
       let commonSpecialists: string[] = [];
       matchedServices.forEach((s: any, idx: number) => {
         let list: string[] = [];
@@ -566,8 +540,9 @@ export async function POST(req: Request) {
         }
       };
     }
+    // 🎯 PASO 3: SELECCIÓN DE SEDE
     else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
-      const selectedServices = parseSelectedArray(data.selected_services);
+      const selectedServices = parseSelectedCategories(data.selected_services);
       const todayStr = new Date().toISOString().split('T')[0];
       const { data: overrides } = await supabase.from('specialist_overrides').select('sede').eq('type', 'assigned_sede').gte('date', todayStr);
 
@@ -596,8 +571,9 @@ export async function POST(req: Request) {
         },
       };
     }
+    // 🎯 PASO 4: SELECCIÓN DE FECHA
     else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
-      const selectedServices = parseSelectedArray(data.selected_services);
+      const selectedServices = parseSelectedCategories(data.selected_services);
       const colombiaToday = getColombiaNow();
       const tomorrow = new Date(colombiaToday);
       tomorrow.setDate(colombiaToday.getDate() + 1);
@@ -617,8 +593,9 @@ export async function POST(req: Request) {
         },
       };
     }
+    // 🎯 PASO 5: CÁLCULO DE HORARIOS DISPONIBLES Y CONTACTO
     else if (action === 'data_exchange' && screen === 'DATE_SCREEN') {
-      const selectedServices = parseSelectedArray(data.selected_services);
+      const selectedServices = parseSelectedCategories(data.selected_services);
       const specialist = data.selected_specialist;
       const sede = data.selected_sede || 'Marquetalia';
       const selectedDate = data.selected_date;
@@ -650,9 +627,10 @@ export async function POST(req: Request) {
         },
       };
     }
+    // 🎯 PASO 6: RESUMEN FINAL
     else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
-      const selectedServices = parseSelectedArray(data.selected_services);
+      const selectedServices = parseSelectedCategories(data.selected_services);
 
       const { data: allServicesDB } = await supabase.from('services').select('*');
       const rawServices = allServicesDB || [];
@@ -667,7 +645,7 @@ export async function POST(req: Request) {
         version: '3.0',
         screen: 'SUMMARY_SCREEN',
         data: {
-          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n💅 *Servicio(s):* ${serviceNames}\n💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP\n📍 *Sede:* ${data.selected_sede}\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
+          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n💅 *Servicio(s):* ${serviceNames || 'Servicios seleccionados'}\n💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP\n📍 *Sede:* ${data.selected_sede}\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
         },
       };
     }
