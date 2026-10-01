@@ -79,7 +79,7 @@ function formatTime12h(time24: string): string {
   return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
 }
 
-// 🛠️ Trunca el título a un máximo de 30 caracteres para cumplir con la norma de Meta Flows
+// 🛠️ Limita títulos a un máximo de 30 caracteres para cumplir con la API de Meta Flows
 function truncateTitle(str: string, maxLen: number = 30): string {
   if (!str) return '';
   const trimmed = str.trim();
@@ -87,7 +87,7 @@ function truncateTitle(str: string, maxLen: number = 30): string {
   return trimmed.substring(0, maxLen - 1) + '…';
 }
 
-// 🛠️ Normalizador de arrays recibidos desde CheckboxGroup de Meta Flows
+// 🛠️ Convierte entradas diversas (arrays, JSON string, comas) en un array de cadenas
 function parseSelectedArray(raw: any): string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) {
@@ -110,7 +110,7 @@ function parseSelectedArray(raw: any): string[] {
   return [String(raw)];
 }
 
-// 🛠️ Normalizador de texto (remueve tildes y convierte a minúsculas)
+// 🛠️ Normaliza texto quitando tildes, símbolos y mayúsculas
 function normalizeText(str: any): string {
   return String(str || '')
     .toLowerCase()
@@ -118,6 +118,35 @@ function normalizeText(str: any): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9\s]/g, "")
     .trim();
+}
+
+// 🛠️ Evalúa si la categoría del servicio en la BD coincide con alguna categoría seleccionada
+function isCategoryMatched(dbCatRaw: string, selectedCatsNormalized: string[]): boolean {
+  const dbCat = normalizeText(dbCatRaw);
+  if (!dbCat) return false;
+
+  const categoryRoots: Record<string, string[]> = {
+    "pestanas": ["pestan", "lash"],
+    "cejas": ["cej", "brow"],
+    "micropigmentacion": ["micro"],
+    "limpieza facial": ["limpieza", "facial", "hidra"],
+    "depilacion": ["depil", "epil"]
+  };
+
+  for (const sel of selectedCatsNormalized) {
+    // Coincidencia directa en la columna category
+    if (sel === dbCat || dbCat.includes(sel) || sel.includes(dbCat)) {
+      return true;
+    }
+    // Coincidencia mediante raíces clave sobre la columna category
+    const roots = categoryRoots[sel] || [sel];
+    for (const root of roots) {
+      if (dbCat.includes(root)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 async function getAvailableSlots(
@@ -139,20 +168,17 @@ async function getAvailableSlots(
   const { data: allServicesDB } = await supabase.from("services").select("*");
   const rawServices = allServicesDB || [];
 
-  // Obtener los objetos de todos los servicios seleccionados
   const matchedServices = rawServices.filter(
     (s: any) => serviceIds.includes(String(s.SKU)) || serviceIds.includes(String(s.id))
   );
 
   if (matchedServices.length === 0) return [];
 
-  // Duración total sumando los servicios elegidos
   const totalDuration = matchedServices.reduce(
     (sum: number, s: any) => sum + parseInt(s.duracion || "60", 10),
     0
   );
 
-  // Encontrar especialistas capacitadas que coincidan con TODOS los servicios seleccionados
   let commonSpecialists: string[] = [];
   matchedServices.forEach((s: any, idx: number) => {
     let list: string[] = [];
@@ -408,7 +434,7 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
-    // 🎯 PASO 1: INIT ➔ MOSTRAR CATEGORÍAS
+    // 🎯 PASO 1: INIT ➔ ENVIAR LISTA DE CATEGORÍAS
     else if (action === 'INIT') {
       const categoriesList = [
         { id: "Pestañas", title: truncateTitle("👁️ Pestañas", 30), description: "Extensiones clásicas, volumen, lifting" },
@@ -424,7 +450,7 @@ export async function POST(req: Request) {
         data: { categories_list: categoriesList },
       };
     }
-    // 🎯 PASO 2: FILTRADO EXACTO POR CATEGORÍA DE LA BASE DE DATOS
+    // 🎯 PASO 2: FILTRADO MULTI-CATEGORÍA POR COLUMNA `category`
     else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
       const selectedCategories = parseSelectedArray(data.selected_categories);
       const normalizedSelectedCats = selectedCategories.map(normalizeText);
@@ -433,15 +459,23 @@ export async function POST(req: Request) {
       const rawServices = servicesDB || [];
 
       const filtered = rawServices.filter((s: any) => {
-        const dbCat = normalizeText(s.category || s.categoria);
-        const dbName = normalizeText(s.Servicio || s.servicio);
+        const dbCatRaw = String(s.category || s.categoria || '');
+        const dbNameRaw = String(s.Servicio || s.servicio || '');
+
+        const dbCatNorm = normalizeText(dbCatRaw);
+        const dbNameNorm = normalizeText(dbNameRaw);
 
         // Excluir retoques y refuerzos
-        const isExcluded = dbName.includes('retoque') || dbName.includes('refuerzo') || dbCat.includes('retoque') || dbCat.includes('refuerzo');
+        const isExcluded =
+          dbNameNorm.includes('retoque') ||
+          dbNameNorm.includes('refuerzo') ||
+          dbCatNorm.includes('retoque') ||
+          dbCatNorm.includes('refuerzo');
+
         if (isExcluded) return false;
 
-        // FILTRO EXACTO: Compara únicamente la columna `category` con las categorías seleccionadas
-        return normalizedSelectedCats.some((selCat) => selCat === dbCat);
+        // Compara la columna category de la BD con la selección recibida
+        return isCategoryMatched(dbCatRaw, normalizedSelectedCats);
       });
 
       const servicesList = filtered.map((s: any) => {
@@ -469,7 +503,7 @@ export async function POST(req: Request) {
         }
       };
     }
-    // 🎯 PASO 3: RECIBIR LISTA DE SERVICIOS SELECCIONADOS ➔ FILTRAR ESPECIALISTAS COMUNES
+    // 🎯 PASO 3: SERVICIOS SELECCIONADOS ➔ ESPECIALISTAS
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
       const selectedServices = parseSelectedArray(data.selected_services);
 
@@ -480,7 +514,6 @@ export async function POST(req: Request) {
         (s: any) => selectedServices.includes(String(s.SKU)) || selectedServices.includes(String(s.id))
       );
 
-      // Hallar especialistas compartidas por TODOS los servicios elegidos
       let commonSpecialists: string[] = [];
       matchedServices.forEach((s: any, idx: number) => {
         let list: string[] = [];
