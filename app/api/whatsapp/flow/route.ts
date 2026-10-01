@@ -79,6 +79,14 @@ function formatTime12h(time24: string): string {
   return `${hours < 10 ? `0${hours}` : hours}:${minutes} ${modifier}`;
 }
 
+// 🛠️ Recorta títulos para cumplir con el límite estricto de Meta (30 caracteres)
+function truncateTitle(str: string, maxLen: number = 30): string {
+  if (!str) return '';
+  const trimmed = str.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  return trimmed.substring(0, maxLen - 1) + '…';
+}
+
 // 🛠️ Limpiador universal para las entradas recibidas desde CheckboxGroup de Meta Flows
 function parseSelectedCategories(raw: any): string[] {
   if (!raw) return [];
@@ -94,8 +102,7 @@ function parseSelectedCategories(raw: any): string[] {
     } catch {}
 
     return str
-      .replace(/^\[\vert{}\]$/g, '')
-      .replace(/["']/g, '')
+      .replace(/[\[\]'"]/g, '')
       .split(',')
       .map(s => s.trim())
       .filter(Boolean);
@@ -348,7 +355,7 @@ async function getAvailableSlots(serviceId: string, sede: string, explicitSpecia
       if (freeSpecialistsForSlot.length > 0) {
         slotsList.push({
           id: slot,
-          title: `⏰ ${formatTime12h(slot)}`
+          title: truncateTitle(`⏰ ${formatTime12h(slot)}`, 30)
         });
       }
     }
@@ -394,11 +401,11 @@ export async function POST(req: Request) {
     // 🎯 PASO 1: INIT ➔ LISTA DE CATEGORÍAS
     else if (action === 'INIT') {
       const categoriesList = [
-        { id: "Pestañas", title: "👁️ Pestañas", description: "Extensiones clásicas, volumen, lifting" },
-        { id: "Cejas", title: "🎨 Cejas", description: "Diseño, depilación, sombreado y laminado" },
-        { id: "Micropigmentación", title: "✨ Micropigmentación", description: "Efecto polvo, labios y delineado" },
-        { id: "Limpieza facial", title: "💆‍♀️ Limpieza facial", description: "Limpieza profunda e hidratación" },
-        { id: "Depilación", title: "🪒 Depilación", description: "Epilación con cera suave facial y corporal" }
+        { id: "Pestañas", title: truncateTitle("👁️ Pestañas", 30), description: "Extensiones clásicas, volumen, lifting" },
+        { id: "Cejas", title: truncateTitle("🎨 Cejas", 30), description: "Diseño, depilación, sombreado y laminado" },
+        { id: "Micropigmentación", title: truncateTitle("✨ Micropigmentación", 30), description: "Efecto polvo, labios y delineado" },
+        { id: "Limpieza facial", title: truncateTitle("💆‍♀️ Limpieza facial", 30), description: "Limpieza profunda e hidratación" },
+        { id: "Depilación", title: truncateTitle("🪒 Depilación", 30), description: "Epilación con cera suave facial y corporal" }
       ];
 
       responsePayload = {
@@ -407,12 +414,11 @@ export async function POST(req: Request) {
         data: { categories_list: categoriesList },
       };
     }
-    // 🎯 PASO 2: DESENPAQUETADO SEGURO Y FILTRADO MULTI-CATEGORÍA
+    // 🎯 PASO 2: FILTRADO MULTI-CATEGORÍA Y ENVÍO DE SERVICIOS CON TÍTULOS RECORTADOS
     else if (action === 'data_exchange' && screen === 'CATEGORIES_SCREEN') {
       const selectedCategories = parseSelectedCategories(data.selected_categories);
       const normalizedSelectedCats = selectedCategories.map(normalizeText);
 
-      // Raíces clave para garantizar que la categoría de Supabase coincida sin ambigüedad
       const categoryRoots: Record<string, string[]> = {
         "pestanas": ["pestana", "pestan", "lash"],
         "cejas": ["ceja", "cej", "brow"],
@@ -432,31 +438,32 @@ export async function POST(req: Request) {
         const isExcluded = dbName.includes('retoque') || dbName.includes('refuerzo') || dbCat.includes('retoque') || dbCat.includes('refuerzo');
         if (isExcluded) return false;
 
-        // Validar si la categoría del servicio en la BD coincide con alguna seleccionada
+        // Validar si la categoría o el nombre del servicio coinciden con las opciones seleccionadas
         return normalizedSelectedCats.some((selCat) => {
-          if (dbCat && (dbCat.includes(selCat) || selCat.includes(dbCat))) {
-            return true;
-          }
+          if (dbCat && (dbCat.includes(selCat) || selCat.includes(dbCat))) return true;
+          if (dbName && (dbName.includes(selCat) || selCat.includes(dbName))) return true;
+
           const roots = categoryRoots[selCat] || [selCat];
-          return roots.some((root) => dbCat.includes(root));
+          return roots.some((root) => dbCat.includes(root) || dbName.includes(root));
         });
       });
 
       const servicesList = filtered.map((s: any) => {
         const dur = s.duracion || 45;
         const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-        const catName = s.category || s.categoria || 'Servicio';
+        const serviceName = String(s.Servicio || s.servicio || 'Servicio');
 
         return {
           id: String(s.SKU || s.id),
-          title: `[${catName.toUpperCase()}] ${s.Servicio || s.servicio}`,
+          // Garantiza que ningún título supere el límite de 30 caracteres de WhatsApp
+          title: truncateTitle(serviceName, 30),
           description: `⏱️ ${dur} min • 💳 $${precio} COP`
         };
       });
 
       const finalServicesList = servicesList.length > 0
         ? servicesList.slice(0, 25)
-        : [{ id: "NONE", title: "Sin servicios disponibles", description: "Intenta seleccionando otras categorías" }];
+        : [{ id: "NONE", title: truncateTitle("Sin servicios disponibles", 30), description: "Intenta seleccionando otras categorías" }];
 
       responsePayload = {
         version: '3.0',
@@ -509,7 +516,7 @@ export async function POST(req: Request) {
       const specialistsList: Array<{ id: string; title: string; description?: string }> = [
         {
           id: 'Cualquier profesional',
-          title: '🔀 Cualquier profesional',
+          title: truncateTitle('🔀 Cualquier profesional', 30),
           description: '✨ Máxima disponibilidad de horarios'
         }
       ];
@@ -518,7 +525,7 @@ export async function POST(req: Request) {
         if (name && typeof name === 'string' && name.trim()) {
           specialistsList.push({
             id: name.trim(),
-            title: `🌸 ${name.trim()}`,
+            title: truncateTitle(`🌸 ${name.trim()}`, 30),
             description: 'Especialista capacitada'
           });
         }
@@ -548,9 +555,9 @@ export async function POST(req: Request) {
         });
       }
 
-      const locationsList = [{ id: 'Marquetalia', title: '📍 Marquetalia', description: 'Palomino, La Guajira' }];
-      if (activeSedesMap['Buga']) locationsList.push({ id: 'Buga', title: '📍 Buga', description: 'Valle del Cauca' });
-      if (activeSedesMap['Santa Marta']) locationsList.push({ id: 'Santa Marta', title: '📍 Santa Marta', description: 'Centro Histórico' });
+      const locationsList = [{ id: 'Marquetalia', title: truncateTitle('📍 Marquetalia', 30), description: 'Palomino, La Guajira' }];
+      if (activeSedesMap['Buga']) locationsList.push({ id: 'Buga', title: truncateTitle('📍 Buga', 30), description: 'Valle del Cauca' });
+      if (activeSedesMap['Santa Marta']) locationsList.push({ id: 'Santa Marta', title: truncateTitle('📍 Santa Marta', 30), description: 'Centro Histórico' });
 
       responsePayload = {
         version: '3.0',
@@ -589,17 +596,17 @@ export async function POST(req: Request) {
       const selectedDate = data.selected_date;
 
       const slotsList = await getAvailableSlots(serviceId, sede, specialist, selectedDate);
-      const finalSlots = slotsList.length > 0 ? slotsList : [{ id: 'NONE', title: 'Sin turnos libres en esta fecha' }];
+      const finalSlots = slotsList.length > 0 ? slotsList : [{ id: 'NONE', title: truncateTitle('Sin turnos libres en esta fecha', 30) }];
 
       const countryCodes = [
-        { id: '57', title: '🇨🇴 Colombia (+57)' },
-        { id: '1', title: '🇺🇸 Estados Unidos (+1)' },
-        { id: '34', title: '🇪🇸 España (+34)' },
-        { id: '52', title: '🇲🇽 México (+52)' },
-        { id: '54', title: '🇦🇷 Argentina (+54)' },
-        { id: '56', title: '🇨🇱 Chile (+56)' },
-        { id: '51', title: '🇵🇪 Perú (+51)' },
-        { id: '58', title: '🇻🇪 Venezuela (+58)' },
+        { id: '57', title: truncateTitle('🇨🇴 Colombia (+57)', 30) },
+        { id: '1', title: truncateTitle('🇺🇸 Estados Unidos (+1)', 30) },
+        { id: '34', title: truncateTitle('🇪🇸 España (+34)', 30) },
+        { id: '52', title: truncateTitle('🇲🇽 México (+52)', 30) },
+        { id: '54', title: truncateTitle('🇦🇷 Argentina (+54)', 30) },
+        { id: '56', title: truncateTitle('🇨🇱 Chile (+56)', 30) },
+        { id: '51', title: truncateTitle('🇵🇪 Perú (+51)', 30) },
+        { id: '58', title: truncateTitle('🇻🇪 Venezuela (+58)', 30) },
       ];
 
       responsePayload = {
