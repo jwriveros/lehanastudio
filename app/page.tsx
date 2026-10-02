@@ -164,24 +164,23 @@ export default function HomePage() {
 
           <div className="flex items-center gap-2.5">
       
-            {/* BOTÓN 1: Agendar Cita */}
+            {/* Botón 1: Agendar Cita */}
             <Link
-              href="/reservar"
-              className="bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-xs hover:shadow-rose-500/20"
+              href="/agendar"
+              className="bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
             >
               <Calendar size={14} />
               <span>Agendar Cita</span>
             </Link>
 
-            {/* 🌸 BOTÓN 2: Ver catálogo (Ajustado y compacto) */}
-            <button
-              type="button"
-              onClick={() => router.push("/catalogo")}
-              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-rose-400 hover:text-rose-500 font-bold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            {/* 🌸 Botón 2: Ver catálogo (Redirección activa a /catalogo) */}
+            <Link
+              href="/catalogo"
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-rose-400 hover:text-rose-500 font-bold text-xs px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
             >
               <BookOpen size={14} className="text-rose-500" />
               <span>Ver catálogo</span>
-            </button>
+            </Link>
 
             <button 
               type="button"

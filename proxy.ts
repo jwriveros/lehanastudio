@@ -46,15 +46,21 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const path = request.nextUrl.pathname
 
-  // RUTAS PÚBLICAS LIBRES
+  // 🌸 2. RUTAS PÚBLICAS LIBRES (Ajuste aquí para permitir /catalogo y /agendar sin inicio de sesión)
+  const isPublicPath = 
+    path === '/' || 
+    path === '/reservar' || 
+    path.startsWith('/catalogo') || 
+    path.startsWith('/agendar')
+
   if (!user) {
-    if (path !== '/' && path !== '/reservar') {
+    if (!isPublicPath) {
       return NextResponse.redirect(new URL('/', request.url))
     }
     return response
   }
 
-  // 2. Traer rol y el objeto/cadena de permisos desde app_users
+  // 3. Traer rol y el objeto/cadena de permisos desde app_users
   const { data: userProfile } = await supabase
     .from('app_users')
     .select('role, permissions')
@@ -72,7 +78,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL(isAdmin ? '/agenda' : '/inicio', request.url))
   }
 
-  // 3. Validación de permisos granulares en el Servidor para usuarios no administradores
+  // 4. Validación de permisos granulares en el Servidor para usuarios no administradores
   if (!isAdmin) {
     const routePermissionsMap: Record<string, string> = {
       '/inicio': 'inicio',
