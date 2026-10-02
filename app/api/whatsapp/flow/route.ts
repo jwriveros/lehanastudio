@@ -482,12 +482,24 @@ export async function POST(req: Request) {
                !dbCat.includes('retoque') && !dbCat.includes('refuerzo');
       });
 
+      // 🛠️ Formateo inteligente: Garantiza que el precio NUNCA se corte
       const formatDropdownItem = (s: any) => {
         const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
         const name = String(s.service_flow || s.Servicio || s.servicio || 'Servicio');
+        
+        // 1. Preparamos el sufijo del precio
+        const priceSuffix = ` • $${precio}`; // Ej: " • $115.000" (11 caracteres)
+        
+        // 2. Calculamos cuánto espacio le queda al nombre (Máximo 30 caracteres en Meta)
+        const maxNameLength = 30 - priceSuffix.length; // Ej: 30 - 11 = 19 caracteres
+        
+        // 3. Truncamos ÚNICAMENTE el nombre si se pasa de ese límite
+        const truncatedName = truncateTitle(name, maxNameLength);
+        
+        // 4. Combinamos ambos: "Diseño, Depilació… • $115.000"
         return {
           id: String(s.SKU || s.id),
-          title: truncateTitle(`${name} ($${precio})`, 30)
+          title: `${truncatedName}${priceSuffix}`
         };
       };
 
