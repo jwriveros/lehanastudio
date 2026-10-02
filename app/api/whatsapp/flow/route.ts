@@ -640,7 +640,7 @@ export async function POST(req: Request) {
 
       const slotsList = await getAvailableSlots(selectedServices, sede, specialist, selectedDate);
       
-      // 🛡️ SI NO HAY SLOTS: Se asigna una opción informativa con ID 'NONE'
+      // 🛡️ SI NO HAY TURNOS: Enviamos la opción informativa 'NONE'
       const finalSlots = slotsList.length > 0 
         ? slotsList 
         : [{ id: 'NONE', title: truncateTitle('❌ Sin turnos en esta fecha', 30) }];
@@ -669,12 +669,12 @@ export async function POST(req: Request) {
         },
       };
     }
-    // 🎯 PASO 6: VALIDACIÓN AL PRESIONAR "VER RESUMEN"
+    // 🎯 PASO 6: INTERCEPCIÓN AL INTENTAR AVANZAR DESDE "TIME_SCREEN"
     else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
       const selectedTime = String(data.selected_time || '');
       const selectedServices = parseSelectedCategories(data.selected_services);
 
-      // 🛑 BLOQUEO DE SEGURIDAD: Si seleccionó la opción 'NONE' (Sin turnos) o está vacío
+      // 🛑 SI INTENTA AVANZAR CON LA OPCIÓN 'NONE' O SIN SELECCIONAR HORA:
       if (!selectedTime || selectedTime === 'NONE') {
         const colombiaToday = getColombiaNow();
         const tomorrow = new Date(colombiaToday);
@@ -683,7 +683,7 @@ export async function POST(req: Request) {
         const maxDate = new Date(colombiaToday);
         maxDate.setDate(colombiaToday.getDate() + 30);
 
-        // ↩️ REDIRECCIÓN AUTOMÁTICA: Lo devolvemos a la pantalla de selección de fecha (DATE_SCREEN)
+        // ↩️ DEVOLVEMOS AL USUARIO A LA PANTALLA DE SELECCIÓN DE FECHA (DATE_SCREEN)
         responsePayload = {
           version: '3.0',
           screen: 'DATE_SCREEN',
@@ -696,7 +696,7 @@ export async function POST(req: Request) {
           },
         };
       } else {
-        // ⏩ CONTINUAR AL RESUMEN SI TIENE UN HORARIO VÁLIDO
+        // ⏩ SI ELIGIÓ UN HORARIO VÁLIDO: CONTINUAR AL RESUMEN
         const fullPhone = `+${data.indicativo} ${data.client_phone}`;
         const sedeElegida = data.selected_sede || 'Marquetalia';
 
@@ -711,27 +711,11 @@ export async function POST(req: Request) {
         const serviceNames = matched.map((s: any) => s.Servicio || s.servicio).join(', ');
         const totalPrice = matched.reduce((sum: number, s: any) => sum + Number(s.Precio || s.precio || 0), 0);
 
-        const summaryMarkdown = `Por favor confirma los detalles de tu agendamiento:
-
-👤 Nombre: ${data.client_name}
-📱 Número: ${fullPhone}
-💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}
-💳 Total: $${totalPrice.toLocaleString('es-CO')} COP
-🌸 Atiende: ${data.selected_specialist}
-📅 Fecha: ${data.selected_date}
-⏰ Hora: ${formatTime12h(data.selected_time)}
-
-📍 Sede: ${infoSede.nombreDisplay}
-🏢 Dirección: ${infoSede.direccion}, ${infoSede.ciudad}
-🗺️ Ubicación: (${infoSede.mapUrl})
-
-Presiona Confirmar y Agendar para reservar tu espacio.`;
-
         responsePayload = {
           version: '3.0',
           screen: 'SUMMARY_SCREEN',
           data: {
-            summary_text: summaryMarkdown,
+            summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n💅 *Servicio(s):* ${serviceNames || 'Servicios seleccionados'}\n💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${infoSede.nombreDisplay}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ *Ubicación en Mapa:* ${infoSede.mapUrl}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
           },
         };
       }
