@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import { useSessionStore } from "@/lib/sessionStore";
 import { supabase } from "@/lib/supabaseClient";
 import { 
-  Sparkles, 
+  Sparkles,
+  BookOpen,
   Heart, 
   Award, 
   Star, 
@@ -166,6 +167,13 @@ export default function HomePage() {
               href="/reservar"
               className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 px-5 py-2.5 text-xs font-extrabold text-white shadow-md shadow-rose-500/20 hover:from-rose-600 hover:to-pink-600 transition-all active:scale-95 cursor-pointer"
             >
+              <Link
+            href="/catalogo"
+            className="w-full sm:w-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 hover:border-rose-400 font-extrabold text-sm px-8 py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-xs"
+          >
+            <BookOpen size={18} className="text-rose-500" />
+            <span>Ver catálogo</span>
+          </Link>
               <Calendar size={14} />
               <span>Agendar / Mi Perfil</span>
             </Link>
