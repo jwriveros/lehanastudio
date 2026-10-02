@@ -453,7 +453,7 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
-    // 🎯 PASO 1: INIT - Extracción de variables desde flow_token (ej. "agendamiento_1001|Jhon|3028534050|57")
+    // 🎯 PASO 1: INIT - Extracción de variables desde flow_token
     else if (action === 'INIT') {
       const rawToken = decryptedBody?.flow_token || data?.flow_token || '';
       
@@ -685,8 +685,11 @@ export async function POST(req: Request) {
         { id: '58', title: truncateTitle('🇻🇪 VENEZUELA (+58)', 30) },
       ];
 
+      // 🔍 VALIDACIÓN EXACTA DE EXISTENCIA DEL USUARIO
       const rawName = String(data.client_name || 'N/A').trim();
       const rawPhone = String(data.client_phone || 'N/A').trim();
+      
+      // Si el nombre y teléfono NO son 'N/A' ni están vacíos, se considera usuario existente
       const isExistingUser = rawName !== 'N/A' && rawName !== '' && rawPhone !== 'N/A' && rawPhone !== '';
 
       responsePayload = {
@@ -702,7 +705,7 @@ export async function POST(req: Request) {
           client_name: rawName,
           client_phone: rawPhone,
           indicativo: data.indicativo || '57',
-          show_user_inputs: !isExistingUser
+          show_user_inputs: !isExistingUser // Oculta los campos de registro (false) cuando el cliente ya existe
         },
       };
     }
@@ -733,6 +736,7 @@ export async function POST(req: Request) {
           },
         };
       } else {
+        // 🔍 RESUELVE LOS DATOS FINALES DEL CLIENTE
         let finalName = data.client_name;
         if (!finalName || finalName === 'N/A') {
           finalName = data.client_name_input || 'Cliente';
