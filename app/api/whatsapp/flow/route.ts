@@ -31,6 +31,25 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
+// 🏢 DICCIONARIO CON LAS DIRECCIONES Y ENLACES REALES DE CADA LOCAL
+const SEDES_INFO: Record<string, { direccion: string; ciudad: string; mapUrl: string }> = {
+  Marquetalia: {
+    direccion: "Calle 5 # 4-45 Marquetalia",
+    ciudad: "Palomino, La Guajira",
+    mapUrl: "https://maps.app.goo.gl/Ynt2Zaak3trXt2KL8"
+  },
+  Buga: {
+    direccion: "Carrera 14 # 6-32",
+    ciudad: "Buga, Valle del Cauca",
+    mapUrl: "https://www.google.com/maps?q=3.899355,-76.3000322&z=17&hl=es"
+  },
+  "Santa Marta": {
+    direccion: "Cra. 18 #23-26, Alcázares",
+    ciudad: "Santa Marta, Magdalena",
+    mapUrl: "https://maps.app.goo.gl/UXPCcoGLmCpedVRx6"
+  }
+};
+
 function getColombiaNow(): Date {
   const now = new Date();
   const colStr = now.toLocaleString("en-US", { timeZone: "America/Bogota" });
@@ -144,13 +163,11 @@ async function getAvailableSlots(
 
   if (matchedServices.length === 0) return [];
 
-  // Suma de la duración total de todos los servicios seleccionados
   const duration = matchedServices.reduce(
     (sum: number, s: any) => sum + parseInt(s.duracion || "60", 10),
     0
   );
 
-  // Encontrar especialistas que estén capacitadas para TODOS los servicios seleccionados
   let commonSpecialists: string[] = [];
   matchedServices.forEach((s: any, idx: number) => {
     let list: string[] = [];
@@ -419,12 +436,10 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
-    // 🎯 PASO 1: INIT ➔ CARGAR PANTALLA UNIFICADA DE SERVICIOS
     else if (action === 'INIT') {
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
 
-      // Excluir retoques y refuerzos
       const cleanServices = rawServices.filter((s: any) => {
         const dbName = normalizeText(s.Servicio || s.servicio || '');
         const dbCat = normalizeText(s.category || s.categoria || '');
@@ -432,31 +447,34 @@ export async function POST(req: Request) {
                !dbCat.includes('retoque') && !dbCat.includes('refuerzo');
       });
 
-      const formatItem = (s: any) => ({
-        id: String(s.SKU || s.id),
-        title: truncateTitle(String(s.Servicio || s.servicio || 'Servicio'), 30),
-        description: `⏱️ ${s.duracion || 45} min • 💳 $${Number(s.Precio || s.precio || 0).toLocaleString('es-CO')} COP`
-      });
+      const formatDropdownItem = (s: any) => {
+        const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
+        const name = String(s.Servicio || s.servicio || 'Servicio');
+        return {
+          id: String(s.SKU || s.id),
+          title: truncateTitle(`${name} ($${precio})`, 30)
+        };
+      };
 
       const pestanasList = cleanServices
         .filter((s: any) => normalizeText(s.category || s.categoria) === 'pestanas')
-        .map(formatItem);
+        .map(formatDropdownItem);
 
       const cejasList = cleanServices
         .filter((s: any) => normalizeText(s.category || s.categoria) === 'cejas')
-        .map(formatItem);
+        .map(formatDropdownItem);
 
       const microList = cleanServices
         .filter((s: any) => normalizeText(s.category || s.categoria) === 'micropigmentacion')
-        .map(formatItem);
+        .map(formatDropdownItem);
 
       const limpiezaList = cleanServices
         .filter((s: any) => normalizeText(s.category || s.categoria) === 'limpieza facial')
-        .map(formatItem);
+        .map(formatDropdownItem);
 
       const depilacionList = cleanServices
         .filter((s: any) => normalizeText(s.category || s.categoria) === 'depilacion')
-        .map(formatItem);
+        .map(formatDropdownItem);
 
       responsePayload = {
         version: '3.0',
@@ -470,7 +488,6 @@ export async function POST(req: Request) {
         },
       };
     }
-    // 🎯 PASO 2: CONSOLIDAR SELECCIONES MÚLTIPLES Y CARGAR ESPECIALISTAS
     else if (action === 'data_exchange' && screen === 'SERVICES_SCREEN') {
       const p1 = parseSelectedCategories(data.selected_pestanas);
       const p2 = parseSelectedCategories(data.selected_cejas);
@@ -478,7 +495,9 @@ export async function POST(req: Request) {
       const p4 = parseSelectedCategories(data.selected_limpieza);
       const p5 = parseSelectedCategories(data.selected_depilacion);
 
-      const selectedServices = [...p1, ...p2, ...p3, ...p4, ...p5];
+      const selectedServices = [...p1, ...p2, ...p3, ...p4, ...p5].filter(
+        (id) => id && id !== 'null' && id !== 'undefined'
+      );
 
       const { data: allServicesDB } = await supabase.from('services').select('*');
       const rawServices = allServicesDB || [];
@@ -487,7 +506,6 @@ export async function POST(req: Request) {
         (s: any) => selectedServices.includes(String(s.SKU)) || selectedServices.includes(String(s.id))
       );
 
-      // Filtrar especialistas que realizan TODOS los servicios seleccionados
       let commonSpecialists: string[] = [];
       matchedServices.forEach((s: any, idx: number) => {
         let list: string[] = [];
@@ -540,7 +558,7 @@ export async function POST(req: Request) {
         }
       };
     }
-    // 🎯 PASO 3: SELECCIÓN DE SEDE
+    // 🎯 PASO 3: PANTALLA DE SEDES CON DIRECCIÓN EN LA DESCRIPCIÓN
     else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
       const selectedServices = parseSelectedCategories(data.selected_services);
       const todayStr = new Date().toISOString().split('T')[0];
@@ -557,9 +575,29 @@ export async function POST(req: Request) {
         });
       }
 
-      const locationsList = [{ id: 'Marquetalia', title: truncateTitle('📍 Marquetalia', 30), description: 'Palomino, La Guajira' }];
-      if (activeSedesMap['Buga']) locationsList.push({ id: 'Buga', title: truncateTitle('📍 Buga', 30), description: 'Valle del Cauca' });
-      if (activeSedesMap['Santa Marta']) locationsList.push({ id: 'Santa Marta', title: truncateTitle('📍 Santa Marta', 30), description: 'Centro Histórico' });
+      const locationsList = [
+        {
+          id: 'Marquetalia',
+          title: truncateTitle('📍 Marquetalia', 30),
+          description: truncateTitle(`${SEDES_INFO.Marquetalia.direccion}`, 80)
+        }
+      ];
+
+      if (activeSedesMap['Buga']) {
+        locationsList.push({
+          id: 'Buga',
+          title: truncateTitle('📍 Buga', 30),
+          description: truncateTitle(`${SEDES_INFO.Buga.direccion}`, 80)
+        });
+      }
+
+      if (activeSedesMap['Santa Marta']) {
+        locationsList.push({
+          id: 'Santa Marta',
+          title: truncateTitle('📍 Santa Marta', 30),
+          description: truncateTitle(`${SEDES_INFO["Santa Marta"].direccion}`, 80)
+        });
+      }
 
       responsePayload = {
         version: '3.0',
@@ -571,7 +609,6 @@ export async function POST(req: Request) {
         },
       };
     }
-    // 🎯 PASO 4: SELECCIÓN DE FECHA
     else if (action === 'data_exchange' && screen === 'LOCATION_SCREEN') {
       const selectedServices = parseSelectedCategories(data.selected_services);
       const colombiaToday = getColombiaNow();
@@ -593,7 +630,6 @@ export async function POST(req: Request) {
         },
       };
     }
-    // 🎯 PASO 5: CÁLCULO DE HORARIOS DISPONIBLES Y CONTACTO
     else if (action === 'data_exchange' && screen === 'DATE_SCREEN') {
       const selectedServices = parseSelectedCategories(data.selected_services);
       const specialist = data.selected_specialist;
@@ -605,13 +641,13 @@ export async function POST(req: Request) {
 
       const countryCodes = [
         { id: '57', title: truncateTitle('🇨🇴 Colombia (+57)', 30) },
-        { id: '1', title: truncateTitle('🇺🇸 Estados Unidos (+1)', 30) },
-        { id: '34', title: truncateTitle('🇪🇸 España (+34)', 30) },
-        { id: '52', title: truncateTitle('🇲🇽 México (+52)', 30) },
-        { id: '54', title: truncateTitle('🇦🇷 Argentina (+54)', 30) },
-        { id: '56', title: truncateTitle('🇨🇱 Chile (+56)', 30) },
-        { id: '51', title: truncateTitle('🇵🇪 Perú (+51)', 30) },
-        { id: '58', title: truncateTitle('🇻🇪 Venezuela (+58)', 30) },
+        { id: '1', title: truncateTitle('🇺🇸 ESTADOS UNIDOS (+1)', 30) },
+        { id: '34', title: truncateTitle('🇪🇸 ESPAÑA (+34)', 30) },
+        { id: '52', title: truncateTitle('🇲🇽 MÉXICO (+52)', 30) },
+        { id: '54', title: truncateTitle('🇦🇷 ARGENTINA (+54)', 30) },
+        { id: '56', title: truncateTitle('🇨🇱 CHILE (+56)', 30) },
+        { id: '51', title: truncateTitle('🇵🇪 PERÚ (+51)', 30) },
+        { id: '58', title: truncateTitle('🇻🇪 VENEZUELA (+58)', 30) },
       ];
 
       responsePayload = {
@@ -627,10 +663,13 @@ export async function POST(req: Request) {
         },
       };
     }
-    // 🎯 PASO 6: RESUMEN FINAL
+    // 🎯 PASO 6: PANTALLA RESUMEN CON DIRECCIÓN COMPLETA Y ENLACE DE NAVEGACIÓN
     else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
       const selectedServices = parseSelectedCategories(data.selected_services);
+      const sedeElegida = data.selected_sede || 'Marquetalia';
+
+      const infoSede = SEDES_INFO[sedeElegida] || SEDES_INFO.Marquetalia;
 
       const { data: allServicesDB } = await supabase.from('services').select('*');
       const rawServices = allServicesDB || [];
@@ -645,7 +684,7 @@ export async function POST(req: Request) {
         version: '3.0',
         screen: 'SUMMARY_SCREEN',
         data: {
-          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n💅 *Servicio(s):* ${serviceNames || 'Servicios seleccionados'}\n💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP\n📍 *Sede:* ${data.selected_sede}\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
+          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n💅 *Servicio(s):* ${serviceNames || 'Servicios seleccionados'}\n💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${sedeElegida}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ *Ubicación en Mapa:* ${infoSede.mapUrl}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
         },
       };
     }
