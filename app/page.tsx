@@ -162,21 +162,26 @@ export default function HomePage() {
             <a href="#contacto" className="hover:text-rose-600 transition-colors">Contacto</a>
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+      
+            {/* BOTÓN 1: Agendar Cita */}
             <Link
               href="/reservar"
-              className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 px-5 py-2.5 text-xs font-extrabold text-white shadow-md shadow-rose-500/20 hover:from-rose-600 hover:to-pink-600 transition-all active:scale-95 cursor-pointer"
+              className="bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-xs hover:shadow-rose-500/20"
             >
-              <Link
-            href="/catalogo"
-            className="w-full sm:w-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 hover:border-rose-400 font-extrabold text-sm px-8 py-4 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-xs"
-          >
-            <BookOpen size={18} className="text-rose-500" />
-            <span>Ver catálogo</span>
-          </Link>
               <Calendar size={14} />
-              <span>Agendar / Mi Perfil</span>
+              <span>Agendar Cita</span>
             </Link>
+
+            {/* 🌸 BOTÓN 2: Ver catálogo (Ajustado y compacto) */}
+            <button
+              type="button"
+              onClick={() => router.push("/catalogo")}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-rose-400 hover:text-rose-500 font-bold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            >
+              <BookOpen size={14} className="text-rose-500" />
+              <span>Ver catálogo</span>
+            </button>
 
             <button 
               type="button"
