@@ -31,19 +31,22 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
-// 🏢 DICCIONARIO CON LAS DIRECCIONES Y ENLACES REALES DE CADA LOCAL
-const SEDES_INFO: Record<string, { direccion: string; ciudad: string; mapUrl: string }> = {
+// 🏢 ESTRUCTURA DE SEDES CON NOMBRE VISIBLE Y ENLACES REALES
+const SEDES_INFO: Record<string, { nombreDisplay: string; direccion: string; ciudad: string; mapUrl: string }> = {
   Marquetalia: {
+    nombreDisplay: "Palomino",
     direccion: "Calle 5 # 4-45 Marquetalia",
     ciudad: "Palomino, La Guajira",
     mapUrl: "https://maps.app.goo.gl/Ynt2Zaak3trXt2KL8"
   },
   Buga: {
+    nombreDisplay: "Buga",
     direccion: "Carrera 14 # 6-32",
     ciudad: "Buga, Valle del Cauca",
     mapUrl: "https://www.google.com/maps?q=3.899355,-76.3000322&z=17&hl=es"
   },
   "Santa Marta": {
+    nombreDisplay: "Santa Marta",
     direccion: "Cra. 18 #23-26, Alcázares",
     ciudad: "Santa Marta, Magdalena",
     mapUrl: "https://maps.app.goo.gl/UXPCcoGLmCpedVRx6"
@@ -558,7 +561,7 @@ export async function POST(req: Request) {
         }
       };
     }
-    // 🎯 PASO 3: PANTALLA DE SEDES CON DIRECCIÓN EN LA DESCRIPCIÓN
+    // 🎯 PASO 3: PANTALLA DE SEDES MOSTRANDO "PALOMINO" EN LUGAR DE MARQUETALIA
     else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
       const selectedServices = parseSelectedCategories(data.selected_services);
       const todayStr = new Date().toISOString().split('T')[0];
@@ -578,7 +581,7 @@ export async function POST(req: Request) {
       const locationsList = [
         {
           id: 'Marquetalia',
-          title: truncateTitle('📍 Marquetalia', 30),
+          title: truncateTitle(`📍 ${SEDES_INFO.Marquetalia.nombreDisplay}`, 30),
           description: truncateTitle(`${SEDES_INFO.Marquetalia.direccion}`, 80)
         }
       ];
@@ -586,7 +589,7 @@ export async function POST(req: Request) {
       if (activeSedesMap['Buga']) {
         locationsList.push({
           id: 'Buga',
-          title: truncateTitle('📍 Buga', 30),
+          title: truncateTitle(`📍 ${SEDES_INFO.Buga.nombreDisplay}`, 30),
           description: truncateTitle(`${SEDES_INFO.Buga.direccion}`, 80)
         });
       }
@@ -594,7 +597,7 @@ export async function POST(req: Request) {
       if (activeSedesMap['Santa Marta']) {
         locationsList.push({
           id: 'Santa Marta',
-          title: truncateTitle('📍 Santa Marta', 30),
+          title: truncateTitle(`📍 ${SEDES_INFO["Santa Marta"].nombreDisplay}`, 30),
           description: truncateTitle(`${SEDES_INFO["Santa Marta"].direccion}`, 80)
         });
       }
@@ -663,7 +666,7 @@ export async function POST(req: Request) {
         },
       };
     }
-    // 🎯 PASO 6: PANTALLA RESUMEN CON DIRECCIÓN COMPLETA Y ENLACE DE NAVEGACIÓN
+    // 🎯 PASO 6: FORMATO DE RESUMEN CON NEGRITA (**), ENLACE CLIQUEABLE Y PALOMINO
     else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
       const fullPhone = `+${data.indicativo} ${data.client_phone}`;
       const selectedServices = parseSelectedCategories(data.selected_services);
@@ -680,11 +683,28 @@ export async function POST(req: Request) {
       const serviceNames = matched.map((s: any) => s.Servicio || s.servicio).join(', ');
       const totalPrice = matched.reduce((sum: number, s: any) => sum + Number(s.Precio || s.precio || 0), 0);
 
+      // Usamos el formato Markdown estándar de Meta Flows: doble asterisco (**) para negrita y [Texto](URL) para enlaces
+      const summaryMarkdown = `Por favor confirma los detalles de tu agendamiento:
+
+👤 **Cliente:** ${data.client_name}
+📱 **WhatsApp:** ${fullPhone}
+💅 **Servicio(s):** ${serviceNames || 'Servicios seleccionados'}
+💳 **Total:** $${totalPrice.toLocaleString('es-CO')} COP
+🌸 **Atiende:** ${data.selected_specialist}
+📅 **Fecha:** ${data.selected_date}
+⏰ **Hora:** ${formatTime12h(data.selected_time)}
+
+📍 **Sede:** ${infoSede.nombreDisplay}
+🏢 **Dirección:** ${infoSede.direccion}, ${infoSede.ciudad}
+🗺️ **Ubicación:** [Ver en Google Maps](${infoSede.mapUrl})
+
+Presiona **Confirmar y Agendar** para reservar tu espacio.`;
+
       responsePayload = {
         version: '3.0',
         screen: 'SUMMARY_SCREEN',
         data: {
-          summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n💅 *Servicio(s):* ${serviceNames || 'Servicios seleccionados'}\n💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${sedeElegida}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ *Ubicación en Mapa:* ${infoSede.mapUrl}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
+          summary_text: summaryMarkdown,
         },
       };
     }
