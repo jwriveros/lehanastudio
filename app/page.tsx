@@ -31,15 +31,15 @@ import {
 
 // Códigos de país para el selector de WhatsApp
 const COUNTRY_CODES = [
-  { code: "+57", label: "🇨🇴 Colombia (+57)" },
-  { code: "+1", label: "🇺🇸 EE.UU. / Canadá (+1)" },
-  { code: "+52", label: "🇲🇽 México (+52)" },
-  { code: "+34", label: "🇪🇸 España (+34)" },
-  { code: "+58", label: "🇻🇪 Venezuela (+58)" },
-  { code: "+51", label: "🇵🇪 Perú (+51)" },
-  { code: "+54", label: "🇦🇷 Argentina (+54)" },
-  { code: "+56", label: "🇨🇱 Chile (+56)" },
-  { code: "+593", label: "🇪🇨 Ecuador (+593)" },
+  { code: "+57", label: "🇨🇴 +57" },
+  { code: "+1", label: "🇺🇸 +1" },
+  { code: "+52", label: "🇲🇽 +52" },
+  { code: "+34", label: "🇪🇸 +34" },
+  { code: "+58", label: "🇻🇪 +58" },
+  { code: "+51", label: "🇵🇪 +51" },
+  { code: "+54", label: "🇦🇷 +54" },
+  { code: "+56", label: "🇨🇱 +56" },
+  { code: "+593", label: "🇪🇨 +593" },
 ];
 
 // Categorías principales de servicios
@@ -139,22 +139,24 @@ export default function HomePage() {
   const whatsappUrl = `https://wa.me/573058633774?text=${encodeURIComponent("Hola quiero más información")}`;
 
   return (
-    <div className="min-h-screen bg-zinc-50/50 text-zinc-800 font-sans flex flex-col selection:bg-rose-100 selection:text-rose-900">
+    <div className="min-h-screen bg-zinc-50/50 text-zinc-800 font-sans flex flex-col selection:bg-rose-100 selection:text-rose-900 antialiased">
       
-      {/* 1. BARRA DE NAVEGACIÓN */}
-      <header className="sticky top-0 z-40 w-full border-b border-zinc-200/80 bg-white/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex h-20 items-center justify-between px-4 sm:px-8">
+      {/* 1. BARRA DE NAVEGACIÓN TOTALMENTE RESPONSIVA */}
+      <header className="sticky top-0 z-40 w-full border-b border-zinc-200/80 bg-white/90 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex h-16 sm:h-20 items-center justify-between px-3 sm:px-8 gap-2">
           
-          <div className="flex flex-col">
-            <span className="text-lg sm:text-xl font-black tracking-[0.2em] text-zinc-900 uppercase">
+          {/* TÍTULO DE MARCA ADAPTATIVO */}
+          <div className="flex flex-col shrink-0">
+            <span className="text-sm sm:text-xl font-black tracking-[0.15em] sm:tracking-[0.2em] text-zinc-900 uppercase">
               LEHANA STUDIO
             </span>
-            <span className="text-[9px] font-bold tracking-[0.25em] text-rose-600 uppercase -mt-1">
+            <span className="text-[8px] sm:text-[9px] font-bold tracking-[0.2em] text-rose-600 uppercase -mt-1">
               BEAUTY & ACADEMY
             </span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-zinc-600">
+          {/* MENÚ DE ENLACES PARA PANTALLAS GRANDES */}
+          <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-zinc-600">
             <a href="#inicio" className="hover:text-rose-600 transition-colors">Inicio</a>
             <a href="#servicios" className="hover:text-rose-600 transition-colors">Servicios</a>
             <a href="#especialistas" className="hover:text-rose-600 transition-colors">Especialistas</a>
@@ -162,33 +164,36 @@ export default function HomePage() {
             <a href="#contacto" className="hover:text-rose-600 transition-colors">Contacto</a>
           </nav>
 
-          <div className="flex items-center gap-2.5">
-      
+          {/* BOTONES DE ACCIÓN ADAPTADOS A MÓVILES */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
+            
             {/* Botón 1: Agendar Cita */}
             <Link
-              href="/agendar"
-              className="bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-xs"
+              href="/reservar"
+              className="bg-rose-500 hover:bg-rose-600 text-white font-bold text-[11px] sm:text-xs px-2.5 sm:px-4 py-2 rounded-xl transition-all flex items-center gap-1 shadow-xs"
             >
-              <Calendar size={14} />
-              <span>Agendar Cita</span>
+              <Calendar size={13} />
+              <span className="hidden xs:inline">Agendar</span>
+              <span className="xs:hidden">Agendar</span>
             </Link>
 
-            {/* 🌸 Botón 2: Ver catálogo (Redirección activa a /catalogo) */}
+            {/* Botón 2: Ver catálogo */}
             <Link
               href="/catalogo"
-              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-rose-400 hover:text-rose-500 font-bold text-xs px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-rose-400 hover:text-rose-500 font-bold text-[11px] sm:text-xs px-2.5 sm:px-3.5 py-2 rounded-xl transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
             >
-              <BookOpen size={14} className="text-rose-500" />
-              <span>Ver catálogo</span>
+              <BookOpen size={13} className="text-rose-500" />
+              <span>Catálogo</span>
             </Link>
 
+            {/* Botón 3: Iniciar Sesión (Formato compacto en móvil) */}
             <button 
               type="button"
               onClick={() => setIsLoginOpen(true)}
-              className="flex items-center gap-2 rounded-2xl bg-zinc-900 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1 sm:gap-2 rounded-xl sm:rounded-2xl bg-zinc-900 px-2.5 sm:px-4 py-2 sm:py-2.5 text-[11px] sm:text-xs font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95 cursor-pointer"
             >
-              <Lock size={14} />
-              <span>Iniciar Sesión</span>
+              <Lock size={13} />
+              <span className="hidden sm:inline">Iniciar Sesión</span>
             </button>
           </div>
         </div>
@@ -197,31 +202,31 @@ export default function HomePage() {
       <main className="flex-1">
         
         {/* 2. SECCIÓN PRINCIPAL (HERO) */}
-        <section id="inicio" className="relative overflow-hidden py-16 sm:py-24 px-4">
-          <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <section id="inicio" className="relative overflow-hidden py-10 sm:py-20 px-4">
+          <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             
-            <div className="space-y-6 text-center lg:text-left">
-              <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 py-1.5 text-xs font-bold text-rose-700 shadow-sm">
-                <Sparkles size={14} className="text-rose-500" /> Especialistas en Estética & Formación Profesional
+            <div className="space-y-4 sm:space-y-6 text-center lg:text-left">
+              <span className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-rose-200 bg-rose-50 px-3.5 sm:px-4 py-1.5 text-[11px] sm:text-xs font-bold text-rose-700 shadow-xs">
+                <Sparkles size={14} className="text-rose-500 shrink-0" /> Estética & Formación Profesional
               </span>
 
-              <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-zinc-900 leading-[1.15]">
+              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-zinc-900 leading-[1.15]">
                 Resalta tu belleza única en <br className="hidden sm:inline" />
                 <span className="bg-gradient-to-r from-rose-600 via-pink-600 to-amber-600 bg-clip-text text-transparent">
                   Lehana Studio
                 </span>
               </h1>
 
-              <p className="text-base sm:text-lg text-zinc-600 max-w-xl mx-auto lg:mx-0 font-normal leading-relaxed">
+              <p className="text-xs sm:text-base text-zinc-600 max-w-xl mx-auto lg:mx-0 font-normal leading-relaxed">
                 Técnicas avanzadas de Micropigmentación, extensión de pestañas, diseño de cejas y cuidado facial. Además, aprende con nuestros cursos certificados.
               </p>
 
-              <div className="pt-2 flex flex-wrap justify-center lg:justify-start gap-4">
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 sm:gap-4">
                 <a
                   href={whatsappUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-7 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all active:scale-95"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-6 py-3.5 text-xs sm:text-sm font-bold text-white shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all active:scale-95"
                 >
                   <MessageCircle size={18} />
                   <span>Chatea con nosotras</span>
@@ -229,7 +234,7 @@ export default function HomePage() {
 
                 <a
                   href="#academia"
-                  className="flex items-center gap-2 rounded-2xl border border-zinc-300 bg-white px-7 py-3.5 text-sm font-bold text-zinc-800 shadow-sm hover:bg-zinc-50 transition-all active:scale-95"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-2xl border border-zinc-300 bg-white px-6 py-3.5 text-xs sm:text-sm font-bold text-zinc-800 shadow-xs hover:bg-zinc-50 transition-all active:scale-95"
                 >
                   <GraduationCap size={18} className="text-rose-600" />
                   <span>Información sobre la Academia</span>
@@ -237,69 +242,69 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Tarjeta Visual Informativa */}
-            <div className="relative flex justify-center">
-              <div className="w-full max-w-md rounded-3xl border border-rose-100 bg-white p-6 shadow-2xl shadow-rose-500/10 relative z-10 space-y-6">
+            {/* Tarjeta Visual Informativa Adaptada */}
+            <div className="relative flex justify-center w-full">
+              <div className="w-full max-w-md rounded-3xl border border-rose-100 bg-white p-5 sm:p-6 shadow-xl shadow-rose-500/10 relative z-10 space-y-4 sm:space-y-6">
                 <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-rose-100 flex items-center justify-center text-rose-600 font-bold">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-rose-100 flex items-center justify-center text-rose-600 font-bold text-sm">
                       LS
                     </div>
                     <div>
-                      <h3 className="font-bold text-zinc-900 text-sm">LEHANA STUDIO</h3>
-                      <p className="text-xs text-zinc-500">BEAUTY & ACADEMY</p>
+                      <h3 className="font-bold text-zinc-900 text-xs sm:text-sm">LEHANA STUDIO</h3>
+                      <p className="text-[10px] sm:text-xs text-zinc-500">BEAUTY & ACADEMY</p>
                     </div>
                   </div>
-                  <span className="flex items-center gap-1 text-xs font-bold text-amber-500 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                  <span className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-amber-500 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
                     <Star size={12} fill="currentColor" /> 5.0
                   </span>
                 </div>
 
-                <div className="space-y-3 text-xs">
-                  <div className="flex items-center justify-between text-zinc-600 bg-zinc-50 p-3 rounded-xl">
-                    <span className="font-semibold">Líder de Especialidades</span>
-                    <span className="font-bold text-zinc-800">Master Leslie Gutierrez</span>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between text-zinc-600 bg-zinc-50 p-2.5 sm:p-3 rounded-xl gap-2">
+                    <span className="font-semibold text-[11px] sm:text-xs">Líder de Especialidades</span>
+                    <span className="font-bold text-zinc-800 text-[11px] sm:text-xs text-right">Master Leslie Gutierrez</span>
                   </div>
-                  <div className="flex items-center justify-between text-zinc-600 bg-zinc-50 p-3 rounded-xl">
-                    <span className="font-semibold">Equipo Profesional</span>
-                    <span className="font-bold text-rose-600">Yucelis, Nary & Andrea</span>
+                  <div className="flex items-center justify-between text-zinc-600 bg-zinc-50 p-2.5 sm:p-3 rounded-xl gap-2">
+                    <span className="font-semibold text-[11px] sm:text-xs">Equipo Profesional</span>
+                    <span className="font-bold text-rose-600 text-[11px] sm:text-xs text-right">Yucelis, Nary & Andrea</span>
                   </div>
-                  <div className="flex items-center justify-between text-zinc-600 bg-zinc-50 p-3 rounded-xl">
-                    <span className="font-semibold">Sedes</span>
-                    <span className="font-bold text-zinc-800">Marquetalia, Buga, Santa Marta</span>
+                  <div className="flex items-center justify-between text-zinc-600 bg-zinc-50 p-2.5 sm:p-3 rounded-xl gap-2">
+                    <span className="font-semibold text-[11px] sm:text-xs">Sedes</span>
+                    <span className="font-bold text-zinc-800 text-[11px] sm:text-xs text-right">Marquetalia, Buga, Santa Marta</span>
                   </div>
                 </div>
               </div>
 
-              <div className="absolute -inset-4 rounded-3xl bg-gradient-to-r from-rose-200/50 to-pink-200/50 blur-2xl -z-10" />
+              <div className="absolute -inset-2 sm:-inset-4 rounded-3xl bg-gradient-to-r from-rose-200/50 to-pink-200/50 blur-2xl -z-10" />
             </div>
 
           </div>
         </section>
 
         {/* 3. SECCIÓN DE CATEGORÍAS DE SERVICIOS */}
-        <section id="servicios" className="py-20 bg-white border-y border-zinc-200/60 px-4">
-          <div className="max-w-7xl mx-auto space-y-12">
+        <section id="servicios" className="py-12 sm:py-20 bg-white border-y border-zinc-200/60 px-4">
+          <div className="max-w-7xl mx-auto space-y-8 sm:space-y-12">
             
             <div className="text-center space-y-2">
-              <h2 className="text-3xl sm:text-4xl font-black text-zinc-900">Servicios Destacados</h2>
-              <p className="text-sm text-zinc-500 max-w-md mx-auto">
+              <h2 className="text-2xl sm:text-4xl font-black text-zinc-900">Servicios Destacados</h2>
+              <p className="text-xs sm:text-sm text-zinc-500 max-w-md mx-auto">
                 Conoce nuestras áreas de especialidad orientadas al cuidado y realce de tu belleza.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-8">
               {SERVICE_CATEGORIES.map((cat, idx) => {
                 const Icon = cat.icon;
                 return (
-                  <div key={idx} className="rounded-3xl border border-zinc-200/80 bg-zinc-50/50 p-6 sm:p-8 space-y-4 hover:border-rose-200 transition-all hover:shadow-xl hover:shadow-rose-500/5">
+                  <div key={idx} className="rounded-3xl border border-zinc-200/80 bg-zinc-50/50 p-5 sm:p-8 space-y-4 hover:border-rose-200 transition-all hover:shadow-xl hover:shadow-rose-500/5">
                     <div className="flex items-center gap-3">
-                      <div className={`p-3 rounded-2xl border ${cat.color}`}>
-                        <Icon size={24} />
+                      <div className={`p-3 rounded-2xl border ${cat.color} shrink-0`}>
+                        <Icon size={22} />
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-zinc-900">{cat.name}</h3>
-                        <p className="text-[11px] text-rose-600 font-bold">{cat.tagline}</p>
+                        <h3 className="text-base sm:text-lg font-bold text-zinc-900">{cat.name}</h3>
+                        <p className="text-[10px] sm:text-[11px] text-rose-600 font-bold">{cat.tagline}</p>
                       </div>
                     </div>
 
@@ -311,15 +316,15 @@ export default function HomePage() {
               })}
             </div>
 
-            <div className="text-center pt-4">
+            <div className="text-center pt-2">
               <a
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-200 transition-colors"
+                className="inline-flex items-center justify-center gap-2 text-xs font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-4 sm:px-5 py-3 rounded-xl border border-emerald-200 transition-colors w-full sm:w-auto"
               >
-                <MessageCircle size={16} />
-                <span>¿Deseas consultar disponibilidad o agendar? Escríbenos directamente a WhatsApp</span>
+                <MessageCircle size={16} className="shrink-0" />
+                <span className="text-center">¿Deseas consultar disponibilidad? Escríbenos directamente a WhatsApp</span>
               </a>
             </div>
 
@@ -327,22 +332,22 @@ export default function HomePage() {
         </section>
 
         {/* 4. SECCIÓN ESPECIALISTAS */}
-        <section id="especialistas" className="py-20 px-4">
-          <div className="max-w-5xl mx-auto text-center space-y-12">
+        <section id="especialistas" className="py-12 sm:py-20 px-4">
+          <div className="max-w-5xl mx-auto text-center space-y-8 sm:space-y-12">
             
-            <div className="space-y-3">
-              <h2 className="text-3xl sm:text-4xl font-black text-zinc-900">Nuestro Equipo de Especialistas</h2>
-              <p className="text-sm text-zinc-500">Talento profesional dedicado a brindarte resultados excepcionales.</p>
+            <div className="space-y-2">
+              <h2 className="text-2xl sm:text-4xl font-black text-zinc-900">Nuestro Equipo de Especialistas</h2>
+              <p className="text-xs sm:text-sm text-zinc-500">Talento profesional dedicado a brindarte resultados excepcionales.</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {[
                 { name: "Leslie Gutierrez", role: "Master en Micropigmentación, Pestañas, Cejas & Facial" },
                 { name: "Yucelis Moscote", role: "Especialista en Pestañas, Cejas & Depilación" },
                 { name: "Nary Cabrales", role: "Especialista en Cejas, Pestañas & Depilación" },
                 { name: "Andrea Garcia", role: "Especialista en Limpieza Facial & Hidrafacial" },
               ].map((spec, i) => (
-                <div key={i} className="p-6 rounded-3xl bg-white border border-zinc-200/80 shadow-sm space-y-3 text-center">
+                <div key={i} className="p-5 sm:p-6 rounded-3xl bg-white border border-zinc-200/80 shadow-2xs space-y-3 text-center">
                   <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 font-extrabold flex items-center justify-center mx-auto text-sm">
                     {spec.name.split(" ").map(n => n[0]).join("")}
                   </div>
@@ -356,31 +361,31 @@ export default function HomePage() {
         </section>
 
         {/* 5. SECCIÓN ACADEMIA */}
-        <section id="academia" className="py-20 px-4 bg-gradient-to-b from-zinc-50 to-rose-50/40 border-t border-zinc-200/60">
-          <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <section id="academia" className="py-12 sm:py-20 px-4 bg-gradient-to-b from-zinc-50 to-rose-50/40 border-t border-zinc-200/60">
+          <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-100/80 px-4 py-1.5 text-xs font-bold text-rose-700">
                 <GraduationCap size={16} /> Lehana Studio Academy
               </span>
 
-              <h2 className="text-3xl sm:text-4xl font-black text-zinc-900 leading-tight">
+              <h2 className="text-2xl sm:text-4xl font-black text-zinc-900 leading-tight">
                 Capacítate con Estándares Profesionales
               </h2>
 
-              <p className="text-sm sm:text-base text-zinc-600 leading-relaxed">
+              <p className="text-xs sm:text-base text-zinc-600 leading-relaxed">
                 Aprende técnicas avanzadas impartidas directamente por la Master Leslie Gutiérrez y su equipo. Módulos teóricos y prácticos sobre modelos reales con certificación.
               </p>
 
-              <div className="space-y-3 pt-2">
+              <div className="space-y-2.5 pt-1">
                 {[
                   "Capacitaciones en Micropigmentación (Cejas, Ojos, Labios)",
                   "Técnicas avanzadas de Pestañas Pelo a Pelo & Volúmenes",
                   "Diseño, Visagismo & Laminado de Cejas",
                   "Certificación profesional al completar la formación",
                 ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 text-xs sm:text-sm font-semibold text-zinc-700">
-                    <CheckCircle2 size={18} className="text-emerald-600 flex-shrink-0" />
+                  <div key={i} className="flex items-start gap-2.5 text-xs sm:text-sm font-semibold text-zinc-700">
+                    <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0 mt-0.5" />
                     <span>{item}</span>
                   </div>
                 ))}
@@ -388,11 +393,11 @@ export default function HomePage() {
             </div>
 
             {/* Formulario de Captura de Alumnas */}
-            <div className="rounded-3xl border border-rose-200/80 bg-white p-6 sm:p-8 shadow-xl shadow-rose-900/5">
+            <div className="rounded-3xl border border-rose-200/80 bg-white p-5 sm:p-8 shadow-xl shadow-rose-900/5">
               {!academySuccess ? (
                 <form onSubmit={handleAcademySubmit} className="space-y-4">
-                  <h3 className="text-xl font-bold text-zinc-900 mb-1">Información sobre la Academia</h3>
-                  <p className="text-xs text-zinc-500 mb-4">Ingresa tus datos y te enviaremos la información por WhatsApp.</p>
+                  <h3 className="text-lg sm:text-xl font-bold text-zinc-900 mb-1">Información sobre la Academia</h3>
+                  <p className="text-xs text-zinc-500 mb-3">Ingresa tus datos y te enviaremos la información por WhatsApp.</p>
 
                   <div>
                     <label className="text-xs font-bold text-zinc-700 block mb-1">Nombres y Apellidos</label>
@@ -412,7 +417,7 @@ export default function HomePage() {
                       <select
                         value={countryCode}
                         onChange={(e) => setCountryCode(e.target.value)}
-                        className="p-3 text-xs rounded-xl border border-zinc-200 bg-zinc-50 outline-none focus:border-rose-500 max-w-[130px]"
+                        className="p-3 text-xs rounded-xl border border-zinc-200 bg-zinc-50 outline-none focus:border-rose-500 w-1/3 shrink-0"
                       >
                         {COUNTRY_CODES.map((c) => (
                           <option key={c.code} value={c.code}>{c.label}</option>
@@ -424,7 +429,7 @@ export default function HomePage() {
                         required
                         value={whatsappNumber}
                         onChange={(e) => setWhatsappNumber(e.target.value)}
-                        className="w-full p-3 text-xs rounded-xl border border-zinc-200 bg-zinc-50 outline-none focus:border-rose-500 transition-colors flex-1"
+                        className="w-2/3 p-3 text-xs rounded-xl border border-zinc-200 bg-zinc-50 outline-none focus:border-rose-500 transition-colors"
                       />
                     </div>
                   </div>
@@ -463,7 +468,7 @@ export default function HomePage() {
                   </p>
                   <button
                     onClick={() => setAcademySuccess(false)}
-                    className="text-xs font-bold text-rose-600 hover:underline"
+                    className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
                   >
                     Enviar otra consulta
                   </button>
@@ -476,12 +481,11 @@ export default function HomePage() {
 
       </main>
 
-      {/* 6. MODAL OSCURO DE INICIO DE SESIÓN REDISEÑADO CON ESTILO CRM */}
+      {/* 6. MODAL OSCURO DE INICIO DE SESIÓN */}
       {isLoginOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="relative w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900/95 p-6 sm:p-8 shadow-2xl space-y-6">
             
-            {/* BOTÓN DE CIERRE */}
             <button
               onClick={() => setIsLoginOpen(false)}
               className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors p-1 cursor-pointer"
@@ -489,7 +493,6 @@ export default function HomePage() {
               <X size={18} />
             </button>
 
-            {/* LOGO Y TÍTULO */}
             <div className="text-center space-y-2">
               <div className="flex justify-center mb-1">
                 <Image
@@ -509,7 +512,6 @@ export default function HomePage() {
               </p>
             </div>
 
-            {/* ALERTA DE ERROR DE AUTENTICACIÓN */}
             {error && (
               <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl animate-in fade-in duration-150">
                 <p className="text-xs font-bold text-rose-400 text-center leading-snug">
@@ -518,10 +520,7 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* FORMULARIO DE ACCESO */}
             <form onSubmit={handleLogin} className="space-y-4">
-              
-              {/* CAMPO CORREO */}
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">
                   Correo Electrónico
@@ -542,7 +541,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* CAMPO CONTRASEÑA */}
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider">
                   Contraseña
@@ -571,7 +569,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* BOTÓN SUBMIT CON ESTILO ROSE CRM */}
               <button
                 type="submit"
                 disabled={isLoading}
