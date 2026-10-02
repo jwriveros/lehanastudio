@@ -31,7 +31,6 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
-// 🏢 DICCIONARIO CON LAS DIRECCIONES Y ENLACES REALES DE CADA LOCAL
 const SEDES_INFO: Record<string, { nombreDisplay: string; direccion: string; ciudad: string; mapUrl: string }> = {
   Marquetalia: {
     nombreDisplay: "Marquetalia",
@@ -66,7 +65,6 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// 🗓️ FUNCIÓN AUXILIAR: Muestra la fecha con el nombre del día en español (ej. "Sábado, 3 de Octubre de 2026")
 function formatDateWithDay(dateStr: string): string {
   if (!dateStr) return '';
   const parts = dateStr.split('-').map(Number);
@@ -455,7 +453,12 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
+    // 🎯 PASO 1: INIT - Captura datos iniciales del cliente
     else if (action === 'INIT') {
+      const clientName = data?.client_name || 'N/A';
+      const clientPhone = data?.client_phone || 'N/A';
+      const indicativo = data?.indicativo || '57';
+
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
 
@@ -475,25 +478,11 @@ export async function POST(req: Request) {
         };
       };
 
-      const pestanasList = cleanServices
-        .filter((s: any) => normalizeText(s.category || s.categoria) === 'pestanas')
-        .map(formatDropdownItem);
-
-      const cejasList = cleanServices
-        .filter((s: any) => normalizeText(s.category || s.categoria) === 'cejas')
-        .map(formatDropdownItem);
-
-      const microList = cleanServices
-        .filter((s: any) => normalizeText(s.category || s.categoria) === 'micropigmentacion')
-        .map(formatDropdownItem);
-
-      const limpiezaList = cleanServices
-        .filter((s: any) => normalizeText(s.category || s.categoria) === 'limpieza facial')
-        .map(formatDropdownItem);
-
-      const depilacionList = cleanServices
-        .filter((s: any) => normalizeText(s.category || s.categoria) === 'depilacion')
-        .map(formatDropdownItem);
+      const pestanasList = cleanServices.filter((s: any) => normalizeText(s.category || s.categoria) === 'pestanas').map(formatDropdownItem);
+      const cejasList = cleanServices.filter((s: any) => normalizeText(s.category || s.categoria) === 'cejas').map(formatDropdownItem);
+      const microList = cleanServices.filter((s: any) => normalizeText(s.category || s.categoria) === 'micropigmentacion').map(formatDropdownItem);
+      const limpiezaList = cleanServices.filter((s: any) => normalizeText(s.category || s.categoria) === 'limpieza facial').map(formatDropdownItem);
+      const depilacionList = cleanServices.filter((s: any) => normalizeText(s.category || s.categoria) === 'depilacion').map(formatDropdownItem);
 
       responsePayload = {
         version: '3.0',
@@ -503,7 +492,10 @@ export async function POST(req: Request) {
           cejas_list: cejasList,
           micro_list: microList,
           limpieza_list: limpiezaList,
-          depilacion_list: depilacionList
+          depilacion_list: depilacionList,
+          client_name: clientName,
+          client_phone: clientPhone,
+          indicativo: indicativo
         },
       };
     }
@@ -573,7 +565,10 @@ export async function POST(req: Request) {
         screen: 'SPECIALIST_SCREEN',
         data: {
           selected_services: selectedServices,
-          specialists_list: specialistsList
+          specialists_list: specialistsList,
+          client_name: data.client_name || 'N/A',
+          client_phone: data.client_phone || 'N/A',
+          indicativo: data.indicativo || '57'
         }
       };
     }
@@ -624,6 +619,9 @@ export async function POST(req: Request) {
           selected_services: selectedServices,
           selected_specialist: data.selected_specialist,
           locations_list: locationsList,
+          client_name: data.client_name || 'N/A',
+          client_phone: data.client_phone || 'N/A',
+          indicativo: data.indicativo || '57'
         },
       };
     }
@@ -645,6 +643,9 @@ export async function POST(req: Request) {
           selected_sede: data.selected_sede || 'Marquetalia',
           min_date: formatLocalDate(tomorrow),
           max_date: formatLocalDate(maxDate),
+          client_name: data.client_name || 'N/A',
+          client_phone: data.client_phone || 'N/A',
+          indicativo: data.indicativo || '57'
         },
       };
     }
@@ -671,6 +672,11 @@ export async function POST(req: Request) {
         { id: '58', title: truncateTitle('🇻🇪 VENEZUELA (+58)', 30) },
       ];
 
+      // 🔍 EVALUACIÓN DE USUARIO EXISTENTE O NUEVO (N/A)
+      const rawName = String(data.client_name || 'N/A').trim();
+      const rawPhone = String(data.client_phone || 'N/A').trim();
+      const isExistingUser = rawName !== 'N/A' && rawName !== '' && rawPhone !== 'N/A' && rawPhone !== '';
+
       responsePayload = {
         version: '3.0',
         screen: 'TIME_SCREEN',
@@ -680,7 +686,11 @@ export async function POST(req: Request) {
           selected_sede: sede,
           selected_date: selectedDate,
           slots_list: finalSlots,
-          country_codes: countryCodes
+          country_codes: countryCodes,
+          client_name: rawName,
+          client_phone: rawPhone,
+          indicativo: data.indicativo || '57',
+          show_user_inputs: !isExistingUser // Si el usuario ya existe, oculta los campos (false)
         },
       };
     }
@@ -705,10 +715,25 @@ export async function POST(req: Request) {
             selected_sede: data.selected_sede || 'Marquetalia',
             min_date: formatLocalDate(tomorrow),
             max_date: formatLocalDate(maxDate),
+            client_name: data.client_name || 'N/A',
+            client_phone: data.client_phone || 'N/A',
+            indicativo: data.indicativo || '57'
           },
         };
       } else {
-        const fullPhone = `+${data.indicativo} ${data.client_phone}`;
+        // 🔍 RESUELVE DATOS DEL CLIENTE (SINO VIENE DE N/A, TOMA DEL INPUT FORMULARIO)
+        let finalName = data.client_name;
+        if (!finalName || finalName === 'N/A') {
+          finalName = data.client_name_input || 'Cliente';
+        }
+
+        let finalPhoneNum = data.client_phone;
+        if (!finalPhoneNum || finalPhoneNum === 'N/A') {
+          finalPhoneNum = data.client_phone_input || '';
+        }
+
+        const finalIndicativo = data.indicativo_input || data.indicativo || '57';
+        const fullPhone = `+${finalIndicativo} ${finalPhoneNum}`;
         const sedeElegida = data.selected_sede || 'Marquetalia';
 
         const infoSede = SEDES_INFO[sedeElegida] || SEDES_INFO.Marquetalia;
@@ -722,7 +747,6 @@ export async function POST(req: Request) {
         const serviceNames = matched.map((s: any) => s.Servicio || s.servicio).join(', ');
         const totalPrice = matched.reduce((sum: number, s: any) => sum + Number(s.Precio || s.precio || 0), 0);
 
-        // 🗓️ Formateamos la fecha seleccionada para mostrar el día de la semana
         const formattedDateDisplay = formatDateWithDay(data.selected_date);
 
         responsePayload = {
@@ -730,7 +754,7 @@ export async function POST(req: Request) {
           screen: 'SUMMARY_SCREEN',
           data: {
             summary_text: 
-            `Por favor confirma los detalles de tu agendamiento:\n\n👤 Cliente: ${data.client_name}\n📱 Número: ${fullPhone}\n💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}\n💳 Total: $${totalPrice.toLocaleString('es-CO')} COP\n🌸 Atiende: ${data.selected_specialist}\n📅 Fecha: ${formattedDateDisplay}\n⏰ Hora: ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${infoSede.nombreDisplay}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ Ubicación en Mapa:\n${infoSede.mapUrl}\n\nPresiona Confirmar y Agendar para reservar tu espacio.`,
+            `Por favor confirma los detalles de tu agendamiento:\n\n💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}\n💳 Total: $${totalPrice.toLocaleString('es-CO')} COP\n🌸 Atiende: ${data.selected_specialist}\n📅 Fecha: ${formattedDateDisplay}\n⏰ Hora: ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${infoSede.nombreDisplay}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ Ubicación en Mapa:\n${infoSede.mapUrl}\n\nPresiona Confirmar y Agendar para reservar tu espacio.`,
           },
         };
       }
