@@ -66,6 +66,22 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+// 🗓️ FUNCIÓN AUXILIAR: Muestra la fecha con el nombre del día en español (ej. "Sábado, 3 de Octubre de 2026")
+function formatDateWithDay(dateStr: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3) return dateStr;
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day);
+  
+  const daysEs = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const monthsEs = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  
+  const dayName = daysEs[date.getDay()];
+  const monthName = monthsEs[date.getMonth()];
+  return `${dayName}, ${day} de ${monthName} de ${year}`;
+}
+
 function safeParseSchedule(rawSchedule: any): any {
   if (!rawSchedule) return {};
   let current = rawSchedule;
@@ -640,7 +656,6 @@ export async function POST(req: Request) {
 
       const slotsList = await getAvailableSlots(selectedServices, sede, specialist, selectedDate);
       
-      // 🛡️ SI NO HAY TURNOS: Enviamos la opción informativa 'NONE'
       const finalSlots = slotsList.length > 0 
         ? slotsList 
         : [{ id: 'NONE', title: truncateTitle('❌ Sin turnos en esta fecha', 30) }];
@@ -669,12 +684,10 @@ export async function POST(req: Request) {
         },
       };
     }
-    // 🎯 PASO 6: INTERCEPCIÓN AL INTENTAR AVANZAR DESDE "TIME_SCREEN"
     else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
       const selectedTime = String(data.selected_time || '');
       const selectedServices = parseSelectedCategories(data.selected_services);
 
-      // 🛑 SI INTENTA AVANZAR CON LA OPCIÓN 'NONE' O SIN SELECCIONAR HORA:
       if (!selectedTime || selectedTime === 'NONE') {
         const colombiaToday = getColombiaNow();
         const tomorrow = new Date(colombiaToday);
@@ -683,7 +696,6 @@ export async function POST(req: Request) {
         const maxDate = new Date(colombiaToday);
         maxDate.setDate(colombiaToday.getDate() + 30);
 
-        // ↩️ DEVOLVEMOS AL USUARIO A LA PANTALLA DE SELECCIÓN DE FECHA (DATE_SCREEN)
         responsePayload = {
           version: '3.0',
           screen: 'DATE_SCREEN',
@@ -696,7 +708,6 @@ export async function POST(req: Request) {
           },
         };
       } else {
-        // ⏩ SI ELIGIÓ UN HORARIO VÁLIDO: CONTINUAR AL RESUMEN
         const fullPhone = `+${data.indicativo} ${data.client_phone}`;
         const sedeElegida = data.selected_sede || 'Marquetalia';
 
@@ -711,11 +722,15 @@ export async function POST(req: Request) {
         const serviceNames = matched.map((s: any) => s.Servicio || s.servicio).join(', ');
         const totalPrice = matched.reduce((sum: number, s: any) => sum + Number(s.Precio || s.precio || 0), 0);
 
+        // 🗓️ Formateamos la fecha seleccionada para mostrar el día de la semana
+        const formattedDateDisplay = formatDateWithDay(data.selected_date);
+
         responsePayload = {
           version: '3.0',
           screen: 'SUMMARY_SCREEN',
           data: {
-            summary_text: `Por favor confirma los detalles de tu agendamiento:\n\n👤 *Cliente:* ${data.client_name}\n📱 *WhatsApp:* ${fullPhone}\n💅 *Servicio(s):* ${serviceNames || 'Servicios seleccionados'}\n💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP\n🌸 *Atiende:* ${data.selected_specialist}\n📅 *Fecha:* ${data.selected_date}\n⏰ *Hora:* ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${infoSede.nombreDisplay}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ *Ubicación en Mapa:* ${infoSede.mapUrl}\n\nPresiona *Confirmar y Agendar* para reservar tu espacio.`,
+            summary_text: 
+            `Por favor confirma los detalles de tu agendamiento:\n\n👤 Cliente: ${data.client_name}\n📱 Número: ${fullPhone}\n💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}\n💳 Total: $${totalPrice.toLocaleString('es-CO')} COP\n🌸 Atiende: ${data.selected_specialist}\n📅 Fecha: ${formattedDateDisplay}\n⏰ Hora: ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${infoSede.nombreDisplay}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ Ubicación en Mapa:\n${infoSede.mapUrl}\n\nPresiona Confirmar y Agendar para reservar tu espacio.`,
           },
         };
       }
