@@ -38,7 +38,8 @@ export async function POST(request: NextRequest) {
 
     const {
       client_name,
-      full_phone,
+      indicative,
+      phone_number,
       selected_services,
       selected_specialist,
       selected_sede,
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🌸 2. NORMALIZAR LISTA DE SERVICIOS (Acepta arreglos o texto separado por comas)
+    // 🌸 2. NORMALIZAR LISTA DE SERVICIOS
     let servicesList: string[] = [];
     if (Array.isArray(selected_services)) {
       servicesList = selected_services;
@@ -83,7 +84,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Coincidencia flexible por SKU, id o Nombre del servicio
     const detailedServices = servicesList
       .map((item) =>
         (dbServices || []).find(
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     const dateStr = startDateObj.toISOString().split("T")[0];
     const startMin = startDateObj.getUTCHours() * 60 + startDateObj.getUTCMinutes();
 
-    // 🌸 5. OBTENER ESPECIALISTAS Y ASIGNAR PROFESIONAL
+    // 🌸 5. OBTENER ESPECIALISTAS
     const { data: allSpecialists, error: specError } = await supabase
       .from("app_users")
       .select("id, name, horario_semanal");
@@ -160,7 +160,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Si no hay especialista calificada específica, tomar la primera de la lista o una por defecto
     const assignedSpecialistName =
       qualifiedSpecialists[0]?.name || allSpecialists?.[0]?.name || "Nary Cabrales";
 
@@ -168,12 +167,17 @@ export async function POST(request: NextRequest) {
     let currentStartMin = startMin;
     const createdAppointments = [];
 
+    // Limpieza de datos de teléfono para las columnas fuente
+    const cleanCelular = (phone_number || "").replace(/\D/g, "");
+    const cleanIndicativo = parseInt((indicative || "57").replace(/\D/g, ""), 10) || 57;
+
     for (const srv of detailedServices) {
       const srvDuration = parseInt(srv.duracion || "60", 10);
-      const srvStartStr = `${dateStr}T${minutesToTime(currentStartMin)}:00+00:00`;
+      const srvStartStr = `${dateStr} ${minutesToTime(currentStartMin)}:00+00`;
       const srvEndMin = currentStartMin + srvDuration;
-      const srvEndStr = `${dateStr}T${minutesToTime(srvEndMin)}:00+00:00`;
+      const srvEndStr = `${dateStr} ${minutesToTime(srvEndMin)}:00`;
 
+      // 🚨 IMPORTANTE: Se elimina "full_phone" de la inserción ya que es una columna generada automáticamente por Supabase
       const newAppt = {
         cliente: client_name || "Sin Nombre",
         servicio: srv.Servicio || srv.nombre,
@@ -181,14 +185,24 @@ export async function POST(request: NextRequest) {
         category: srv.Categoria || srv.category || "General",
         especialista: assignedSpecialistName,
         sede: selected_sede || "Marquetalia",
-        full_phone: full_phone || "N/A",
+        celular: cleanCelular,
+        indicativo: cleanIndicativo,
         appointment_at: srvStartStr,
         finished_at: srvEndStr,
         duration: String(srvDuration),
         price: String(srv.Precio || srv.price || 0),
         price_final: String(srv.Precio || srv.price || 0),
+        descuento: "0",
         estado: "Nueva reserva creada",
         created_by: "BOT",
+        is_primary_client: true,
+        primary_client_name: client_name || "Sin Nombre",
+        survey: false,
+        dia: "false",
+        "48h": "false",
+        retoque: false,
+        retoque_enviado: false,
+        interes: "false",
       };
 
       const { data: inserted, error: insertError } = await supabase
