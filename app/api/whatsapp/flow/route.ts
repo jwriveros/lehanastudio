@@ -453,11 +453,24 @@ export async function POST(req: Request) {
         data: { status: 'active' } 
       };
     }
-    // 🎯 PASO 1: INIT - Captura datos iniciales del cliente
+    // 🎯 PASO 1: INIT - Extracción de variables desde flow_token (ej. "agendamiento_1001|Jhon|3028534050|57")
     else if (action === 'INIT') {
-      const clientName = data?.client_name || 'N/A';
-      const clientPhone = data?.client_phone || 'N/A';
-      const indicativo = data?.indicativo || '57';
+      const rawToken = decryptedBody?.flow_token || data?.flow_token || '';
+      
+      let clientName = 'N/A';
+      let clientPhone = 'N/A';
+      let indicativo = '57';
+
+      if (rawToken && rawToken.includes('|')) {
+        const parts = rawToken.split('|');
+        clientName = parts[1] || 'N/A';
+        clientPhone = parts[2] || 'N/A';
+        indicativo = parts[3] || '57';
+      } else {
+        clientName = data?.client_name || 'N/A';
+        clientPhone = data?.client_phone || 'N/A';
+        indicativo = data?.indicativo || '57';
+      }
 
       const { data: servicesDB } = await supabase.from('services').select('*');
       const rawServices = servicesDB || [];
@@ -672,7 +685,6 @@ export async function POST(req: Request) {
         { id: '58', title: truncateTitle('🇻🇪 VENEZUELA (+58)', 30) },
       ];
 
-      // 🔍 EVALUACIÓN DE USUARIO EXISTENTE O NUEVO (N/A)
       const rawName = String(data.client_name || 'N/A').trim();
       const rawPhone = String(data.client_phone || 'N/A').trim();
       const isExistingUser = rawName !== 'N/A' && rawName !== '' && rawPhone !== 'N/A' && rawPhone !== '';
@@ -690,7 +702,7 @@ export async function POST(req: Request) {
           client_name: rawName,
           client_phone: rawPhone,
           indicativo: data.indicativo || '57',
-          show_user_inputs: !isExistingUser // Si el usuario ya existe, oculta los campos (false)
+          show_user_inputs: !isExistingUser
         },
       };
     }
@@ -721,7 +733,6 @@ export async function POST(req: Request) {
           },
         };
       } else {
-        // 🔍 RESUELVE DATOS DEL CLIENTE (SINO VIENE DE N/A, TOMA DEL INPUT FORMULARIO)
         let finalName = data.client_name;
         if (!finalName || finalName === 'N/A') {
           finalName = data.client_name_input || 'Cliente';
@@ -754,7 +765,7 @@ export async function POST(req: Request) {
           screen: 'SUMMARY_SCREEN',
           data: {
             summary_text: 
-            `Por favor confirma los detalles de tu agendamiento:\n\n💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}\n💳 Total: $${totalPrice.toLocaleString('es-CO')} COP\n🌸 Atiende: ${data.selected_specialist}\n📅 Fecha: ${formattedDateDisplay}\n⏰ Hora: ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${infoSede.nombreDisplay}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ Ubicación en Mapa:\n${infoSede.mapUrl}\n\nPresiona Confirmar y Agendar para reservar tu espacio.`,
+            `Por favor confirma los detalles de tu agendamiento:\n\n👤 Cliente: ${finalName}\n📱 Número: ${fullPhone}\n💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}\n💳 Total: $${totalPrice.toLocaleString('es-CO')} COP\n🌸 Atiende: ${data.selected_specialist}\n📅 Fecha: ${formattedDateDisplay}\n⏰ Hora: ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${infoSede.nombreDisplay}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ Ubicación en Mapa:\n${infoSede.mapUrl}\n\nPresiona Confirmar y Agendar para reservar tu espacio.`,
           },
         };
       }
