@@ -723,7 +723,7 @@ export async function POST(req: Request) {
 
 📍 Sede: ${infoSede.nombreDisplay}
 🏢 Dirección: ${infoSede.direccion}, ${infoSede.ciudad}
-🗺️ Ubicación: [Ver en Google Maps](${infoSede.mapUrl})
+🗺️ Ubicación: (${infoSede.mapUrl})
 
 Presiona Confirmar y Agendar para reservar tu espacio.`;
 
