@@ -769,7 +769,7 @@ export async function POST(req: Request) {
           screen: 'SUMMARY_SCREEN',
           data: {
             summary_text: 
-            `Por favor confirma los detalles de tu agendamiento:\n\n👤 Cliente: ${finalName}\n📱 Número: ${fullPhone}\n💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}\n💳 Total: $${totalPrice.toLocaleString('es-CO')} COP\n🌸 Atiende: ${data.selected_specialist}\n📅 Fecha: ${formattedDateDisplay}\n⏰ Hora: ${formatTime12h(data.selected_time)}\n\n📍 *Sede:* ${infoSede.nombreDisplay}\n🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ Ubicación en Mapa:\n${infoSede.mapUrl}\n\nPresiona Confirmar y Agendar para reservar tu espacio.`,
+            `Por favor confirma los detalles de tu agendamiento:\n\n👤 Nombre: ${finalName}\n📱 Número: ${fullPhone}\n💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}\n💳 Total: $${totalPrice.toLocaleString('es-CO')} COP\n🌸 Atiende: ${data.selected_specialist}\n📅 Fecha: ${formattedDateDisplay}\n⏰ Hora: ${formatTime12h(data.selected_time)}\n\n📍 Sede: ${infoSede.nombreDisplay}\n🏢 Dirección: ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ Ubicación en Mapa:\n${infoSede.mapUrl}\n\nPresiona Confirmar y Agendar para reservar tu espacio.`,
           },
         };
       }
