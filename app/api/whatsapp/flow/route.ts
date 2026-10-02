@@ -31,11 +31,11 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 0hgdcrZYxD6CFAt51jRkpZYe
 -----END RSA PRIVATE KEY-----`;
 
-// 🏢 ESTRUCTURA DE SEDES CON NOMBRE VISIBLE Y ENLACES REALES
+// 🏢 DICCIONARIO CON LAS DIRECCIONES Y ENLACES REALES DE CADA LOCAL
 const SEDES_INFO: Record<string, { nombreDisplay: string; direccion: string; ciudad: string; mapUrl: string }> = {
   Marquetalia: {
     nombreDisplay: "Palomino",
-    direccion: "Calle 5 # 4-45 Marquetalia",
+    direccion: "Calle 5 # 4-45 Palomino",
     ciudad: "Palomino, La Guajira",
     mapUrl: "https://maps.app.goo.gl/Ynt2Zaak3trXt2KL8"
   },
@@ -561,7 +561,6 @@ export async function POST(req: Request) {
         }
       };
     }
-    // 🎯 PASO 3: PANTALLA DE SEDES MOSTRANDO "PALOMINO" EN LUGAR DE MARQUETALIA
     else if (action === 'data_exchange' && screen === 'SPECIALIST_SCREEN') {
       const selectedServices = parseSelectedCategories(data.selected_services);
       const todayStr = new Date().toISOString().split('T')[0];
@@ -640,7 +639,11 @@ export async function POST(req: Request) {
       const selectedDate = data.selected_date;
 
       const slotsList = await getAvailableSlots(selectedServices, sede, specialist, selectedDate);
-      const finalSlots = slotsList.length > 0 ? slotsList : [{ id: 'NONE', title: truncateTitle('Sin turnos libres en esta fecha', 30) }];
+      
+      // 🛡️ SI NO HAY SLOTS: Se asigna una opción informativa con ID 'NONE'
+      const finalSlots = slotsList.length > 0 
+        ? slotsList 
+        : [{ id: 'NONE', title: truncateTitle('❌ Sin turnos en esta fecha', 30) }];
 
       const countryCodes = [
         { id: '57', title: truncateTitle('🇨🇴 Colombia (+57)', 30) },
@@ -666,25 +669,49 @@ export async function POST(req: Request) {
         },
       };
     }
-    // 🎯 PASO 6: FORMATO DE RESUMEN CON NEGRITA (**), ENLACE CLIQUEABLE Y PALOMINO
+    // 🎯 PASO 6: VALIDACIÓN AL PRESIONAR "VER RESUMEN"
     else if (action === 'data_exchange' && screen === 'TIME_SCREEN') {
-      const fullPhone = `+${data.indicativo} ${data.client_phone}`;
+      const selectedTime = String(data.selected_time || '');
       const selectedServices = parseSelectedCategories(data.selected_services);
-      const sedeElegida = data.selected_sede || 'Marquetalia';
 
-      const infoSede = SEDES_INFO[sedeElegida] || SEDES_INFO.Marquetalia;
+      // 🛑 BLOQUEO DE SEGURIDAD: Si seleccionó la opción 'NONE' (Sin turnos) o está vacío
+      if (!selectedTime || selectedTime === 'NONE') {
+        const colombiaToday = getColombiaNow();
+        const tomorrow = new Date(colombiaToday);
+        tomorrow.setDate(colombiaToday.getDate() + 1);
 
-      const { data: allServicesDB } = await supabase.from('services').select('*');
-      const rawServices = allServicesDB || [];
-      const matched = rawServices.filter(
-        (s: any) => selectedServices.includes(String(s.SKU)) || selectedServices.includes(String(s.id))
-      );
+        const maxDate = new Date(colombiaToday);
+        maxDate.setDate(colombiaToday.getDate() + 30);
 
-      const serviceNames = matched.map((s: any) => s.Servicio || s.servicio).join(', ');
-      const totalPrice = matched.reduce((sum: number, s: any) => sum + Number(s.Precio || s.precio || 0), 0);
+        // ↩️ REDIRECCIÓN AUTOMÁTICA: Lo devolvemos a la pantalla de selección de fecha (DATE_SCREEN)
+        responsePayload = {
+          version: '3.0',
+          screen: 'DATE_SCREEN',
+          data: {
+            selected_services: selectedServices,
+            selected_specialist: data.selected_specialist,
+            selected_sede: data.selected_sede || 'Marquetalia',
+            min_date: formatLocalDate(tomorrow),
+            max_date: formatLocalDate(maxDate),
+          },
+        };
+      } else {
+        // ⏩ CONTINUAR AL RESUMEN SI TIENE UN HORARIO VÁLIDO
+        const fullPhone = `+${data.indicativo} ${data.client_phone}`;
+        const sedeElegida = data.selected_sede || 'Marquetalia';
 
-      // Usamos el formato Markdown estándar de Meta Flows: doble asterisco (**) para negrita y [Texto](URL) para enlaces
-      const summaryMarkdown = `Por favor confirma los detalles de tu agendamiento:
+        const infoSede = SEDES_INFO[sedeElegida] || SEDES_INFO.Marquetalia;
+
+        const { data: allServicesDB } = await supabase.from('services').select('*');
+        const rawServices = allServicesDB || [];
+        const matched = rawServices.filter(
+          (s: any) => selectedServices.includes(String(s.SKU)) || selectedServices.includes(String(s.id))
+        );
+
+        const serviceNames = matched.map((s: any) => s.Servicio || s.servicio).join(', ');
+        const totalPrice = matched.reduce((sum: number, s: any) => sum + Number(s.Precio || s.precio || 0), 0);
+
+        const summaryMarkdown = `Por favor confirma los detalles de tu agendamiento:
 
 👤 **Cliente:** ${data.client_name}
 📱 **WhatsApp:** ${fullPhone}
@@ -700,13 +727,14 @@ export async function POST(req: Request) {
 
 Presiona **Confirmar y Agendar** para reservar tu espacio.`;
 
-      responsePayload = {
-        version: '3.0',
-        screen: 'SUMMARY_SCREEN',
-        data: {
-          summary_text: summaryMarkdown,
-        },
-      };
+        responsePayload = {
+          version: '3.0',
+          screen: 'SUMMARY_SCREEN',
+          data: {
+            summary_text: summaryMarkdown,
+          },
+        };
+      }
     }
     else if (action === 'complete') {
       responsePayload = { 
