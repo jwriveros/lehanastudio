@@ -484,7 +484,7 @@ export async function POST(req: Request) {
 
       const formatDropdownItem = (s: any) => {
         const precio = Number(s.Precio || s.precio || 0).toLocaleString('es-CO');
-        const name = String(s.Servicio || s.servicio || 'Servicio');
+        const name = String(s.service_flow || s.Servicio || s.servicio || 'Servicio');
         return {
           id: String(s.SKU || s.id),
           title: truncateTitle(`${name} ($${precio})`, 30)
@@ -759,7 +759,7 @@ export async function POST(req: Request) {
           (s: any) => selectedServices.includes(String(s.SKU)) || selectedServices.includes(String(s.id))
         );
 
-        const serviceNames = matched.map((s: any) => s.Servicio || s.servicio).join(', ');
+        const serviceNames = matched.map((s: any) => s.service_flow || s.Servicio || s.servicio).join(', ');
         const totalPrice = matched.reduce((sum: number, s: any) => sum + Number(s.Precio || s.precio || 0), 0);
 
         const formattedDateDisplay = formatDateWithDay(data.selected_date);
@@ -770,6 +770,14 @@ export async function POST(req: Request) {
           data: {
             summary_text: 
             `Por favor confirma los detalles de tu agendamiento:\n\n👤 Nombre: ${finalName}\n📱 Número: ${fullPhone}\n💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}\n💳 Total: $${totalPrice.toLocaleString('es-CO')} COP\n🌸 Atiende: ${data.selected_specialist}\n📅 Fecha: ${formattedDateDisplay}\n⏰ Hora: ${formatTime12h(data.selected_time)}\n\n📍 Sede: ${infoSede.nombreDisplay}\n🏢 Dirección: ${infoSede.direccion}, ${infoSede.ciudad}\n🗺️ Ubicación en Mapa:\n${infoSede.mapUrl}\n\nPresiona Confirmar y Agendar para reservar tu espacio.`,
+            selected_services: selectedServices,
+            selected_specialist: data.selected_specialist,
+            selected_sede: sedeElegida,
+            selected_date: data.selected_date,
+            selected_time: data.selected_time,
+            client_name: finalName,
+            client_phone: finalPhoneNum,
+            indicativo: finalIndicativo
           },
         };
       }
