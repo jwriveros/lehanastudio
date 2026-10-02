@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
         price_final: String(srv.Precio || srv.price || 0),
         descuento: "0",
         estado: "Nueva reserva creada",
-        created_by: "BOT",
+        created_by: "FLOW",
         is_primary_client: true,
         primary_client_name: client_name || "Sin Nombre",
         survey: false,
