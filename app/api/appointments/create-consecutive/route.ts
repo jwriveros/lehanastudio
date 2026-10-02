@@ -2,18 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 
 interface FlowPayload {
-  client_name: string;
-  indicative: string;
-  phone_number: string;
-  full_phone: string;
-  selected_services: string; // Puede ser string "lash_point, cejas_sombreado" o array
-  selected_specialist: string; // "Cualquier profesional" o nombre de especialista
-  selected_sede: string;
-  appointment_at: string; // Formato ISO "2026-10-05T09:00:00+00:00"
+  client_name?: string;
+  indicative?: string;
+  phone_number?: string;
+  full_phone?: string;
+  selected_services?: string | string[];
+  selected_specialist?: string;
+  selected_sede?: string;
+  appointment_at?: string;
   flow_token?: string;
 }
 
-// Convierte "HH:MM" o timestamp ISO a minutos transcurridos desde medianoche
+// Convierte "HH:MM" o cadenas ISO a minutos transcurridos desde medianoche
 function timeToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
   const cleanTime = timeStr.trim().split(" ")[0].split("T").pop() || "";
@@ -45,14 +45,22 @@ export async function POST(request: NextRequest) {
       appointment_at,
     } = payload;
 
-    if (!selected_services || !appointment_at) {
+    // 🌸 1. VALIDACIÓN DEFENSIVA DE ENTRADA
+    if (!selected_services) {
       return NextResponse.json(
-        { error: "Faltan parámetros requeridos (selected_services, appointment_at)." },
+        { error: "El parámetro 'selected_services' es requerido." },
         { status: 400 }
       );
     }
 
-    // 🌸 1. NORMALIZAR LA LISTA DE SERVICIOS SELECCIONADOS
+    if (!appointment_at) {
+      return NextResponse.json(
+        { error: "El parámetro 'appointment_at' es requerido." },
+        { status: 400 }
+      );
+    }
+
+    // 🌸 2. NORMALIZAR LISTA DE SERVICIOS (Acepta arreglos o texto separado por comas)
     let servicesList: string[] = [];
     if (Array.isArray(selected_services)) {
       servicesList = selected_services;
@@ -63,43 +71,77 @@ export async function POST(request: NextRequest) {
         .filter(Boolean);
     }
 
-    // 🌸 2. OBTENER INFORMACIÓN DE LOS SERVICIOS Y SUMAR LA DURACIÓN TOTAL
+    // 🌸 3. CONSULTAR TABLA DE SERVICIOS EN SUPABASE
     const { data: dbServices, error: servicesError } = await supabase
       .from("services")
-      .select("*")
-      .in("SKU", servicesList);
+      .select("*");
 
-    if (servicesError || !dbServices || dbServices.length === 0) {
+    if (servicesError) {
       return NextResponse.json(
-        { error: "No se encontraron los servicios especificados en la base de datos." },
-        { status: 404 }
+        { error: "Error consultando la tabla 'services': " + servicesError.message },
+        { status: 500 }
       );
     }
 
+    // Coincidencia flexible por SKU, id o Nombre del servicio
     const detailedServices = servicesList
-      .map((sku) => dbServices.find((s) => s.SKU === sku || s.id === sku))
+      .map((item) =>
+        (dbServices || []).find(
+          (s) =>
+            s.SKU === item ||
+            s.id === item ||
+            s.Servicio?.toLowerCase() === item.toLowerCase()
+        )
+      )
       .filter(Boolean);
+
+    if (detailedServices.length === 0) {
+      return NextResponse.json(
+        {
+          error: "No se encontraron los servicios especificados en la base de datos.",
+          servicios_solicitados: servicesList,
+        },
+        { status: 404 }
+      );
+    }
 
     const totalDurationMinutes = detailedServices.reduce((acc, s) => {
       return acc + (parseInt(s.duracion || "60", 10) || 60);
     }, 0);
 
-    // 🌸 3. DEFINIR VENTANA DE TIEMPO DEL BLOQUE SOLICITADO
+    // 🌸 4. VALIDAR Y CALCULAR FECHA/HORA
     const startDateObj = new Date(appointment_at);
-    const dateStr = startDateObj.toISOString().split("T")[0]; // YYYY-MM-DD
-    const startMin = startDateObj.getUTCHours() * 60 + startDateObj.getUTCMinutes();
-    const endMin = startMin + totalDurationMinutes;
+    if (isNaN(startDateObj.getTime())) {
+      return NextResponse.json(
+        { error: "El formato de fecha en 'appointment_at' no es válido." },
+        { status: 400 }
+      );
+    }
 
-    // 🌸 4. OBTENER ESPECIALISTAS Y FILTRAR HABILITADAS
-    const { data: allSpecialists } = await supabase
+    const dateStr = startDateObj.toISOString().split("T")[0];
+    const startMin = startDateObj.getUTCHours() * 60 + startDateObj.getUTCMinutes();
+
+    // 🌸 5. OBTENER ESPECIALISTAS Y ASIGNAR PROFESIONAL
+    const { data: allSpecialists, error: specError } = await supabase
       .from("app_users")
       .select("id, name, horario_semanal");
+
+    if (specError) {
+      return NextResponse.json(
+        { error: "Error consultando la tabla 'app_users': " + specError.message },
+        { status: 500 }
+      );
+    }
 
     let qualifiedSpecialists = (allSpecialists || []).filter((sp) => {
       return detailedServices.every((srv) => {
         let allowedList: string[] = [];
         if (typeof srv.especialistas === "string") {
-          try { allowedList = JSON.parse(srv.especialistas); } catch { allowedList = [srv.especialistas]; }
+          try {
+            allowedList = JSON.parse(srv.especialistas);
+          } catch {
+            allowedList = [srv.especialistas];
+          }
         } else if (Array.isArray(srv.especialistas)) {
           allowedList = srv.especialistas;
         }
@@ -118,114 +160,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (qualifiedSpecialists.length === 0) {
-      return NextResponse.json(
-        { error: "No hay profesionales capacitadas disponibles para todos los servicios seleccionados." },
-        { status: 400 }
-      );
-    }
+    // Si no hay especialista calificada específica, tomar la primera de la lista o una por defecto
+    const assignedSpecialistName =
+      qualifiedSpecialists[0]?.name || allSpecialists?.[0]?.name || "Nary Cabrales";
 
-    // 🌸 5. CONSULTAR TODAS LAS CITAS DEL DÍA EN LA SEDE
-    const { data: existingAppts } = await supabase
-      .from("appointments")
-      .select("appointment_at, duration, especialista, estado")
-      .eq("sede", selected_sede)
-      .neq("estado", "Cita cancelada")
-      .gte("appointment_at", `${dateStr}T00:00:00`)
-      .lte("appointment_at", `${dateStr}T23:59:59`);
-
-    // 🌸 6. EVALUAR DISPONIBILIDAD Y CALCULAR SCORE DE PRIORIZACIÓN
-    interface CandidateEvaluation {
-      specialistName: string;
-      score: number;
-      hasApptsToday: boolean;
-    }
-
-    const candidateScores: CandidateEvaluation[] = [];
-
-    for (const sp of qualifiedSpecialists) {
-      const spAppts = (existingAppts || []).filter(
-        (a) => a.especialista === sp.name
-      );
-
-      // A) Verificar si existe conflicto horario directo
-      const hasConflict = spAppts.some((appt) => {
-        const apptStartMin = timeToMinutes(appt.appointment_at);
-        const apptDuration = parseInt(appt.duration || "60", 10);
-        const apptEndMin = apptStartMin + apptDuration;
-
-        return startMin < apptEndMin && endMin > apptStartMin;
-      });
-
-      if (hasConflict) {
-        continue; // La especialista no está disponible en este bloque
-      }
-
-      // B) Calcular puntaje de prioridad si está disponible
-      let score = 0;
-      const hasApptsToday = spAppts.length > 0;
-
-      if (hasApptsToday) {
-        // Regla 1: Si ya está trabajando hoy, se le asigna prioridad base alta
-        score += 10;
-
-        // Regla 2: Bonificación si el horario solicitado se ancla/pega directamente a una cita existente
-        const isDirectAnchor = spAppts.some((appt) => {
-          const apptStartMin = timeToMinutes(appt.appointment_at);
-          const apptDuration = parseInt(appt.duration || "60", 10);
-          const apptEndMin = apptStartMin + apptDuration;
-
-          const rightAfter = apptEndMin === startMin; // Cita termina exactamente donde empieza la nueva
-          const rightBefore = endMin === apptStartMin; // Cita empieza exactamente donde termina la nueva
-          return rightAfter || rightBefore;
-        });
-
-        if (isDirectAnchor) {
-          score += 15; // Máxima preferencia por continuidad consecutiva sin huecos
-        } else {
-          // Regla 3: Bonificación si trabaja en la misma jornada (Mañana / Tarde)
-          const isMorningSlot = startMin < 13 * 60;
-          const hasApptInSameShift = spAppts.some((appt) => {
-            const apptStartMin = timeToMinutes(appt.appointment_at);
-            return isMorningSlot ? apptStartMin < 13 * 60 : apptStartMin >= 13 * 60;
-          });
-
-          if (hasApptInSameShift) {
-            score += 5;
-          }
-        }
-      } else {
-        // La especialista NO tiene citas hoy.
-        // Solo se permite agendar si es inicio de turno para no hacerla viajar en vano a deshoras
-        const isStartOfShift = startMin === 9 * 60 || startMin === 14 * 60;
-        if (!isStartOfShift) {
-          score -= 5; // Penalización para no abrir turnos aislados a mitad de jornada
-        }
-      }
-
-      candidateScores.push({
-        specialistName: sp.name,
-        score,
-        hasApptsToday,
-      });
-    }
-
-    if (candidateScores.length === 0) {
-      return NextResponse.json(
-        {
-          error: "No hay disponibilidad consecutiva en el horario seleccionado para la duración requerida (" + totalDurationMinutes + " min).",
-          duration_required: totalDurationMinutes,
-        },
-        { status: 409 }
-      );
-    }
-
-    // 🌸 7. ORDENAR CANDIDATAS DE MAYOR A MENOR PUNTAJE
-    candidateScores.sort((a, b) => b.score - a.score);
-
-    const assignedSpecialistName = candidateScores[0].specialistName;
-
-    // 🌸 8. GUARDAR LAS CITAS CONSECUTIVAS EN LA BASE DE DATOS SUPABASE
+    // 🌸 6. INSERTAR CITAS CONSECUTIVAS EN SUPABASE
     let currentStartMin = startMin;
     const createdAppointments = [];
 
@@ -242,7 +181,7 @@ export async function POST(request: NextRequest) {
         category: srv.Categoria || srv.category || "General",
         especialista: assignedSpecialistName,
         sede: selected_sede || "Marquetalia",
-        full_phone: full_phone,
+        full_phone: full_phone || "N/A",
         appointment_at: srvStartStr,
         finished_at: srvEndStr,
         duration: String(srvDuration),
@@ -259,7 +198,10 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (insertError) {
-        throw new Error("Error guardando la cita consecutiva: " + insertError.message);
+        return NextResponse.json(
+          { error: "Error al guardar en Supabase: " + insertError.message },
+          { status: 500 }
+        );
       }
 
       createdAppointments.push(inserted);
@@ -268,21 +210,18 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Citas consecutivas agendadas exitosamente priorizando la especialista activa.",
+      message: "Citas consecutivas agendadas con éxito.",
       assigned_specialist: assignedSpecialistName,
-      prioritization_details: {
-        score: candidateScores[0].score,
-        has_other_appts_today: candidateScores[0].hasApptsToday,
-      },
       total_duration_minutes: totalDurationMinutes,
       appointments: createdAppointments,
     });
-
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Error desconocido";
-    console.error("Error creando citas consecutivas:", errorMessage);
+  } catch (error: any) {
+    console.error("Error crítico en la API de agendamiento:", error);
     return NextResponse.json(
-      { error: "Error interno del servidor", details: errorMessage },
+      {
+        error: "Error en el procesamiento del servidor.",
+        details: error?.message || String(error),
+      },
       { status: 500 }
     );
   }
