@@ -34,7 +34,7 @@ MkLslSo+6pkc0DLXYU5oiBbP5mIP1OBRnGeDIpinez3GsAa6K946iB2DzcuOhYGl
 // 🏢 DICCIONARIO CON LAS DIRECCIONES Y ENLACES REALES DE CADA LOCAL
 const SEDES_INFO: Record<string, { nombreDisplay: string; direccion: string; ciudad: string; mapUrl: string }> = {
   Marquetalia: {
-    nombreDisplay: "Palomino",
+    nombreDisplay: "Marquetalia",
     direccion: "Calle 5 # 4-45 Palomino",
     ciudad: "Palomino, La Guajira",
     mapUrl: "https://maps.app.goo.gl/Ynt2Zaak3trXt2KL8"
@@ -713,19 +713,19 @@ export async function POST(req: Request) {
 
         const summaryMarkdown = `Por favor confirma los detalles de tu agendamiento:
 
-👤 *Cliente:* ${data.client_name}
-📱 *WhatsApp:* ${fullPhone}
-💅 *Servicio(s):* ${serviceNames || 'Servicios seleccionados'}
-💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP
-🌸 *Atiende:* ${data.selected_specialist}
-📅 *Fecha:* ${data.selected_date}
-⏰ *Hora:* ${formatTime12h(data.selected_time)}
+👤 Nombre: ${data.client_name}
+📱 Número: ${fullPhone}
+💅 Servicio(s): ${serviceNames || 'Servicios seleccionados'}
+💳 Total: $${totalPrice.toLocaleString('es-CO')} COP
+🌸 Atiende: ${data.selected_specialist}
+📅 Fecha: ${data.selected_date}
+⏰ Hora: ${formatTime12h(data.selected_time)}
 
-📍 *Sede:* ${infoSede.nombreDisplay}
-🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}
-🗺️ *Ubicación:* [Ver en Google Maps](${infoSede.mapUrl})
+📍 Sede: ${infoSede.nombreDisplay}
+🏢 Dirección: ${infoSede.direccion}, ${infoSede.ciudad}
+🗺️ Ubicación: [Ver en Google Maps](${infoSede.mapUrl})
 
-Presiona *Confirmar y Agendar* para reservar tu espacio.`;
+Presiona Confirmar y Agendar para reservar tu espacio.`;
 
         responsePayload = {
           version: '3.0',
