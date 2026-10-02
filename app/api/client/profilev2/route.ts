@@ -9,6 +9,7 @@ interface Appointment {
   celular?: string;
   full_phone?: string;
   bsuid?: string;
+  indicativo?: number | string;
   appointment_at?: string;
   estado?: string;
   sede?: string;
@@ -118,6 +119,85 @@ function inferirSedePorMunicipio(municipio: string | null): string {
   return 'Marquetalia';
 }
 
+/**
+ * 🌸 FUNCION AUXILIAR PARA EVALUAR LOS 3 NUEVOS CAMPOS SEGÚN LAS REGLAS DE AUDITORÍA
+ */
+function evaluarCamposCliente(
+  nombreRaw: string | null | undefined,
+  fullPhoneRaw: string | null | undefined,
+  celularRaw: string | null | undefined,
+  bsuidRaw: string | null | undefined,
+  indicativoRaw: string | number | null | undefined
+) {
+  // Limpieza básica de datos
+  const nombre = (nombreRaw || '').trim();
+  const fullPhone = (fullPhoneRaw || '').trim();
+  const celular = (celularRaw || '').trim();
+  const bsuid = (bsuidRaw || '').trim();
+
+  // 1. Extraer indicativo numérico o de string (ej. "+57..." -> "57")
+  let indicativo = 'N/A';
+  if (indicativoRaw && indicativoRaw !== 'N/A') {
+    indicativo = String(indicativoRaw).replace(/\D/g, '');
+  } else if (fullPhone.startsWith('+')) {
+    const cleanFull = fullPhone.replace(/\D/g, '');
+    if (cleanFull.startsWith('57')) indicativo = '57';
+    else if (cleanFull.startsWith('58')) indicativo = '58';
+  } else if (fullPhone.startsWith('57')) {
+    indicativo = '57';
+  }
+
+  // Número de teléfono candidato a evaluar
+  const phoneCandidate = celular || fullPhone.replace(/\D/g, '') || 'N/A';
+
+  // 🚨 REGLA 1: Si phone_number es 'N/A', vacío, o es el mismo que el bsuid -> Todo 'N/A'
+  if (
+    phoneCandidate === 'N/A' ||
+    !phoneCandidate ||
+    phoneCandidate === bsuid ||
+    fullPhone === bsuid
+  ) {
+    return {
+      client_name: 'N/A',
+      indicative: 'N/A',
+      phone_number: 'N/A',
+      requiere_actualizacion: true,
+    };
+  }
+
+  // 🚨 REGLA 2: Si no hay indicativo o es 'N/A' -> Todo 'N/A'
+  if (indicativo === 'N/A' || !indicativo) {
+    return {
+      client_name: 'N/A',
+      indicative: 'N/A',
+      phone_number: 'N/A',
+      requiere_actualizacion: true,
+    };
+  }
+
+  // 🚨 REGLA 3: Si el cliente es 'Desconocido', está vacío o 'N/A' -> Todo 'N/A'
+  if (
+    !nombre ||
+    nombre === 'N/A' ||
+    nombre.toLowerCase() === 'desconocido'
+  ) {
+    return {
+      client_name: 'N/A',
+      indicative: 'N/A',
+      phone_number: 'N/A',
+      requiere_actualizacion: true,
+    };
+  }
+
+  // ✅ REGLA 4: Todos los datos son válidos
+  return {
+    client_name: nombre,
+    indicative: indicativo,
+    phone_number: phoneCandidate,
+    requiere_actualizacion: false,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -214,7 +294,7 @@ export async function GET(request: NextRequest) {
       || clientData?.sede 
       || inferirSedePorMunicipio(clientData?.municipio || null);
 
-    // 🎯 2. DETERMINAR EL ÚLTIMO SERVICIO REALIZADO (SOLO DESDE CITAS PASADAS)
+    // 🎯 2. DETERMINAR EL ÚLTIMO SERVICIO REALIZADO
     const ultimaCitaPasada = citasPasadas[0] || null;
     const proximaCitaFutura = citasFuturas[citasFuturas.length - 1] || citasFuturas[0] || null;
 
@@ -231,7 +311,6 @@ export async function GET(request: NextRequest) {
       contexto_ia: 'No requiere mantenimiento ni retoque por fechas.'
     };
 
-    // 🎯 3. REGLA PRINCIPAL: SI TIENE UNA CITA FUTURA AGENDADA, SE BLOQUEA EL RETOQUE
     if (proximaCitaFutura) {
       evaluacionMantenimiento = {
         aplica: false,
@@ -245,14 +324,11 @@ export async function GET(request: NextRequest) {
         fecha_limite_agendamiento: 'N/A',
         contexto_ia: `La clienta ya tiene una cita futura agendada para el ${new Date(proximaCitaFutura.appointment_at!).toLocaleDateString('es-CO')} (${proximaCitaFutura.servicio}). NO le ofrezcas ni agendes retoque.`
       };
-    } 
-    // 🎯 4. EVALUAR RETOQUE SOLO SI HAY CITA PASADA Y NO HAY CITA FUTURA PENDIENTE
-    else if (ultimaCitaPasada && ultimaCitaPasada.appointment_at) {
+    } else if (ultimaCitaPasada && ultimaCitaPasada.appointment_at) {
       const fechaUltima = new Date(ultimaCitaPasada.appointment_at);
       const diasTranscurridos = Math.max(0, Math.floor((hoy.getTime() - fechaUltima.getTime()) / (1000 * 3600 * 24)));
       const skuUltimo = (ultimaCitaPasada.sku || '').toLowerCase();
 
-      // 4.1. Micropigmentación (30 a 60 días)
       if (microMapping[skuUltimo]) {
         const infoRefuerzo = microMapping[skuUltimo];
         const fechaInicio = agregarDias(fechaUltima, 30);
@@ -298,9 +374,7 @@ export async function GET(request: NextRequest) {
             contexto_ia: `Han pasado ${diasTranscurridos} días. Superó la fecha límite del ${fechaLimite} para el refuerzo a precio especial.`
           };
         }
-      }
-      // 4.2. Pestañas (15 a 25 días)
-      else if (lashMapping[skuUltimo]) {
+      } else if (lashMapping[skuUltimo]) {
         const configLash = lashMapping[skuUltimo];
         const fechaInicio = agregarDias(fechaUltima, 15);
         const fechaLimiteEst = agregarDias(fechaUltima, 20);
@@ -362,18 +436,37 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const nombreCliente = clientData?.nombre || appointments?.[0]?.cliente || 'N/A';
+    const nombreClienteRaw = clientData?.nombre || appointments?.[0]?.cliente || 'N/A';
+    const fullPhoneRaw = clientData?.numberc || appointments?.[0]?.full_phone || phoneVars.full_phone || 'N/A';
+    const celularRaw = clientData?.celular || appointments?.[0]?.celular || phoneVars.celular || 'N/A';
+    const bsuidRaw = clientData?.BSUID || appointments?.[0]?.bsuid || phoneVars.bsuid || 'N/A';
+    const indicativoRaw = appointments?.[0]?.indicativo || null;
+
+    // 🌸 EVALUAR LOS 3 NUEVOS CAMPOS SEGÚN LAS REGLAS SOLICITADAS
+    const auditoriaCliente = evaluarCamposCliente(
+      nombreClienteRaw,
+      fullPhoneRaw,
+      celularRaw,
+      bsuidRaw,
+      indicativoRaw
+    );
+
     const esClienteNuevo = totalReservas === 0 && !clientData;
 
     const clienteEstructurado = {
       id: clientData?.id || 'N/A',
-      nombre: nombreCliente,
-      celular: clientData?.celular || phoneVars.celular || 'N/A',
-      full_phone: clientData?.numberc || phoneVars.full_phone || 'N/A',
+      nombre: nombreClienteRaw,
+      celular: celularRaw,
+      full_phone: fullPhoneRaw,
       sede: clientData?.sede || sedeHabitual,
       municipio: clientData?.municipio || 'N/A',
       estado: clientData?.estado || (esClienteNuevo ? 'Cliente Nuevo' : 'Activo'),
-      BSUID: clientData?.BSUID || phoneVars.bsuid || 'N/A',
+      BSUID: bsuidRaw,
+
+      // 🎯 3 NUEVOS CAMPOS SOLICITADOS
+      client_name: auditoriaCliente.client_name,
+      indicative: auditoriaCliente.indicative,
+      phone_number: auditoriaCliente.phone_number,
     };
 
     return NextResponse.json({
@@ -390,7 +483,10 @@ export async function GET(request: NextRequest) {
           sede: proximaCitaFutura.sede || 'N/A',
         } : null,
         faltan_datos_clave: {
-          requiere_nombre: nombreCliente === 'N/A' || nombreCliente.trim() === '',
+          requiere_actualizacion_datos: auditoriaCliente.requiere_actualizacion, // 👈 Bandera global de auditoría
+          requiere_nombre: auditoriaCliente.client_name === 'N/A',
+          requiere_indicativo: auditoriaCliente.indicative === 'N/A',
+          requiere_telefono: auditoriaCliente.phone_number === 'N/A',
           requiere_sede: clienteEstructurado.sede === 'N/A',
         },
         agendamiento_habitual: {
