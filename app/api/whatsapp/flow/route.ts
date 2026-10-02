@@ -713,19 +713,19 @@ export async function POST(req: Request) {
 
         const summaryMarkdown = `Por favor confirma los detalles de tu agendamiento:
 
-👤 **Cliente:** ${data.client_name}
-📱 **WhatsApp:** ${fullPhone}
-💅 **Servicio(s):** ${serviceNames || 'Servicios seleccionados'}
-💳 **Total:** $${totalPrice.toLocaleString('es-CO')} COP
-🌸 **Atiende:** ${data.selected_specialist}
-📅 **Fecha:** ${data.selected_date}
-⏰ **Hora:** ${formatTime12h(data.selected_time)}
+👤 *Cliente:* ${data.client_name}
+📱 *WhatsApp:* ${fullPhone}
+💅 *Servicio(s):* ${serviceNames || 'Servicios seleccionados'}
+💳 *Total:* $${totalPrice.toLocaleString('es-CO')} COP
+🌸 *Atiende:* ${data.selected_specialist}
+📅 *Fecha:* ${data.selected_date}
+⏰ *Hora:* ${formatTime12h(data.selected_time)}
 
-📍 **Sede:** ${infoSede.nombreDisplay}
-🏢 **Dirección:** ${infoSede.direccion}, ${infoSede.ciudad}
-🗺️ **Ubicación:** [Ver en Google Maps](${infoSede.mapUrl})
+📍 *Sede:* ${infoSede.nombreDisplay}
+🏢 *Dirección:* ${infoSede.direccion}, ${infoSede.ciudad}
+🗺️ *Ubicación:* [Ver en Google Maps](${infoSede.mapUrl})
 
-Presiona **Confirmar y Agendar** para reservar tu espacio.`;
+Presiona *Confirmar y Agendar* para reservar tu espacio.`;
 
         responsePayload = {
           version: '3.0',
