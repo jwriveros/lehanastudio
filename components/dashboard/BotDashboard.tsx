@@ -40,6 +40,7 @@ export interface BotMetricData {
   lastInteractionTime: string;
   agentTransfersCount: number;
   reservationsByBot: number;
+  reservationsByFlow: number;
   totalReservations?: number;
   followupsSent: number;
   conversionRate: number;
@@ -58,13 +59,14 @@ export interface BotSessionItem {
 export default function BotDashboard() {
   const [metricsData, setMetricsData] = useState<BotMetricData>({
     totalClientsToday: 0,
-    firstInteractionTime: "—",
-    lastInteractionTime: "—",
-    agentTransfersCount: 0,
-    reservationsByBot: 0,
-    totalReservations: 0,
-    followupsSent: 0,
-    conversionRate: 0,
+  firstInteractionTime: "—",
+  lastInteractionTime: "—",
+  agentTransfersCount: 0,
+  reservationsByBot: 0,
+  reservationsByFlow: 0,
+  totalReservations: 0,
+  followupsSent: 0,
+  conversionRate: 0,
   });
   const [todayClients, setTodayClients] = useState<TodayClientDetail[]>([]);
   const [sessions, setSessions] = useState<BotSessionItem[]>([]);
@@ -312,11 +314,11 @@ export default function BotDashboard() {
           </span>
         </div>
 
-        {/* 3. Reservas por Bot */}
+        {/* 3. RESERVAS POR BOT Y WHATSAPP FLOW */}
         <div className="p-6 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900/90 shadow-xs flex flex-col justify-between space-y-4">
           <div className="flex justify-between items-center text-zinc-500 dark:text-zinc-400">
             <span className="text-[11px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-              Reservas por Bot
+              Reservas Automáticas
             </span>
             <div className="p-2.5 bg-emerald-500/10 text-emerald-500 rounded-2xl border border-emerald-500/20">
               <CalendarCheck size={18} />
@@ -325,15 +327,25 @@ export default function BotDashboard() {
 
           <div className="flex items-baseline justify-between">
             <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-emerald-600 dark:text-emerald-400">
-              {loading ? "..." : `${metricsData.reservationsByBot}/${metricsData.totalReservations ?? "N/A"}`}
+              {loading ? "..." : (metricsData.reservationsByBot + metricsData.reservationsByFlow)}
             </span>
             <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900/40 px-2.5 py-1 rounded-full flex items-center gap-1">
               <TrendingUp size={11} /> {metricsData.conversionRate}% Conv.
             </span>
           </div>
-          <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-            Citas agendadas automáticamente
-          </span>
+
+          {/* 🌸 DESGLOSE DE BOT vs FLOW */}
+          <div className="pt-2 border-t border-dashed border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-[11px] font-bold">
+            <span className="text-zinc-500 dark:text-zinc-400">
+              IA: <strong className="text-zinc-800 dark:text-zinc-200">{metricsData.reservationsByBot}</strong>
+            </span>
+            <span className="text-rose-500">
+              Flow: <strong>{metricsData.reservationsByFlow}</strong>
+            </span>
+            <span className="text-zinc-400">
+              Total: {metricsData.totalReservations ?? 0}
+            </span>
+          </div>
         </div>
 
         {/* 4. Seguimientos Enviados */}

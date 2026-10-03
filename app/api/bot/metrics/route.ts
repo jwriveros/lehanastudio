@@ -7,9 +7,6 @@ export interface TodayClientDetail {
   lastTime: string;
 }
 
-/**
- * Normaliza un texto eliminando tildes y caracteres especiales
- */
 function normalizeText(text: string): string {
   return text
     .toLowerCase()
@@ -23,7 +20,6 @@ export async function GET(request: NextRequest) {
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
 
-    // 1. Configuración de rango de fechas (YYYY-MM-DD)
     const now = new Date();
     const defaultToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
@@ -33,7 +29,7 @@ export async function GET(request: NextRequest) {
     const startISO = `${startDate}T00:00:00.000Z`;
     const endISO = `${endDate}T23:59:59.999Z`;
 
-    // 2. Consulta de historial de chats en n8n_chat_histories
+    // 1. Consulta de historial de chats
     const { data: n8nHistory, error: n8nError } = await supabase
       .from("n8n_chat_histories")
       .select("session_id, message, created_at")
@@ -47,11 +43,8 @@ export async function GET(request: NextRequest) {
 
     const clientsMap = new Map<string, { timestamps: string[]; count: number }>();
     const agentTransferSessionIds = new Set<string>();
-
-    // Frase clave para identificar la transferencia a un asesor humano
     const targetPhraseNormalized = "permitame un momento por favor";
 
-    // 3. Procesar chats de n8n_chat_histories según la estructura real de los datos
     (n8nHistory || []).forEach((row) => {
       if (!row.session_id) return;
 
@@ -59,7 +52,6 @@ export async function GET(request: NextRequest) {
       let msgType = "";
       let msgContent = "";
 
-      // Extraer propiedades del JSON guardado en la columna message
       if (typeof row.message === "string") {
         try {
           const parsed = JSON.parse(row.message);
@@ -74,7 +66,6 @@ export async function GET(request: NextRequest) {
         msgContent = msgObj.content || "";
       }
 
-      // Validar si el mensaje fue generado por el Agente de IA (excluyendo intervenciones 'owner=')
       const isAI = msgType === "ai" && !msgContent.startsWith("owner=");
 
       if (isAI) {
@@ -86,7 +77,6 @@ export async function GET(request: NextRequest) {
         clientData.count += 1;
         if (row.created_at) clientData.timestamps.push(row.created_at);
 
-        // Detectar si el Bot ejecutó la transferencia al asesor humano
         const normalizedContent = normalizeText(msgContent);
         if (
           normalizedContent.includes(targetPhraseNormalized) ||
@@ -105,7 +95,6 @@ export async function GET(request: NextRequest) {
       });
     };
 
-    // 4. Consulta a la vista unificada de sesiones
     const { data: enrichedSessionsData, error: sessionsError } = await supabase
       .from("view_chat_sessions_full")
       .select("id, client_phone, status, active_agent, context_summary, updated_at")
@@ -117,7 +106,6 @@ export async function GET(request: NextRequest) {
       console.error("Error en view_chat_sessions_full:", sessionsError);
     }
 
-    // 5. Respaldar clientes desde 'view_chat_sessions_full' si n8n_chat_histories no tiene registros en el rango
     if (clientsMap.size === 0 && enrichedSessionsData && enrichedSessionsData.length > 0) {
       enrichedSessionsData.forEach((s) => {
         if (!s.client_phone) return;
@@ -134,7 +122,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 6. Formatear lista final de clientes
     const todayClientsDetail: TodayClientDetail[] = Array.from(clientsMap.entries()).map(([phone, info]) => ({
       phone,
       messageCount: info.count,
@@ -147,21 +134,37 @@ export async function GET(request: NextRequest) {
     const totalClientsToday = todayClientsDetail.length;
     const agentTransfersCount = agentTransferSessionIds.size;
 
-    // 7. Consulta a 'appointments' filtrando por 'appointment_at' y 'created_by'
-    const [{ count: reservationsByBot }, { count: totalReservations }, { count: followupsSent }] = await Promise.all([
+    // 🌸 CONSULTAS A APPOINTMENTS (BOT, FLOW Y TOTALES)
+    const [
+      { count: reservationsByBot }, 
+      { count: reservationsByFlow }, 
+      { count: totalReservations }, 
+      { count: followupsSent }
+    ] = await Promise.all([
+      // 1. Citas creadas por el BOT
       supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
         .ilike("created_by", "bot")
-        .gte("appointment_at", `${startDate} 00:00:00`)
-        .lte("appointment_at", `${endDate} 23:59:59`),
+        .gte("last_synced_at", `${startDate} 00:00:00`)
+        .lte("last_synced_at", `${endDate} 23:59:59`),
 
+      // 2. Citas creadas por WHATSAPP FLOW (created_by = "FLOW")
       supabase
         .from("appointments")
         .select("*", { count: "exact", head: true })
-        .gte("appointment_at", `${startDate} 00:00:00`)
-        .lte("appointment_at", `${endDate} 23:59:59`),
+        .ilike("created_by", "flow")
+        .gte("last_synced_at", `${startDate} 00:00:00`)
+        .lte("last_synced_at", `${endDate} 23:59:59`),
 
+      // 3. Citas totales en el rango de fechas
+      supabase
+        .from("appointments")
+        .select("*", { count: "exact", head: true })
+        .gte("last_synced_at", `${startDate} 00:00:00`)
+        .lte("last_synced_at", `${endDate} 23:59:59`),
+
+      // 4. Seguimientos enviados
       supabase
         .from("seguimientos_enviados")
         .select("*", { count: "exact", head: true })
@@ -179,11 +182,13 @@ export async function GET(request: NextRequest) {
     }));
 
     const botCount = reservationsByBot || 0;
+    const flowCount = reservationsByFlow || 0;
     const totalCount = totalReservations || 0;
 
-    // Cálculo del porcentaje de conversión
+    // Cálculo del porcentaje de conversión combinado (Bot + Flow sobre clientes atendidos)
+    const totalBotAndFlowReservations = botCount + flowCount;
     const conversionRate = totalClientsToday > 0 
-      ? Number(((botCount / totalClientsToday) * 100).toFixed(1))
+      ? Number(((totalBotAndFlowReservations / totalClientsToday) * 100).toFixed(1))
       : 0;
 
     return NextResponse.json({
@@ -194,6 +199,7 @@ export async function GET(request: NextRequest) {
         lastInteractionTime,
         agentTransfersCount,
         reservationsByBot: botCount,
+        reservationsByFlow: flowCount, // 🌸 Nuevo campo
         totalReservations: totalCount,
         followupsSent: followupsSent || 0,
         conversionRate,
