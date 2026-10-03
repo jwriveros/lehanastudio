@@ -167,16 +167,22 @@ export async function POST(request: NextRequest) {
       /* =========================
          2️⃣ CREACIÓN O ACTUALIZACIÓN
       ========================= */
+      /* =========================
+         2️⃣ CREACIÓN O ACTUALIZACIÓN
+      ========================= */
       if (!existingClient) {
-        // CLIENTE NUEVO
+        // 🌸 CLIENTE NUEVO: Si la sede viene vacía, null o N/A, asigna "N/A"
         const finalNombre = isValidValue(item.nombre) ? item.nombre!.trim() : "Desconocido";
         const finalNombreComercial = isValidValue(item.userProfile) ? item.userProfile!.trim() : null;
+
+        // Si item.sede es un valor válido (ej. "Buga"), se usa ese valor; si no, queda en "N/A"
+        const finalSede = isValidValue(item.sede) ? item.sede!.trim() : "N/A";
 
         const newRecord: any = {
           nombre: finalNombre,
           celular: isValidValue(cleanPhoneDigits) ? cleanPhoneDigits : null,
           indicador: isValidValue(cleanPhoneDigits) ? Number(cleanIndDigits) : null,
-          sede: isValidValue(item.sede) ? item.sede : "Marquetalia",
+          sede: finalSede,
           municipio: isValidValue(item.municipio) ? item.municipio : null,
           BSUID: rawBsuidEsValido ? rawBsuid : null,
           nombre_comercial: finalNombreComercial,
@@ -198,7 +204,7 @@ export async function POST(request: NextRequest) {
           results.push({ ok: true, action: "CREATED", client: inserted });
         }
       } else {
-        // CLIENTE EXISTENTE (ACTUALIZACIÓN DELTA)
+        // 🌸 CLIENTE EXISTENTE: Solo actualiza si viene una sede válida (evita sobreescribir con null o N/A)
         const updates: any = {};
 
         // Solo actualiza celular e indicador si enviamos un teléfono REALMENTE válido
@@ -219,7 +225,7 @@ export async function POST(request: NextRequest) {
           updates.municipio = item.municipio;
         }
 
-        // Actualizar sede
+        // Actualizar sede únicamente si se proporciona una sede válida
         if (isValidValue(item.sede) && (!isValidValue(existingClient.sede) || item.sede !== existingClient.sede)) {
           updates.sede = item.sede;
         }
