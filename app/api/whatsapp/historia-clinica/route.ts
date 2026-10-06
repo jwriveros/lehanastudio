@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import forge from 'node-forge';
 import { supabase } from '@/lib/supabaseClient';
 
-// Pega aquí tu misma llave privada RSA Pem que usas en el Flow de agendamiento
 const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCy6I14OwNRD2fU
 gT3lWUtdbRJV89/r+3bfaD5iF0N2U4HrLbBqXgDIAxBChsHIsrQn9DCPAuAnxmQH
@@ -37,8 +36,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { encrypted_aes_key, encrypted_flow_data, initial_vector } = body;
 
-    // 1. Desencriptar la clave AES usando tu llave privada RSA
-    const privateKey = forge.pki.privateKeyFromPem(PRIVATE_KEY_PEM);
+    // 1. Desencriptar la clave AES usando la llave privada RSA
+    const formattedKey = (PRIVATE_KEY_PEM || '').replace(/\\n/g, '\n');
+    const privateKey = forge.pki.privateKeyFromPem(formattedKey);
+    
     const decryptedAesKeyBytes = privateKey.decrypt(
       forge.util.decode64(encrypted_aes_key),
       'RSA-OAEP',
@@ -62,14 +63,30 @@ export async function POST(req: Request) {
 
     let responsePayload: any = {};
 
-    // Prueba de estado que realiza Meta al configurar el Flow
+    // Acción de prueba del estado del Endpoint
     if (action === 'ping') {
       responsePayload = {
         version: '3.0',
         data: { status: 'active' }
       };
     }
-    // Cuando el paciente hace clic en "Firmar y Guardar 🚀"
+    // Acción cuando Meta inicia la vista previa o abre el Flow
+    else if (action === 'INIT') {
+      responsePayload = {
+        version: '3.0',
+        screen: 'PATIENT_INFO_SCREEN',
+        data: {
+          client_name: data?.client_name || 'María Gómez',
+          client_phone: data?.client_phone || '3001234567',
+          sun_options: [
+            { id: 'minima', title: 'Nula / Mínima' },
+            { id: 'moderada', title: 'Moderada' },
+            { id: 'frecuente', title: 'Frecuente / Muy Alta' }
+          ]
+        }
+      };
+    }
+    // Acción cuando el paciente presiona "Firmar y Guardar 🚀"
     else if (action === 'complete') {
       const {
         patient_id_doc,
@@ -121,6 +138,22 @@ export async function POST(req: Request) {
           extension_message_response: {
             params: { status: 'medical_record_saved' }
           }
+        }
+      };
+    }
+    // Fallback por defecto para cualquier otro evento no mapeado
+    else {
+      responsePayload = {
+        version: '3.0',
+        screen: 'PATIENT_INFO_SCREEN',
+        data: {
+          client_name: 'N/A',
+          client_phone: 'N/A',
+          sun_options: [
+            { id: 'minima', title: 'Nula / Mínima' },
+            { id: 'moderada', title: "Moderada" },
+            { id: 'frecuente', title: 'Frecuente / Muy Alta' }
+          ]
         }
       };
     }
