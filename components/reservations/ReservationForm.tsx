@@ -814,6 +814,9 @@ export default function ReservationForm({
       const estadoNormalizado = form.estado.trim();
 
       if (isEditing) {
+        const cleanPhone = String(form.celular).replace(/\D/g, "");
+        const cleanIndicativo = formatIndicativo(form.indicativo);
+
         // 1. Eliminar líneas borradas en el formulario si existen
         if (deletedLineIds.length > 0) {
           await supabase.from("appointments").delete().in("id", deletedLineIds);
@@ -871,40 +874,87 @@ export default function ReservationForm({
           onSuccess?.();
           closeReservationDrawer();
           return; // 👈 Finaliza para no ejecutar otras peticiones HTTP
-        } 
-
-        // 🎯 CASO C: Edición general de datos. Notifica a WhatsApp SOLO si notifyOnEdit es true
-        const updatePayload = {
-          appointmentId: appointmentData.id,
-          cliente: form.cliente.trim(),
-          celular: cleanPhone,
-          indicativo: cleanIndicativo,
-          servicio: mainLine.servicio,
-          especialista: mainLine.especialista,
-          duration: mainLine.duracion,
-          appointment_at: localDateTimeToUTC(mainLine.appointment_at),
-          estado: form.estado,
-          sede: form.sede,
-          price: Number(mainLine.precio || 0),
-          descuento: Number(mainLine.descuento || 0),
-          price_final: calculatePriceFinal(Number(mainLine.precio || 0), Number(mainLine.descuento || 0)),
-          abono: Number(mainLine.abono || 0),
-          notifyOnEdit: notifyOnEdit, // 👈 Se envía el estado del switch (true / false)
-        };
-
-        const res = await fetch("/api/bookings/notify-update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updatePayload),
-        });
-
-        if (!res.ok) {
-          throw new Error(`Error en el servidor al actualizar (${res.status}).`);
         }
 
-        const json = await res.json();
-        if (json.error) {
-          throw new Error(json.error);
+        // 🎯 CASO C: EDICIÓN Y ADICIÓN DE NUEVOS SERVICIOS COMO REGISTROS INDEPENDIENTES
+
+        // 🌸 Separar las filas que ya existen en Supabase (tienen id) de las nuevas agregadas (sin id)
+        const existingLines = lines.filter((l) => l.id);
+        const newLines = lines.filter((l) => !l.id);
+
+        // 🌸 1. Actualizar cada servicio existente de forma individual
+        for (const line of existingLines) {
+          const baseP = Number(line.precio || 0);
+          const discountPct = Number(line.descuento || 0);
+          const finalP = calculatePriceFinal(baseP, discountPct);
+
+          const updatePayload = {
+            appointmentId: line.id, // ID específico de esta cita en la tabla
+            cliente: form.cliente.trim(),
+            celular: cleanPhone,
+            indicativo: cleanIndicativo,
+            servicio: line.servicio.trim(),
+            especialista: line.especialista.trim(),
+            duration: String(line.duracion || "60"),
+            appointment_at: localDateTimeToUTC(line.appointment_at),
+            estado: form.estado,
+            sede: form.sede,
+            price: baseP,
+            descuento: discountPct,
+            price_final: finalP,
+            abono: Number(line.abono || 0),
+            notifyOnEdit: notifyOnEdit,
+          };
+
+          const res = await fetch("/api/bookings/notify-update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatePayload),
+          });
+
+          if (!res.ok) {
+            throw new Error(`Error en el servidor al actualizar el servicio (${res.status}).`);
+          }
+
+          const json = await res.json();
+          if (json.error) {
+            throw new Error(json.error);
+          }
+        }
+
+        // 🌸 2. Insertar los nuevos servicios añadidos como filas totalmente nuevas en appointments
+        if (newLines.length > 0) {
+          const newRecordsToInsert = newLines.map((line) => {
+            const baseP = Number(line.precio || 0);
+            const discountPct = Number(line.descuento || 0);
+            const finalP = calculatePriceFinal(baseP, discountPct);
+
+            return {
+              cliente: form.cliente.trim(),
+              celular: cleanPhone, // Vínculo principal con el cliente
+              indicativo: cleanIndicativo,
+              servicio: line.servicio.trim(),
+              especialista: line.especialista.trim(),
+              duration: String(line.duracion || "60"),
+              appointment_at: localDateTimeToUTC(line.appointment_at),
+              estado: form.estado,
+              sede: form.sede,
+              price: baseP,
+              descuento: discountPct,
+              price_final: finalP,
+              abono: Number(line.abono || 0),
+              created_by: "SISTEMA",
+              last_synced_at: new Date().toISOString(),
+            };
+          });
+
+          const { error: insertError } = await supabase
+            .from("appointments")
+            .insert(newRecordsToInsert);
+
+          if (insertError) {
+            throw new Error(`Error al registrar el nuevo servicio: ${insertError.message}`);
+          }
         }
 
         onSuccess?.();

@@ -88,44 +88,48 @@ export async function POST(req: Request) {
     }
     // Acción cuando el paciente presiona "Firmar y Guardar 🚀"
     else if (action === 'complete') {
-      const {
-        patient_id_doc,
-        occupation,
-        emergency_contact,
-        sun_exposure,
-        habits_check,
-        diet_info,
-        sleep_info,
-        consult_reason,
-        health_conditions,
-        allergies_meds_details,
-        current_routine,
-        consent_acceptances,
-        additional_notes,
-        patient_signature_name
-      } = data;
-
-      // Guardar en la tabla de Supabase
-      const { error } = await supabase
-        .from('facial_medical_records')
-        .insert([
-          {
-            patient_id_doc: Number(patient_id_doc),
+        const {
+            patient_id_doc,
+            client_phone, // <--- Teléfono del paciente
+            appointment_id, // <--- ID de la cita (si aplica)
             occupation,
             emergency_contact,
             sun_exposure,
-            habits_check: habits_check || [],
+            habits_check,
             diet_info,
             sleep_info,
             consult_reason,
-            health_conditions: health_conditions || [],
-            allergies_meds_details: allergies_meds_details || 'Ninguna',
+            health_conditions,
+            allergies_meds_details,
             current_routine,
-            consent_acceptances: consent_acceptances || [],
-            additional_notes: additional_notes || '',
+            consent_acceptances,
+            additional_notes,
             patient_signature_name
-          }
-        ]);
+        } = data;
+
+        const { error } = await supabase
+            .from('facial_medical_records')
+            .insert([
+            {
+                patient_id_doc: Number(patient_id_doc),
+                client_phone: client_phone || null,
+                appointment_id: appointment_id || null,
+                occupation,
+                emergency_contact,
+                sun_exposure,
+                habits_check: habits_check || [],
+                diet_info,
+                sleep_info,
+                consult_reason,
+                health_conditions: health_conditions || [],
+                allergies_meds_details: allergies_meds_details || 'Ninguna',
+                current_routine,
+                consent_acceptances: consent_acceptances || [],
+                additional_notes: additional_notes || '',
+                patient_signature_name
+            }
+            ]);
+
 
       if (error) {
         console.error('Error insertando en Supabase:', error);
