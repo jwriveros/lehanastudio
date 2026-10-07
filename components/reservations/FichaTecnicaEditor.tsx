@@ -6,6 +6,7 @@ import {
   Camera, Trash2, Save, Loader2, RotateCw, Plus, ChevronLeft, 
   ClipboardList, History, Clock, FileText, Eye, X, HeartPulse, Sparkles, User
 } from "lucide-react";
+import CustomDialog from "@/components/ui/CustomDIalog";
 
 /* =========================================================
    🔹 TIPOS DE DATOS
@@ -130,6 +131,7 @@ const MEDICAL_MAP: Record<string, string> = {
   tratamiento_medico: "Tratamiento médico",
 };
 
+
 /* Helper 1: Formateador elegante de Procedimientos / Motivos */
 function formatProcedureLabel(val: any): string {
   if (!val) return "Sin especificar";
@@ -193,6 +195,7 @@ function parsePhotoConsent(val: any): { photosAllowed: boolean; termsAccepted: b
 export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps) {
   const [view, setView] = useState<'list' | 'edit'>('list');
   const [tab, setTab] = useState<'fichas' | 'facial_flow' | 'micro_flow' | 'citas'>('fichas');
+  const [sendingFlow, setSendingFlow] = useState<"micro" | "limpieza" | null>(null);
   
   // Estados de datos
   const [historialFichas, setHistorialFichas] = useState<FichaDb[]>([]);
@@ -213,6 +216,63 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
   
   const [editingFichaId, setEditingFichaId] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
+
+  /* 🌸 ESTADO Y HELPER PARA MODALES ESTILIZADOS */
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    variant: "success" | "danger" | "warning" | "info";
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    variant: "info",
+    title: "",
+    message: "",
+  });
+
+  const showModal = (
+    title: string,
+    message: string,
+    variant: "success" | "danger" | "warning" | "info" = "success"
+  ) => {
+    setDialog({ isOpen: true, variant, title, message });
+  };
+
+  const handleSendFlowHsm = async (flowType: "micro" | "limpieza") => {
+    if (!celular) return;
+    setSendingFlow(flowType);
+
+    try {
+      const res = await fetch("/api/bookings/send-flow-hsm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          celular: celular,
+          flowType: flowType,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "No se pudo enviar el mensaje.");
+      }
+
+      showModal(
+        "¡Envío Exitoso!",
+        `El flujo de ${flowType.toUpperCase()} fue enviado correctamente al número ${json.phoneSent || ""}.`,
+        "success"
+      );
+    } catch (err: any) {
+      showModal(
+        "Error de Envío",
+        err.message || "Ocurrió un fallo al intentar enviar el mensaje de WhatsApp.",
+        "danger"
+      );
+    } finally {
+      setSendingFlow(null);
+    }
+  };
 
   useEffect(() => {
     setIsClient(true);
@@ -387,6 +447,37 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
   if (view === 'list') {
     return (
       <div className="space-y-4 font-sans text-zinc-900 dark:text-zinc-100 antialiased">
+
+        {/* 🌸 BOTONES DE ACCIÓN RÁPIDA: ENVIAR FLOWS WHATSAPP */}
+        <div className="flex items-center gap-2 pt-2 pb-1 border-b border-zinc-100 dark:border-zinc-800">
+          <button
+            type="button"
+            onClick={() => handleSendFlowHsm("micro")}
+            disabled={sendingFlow !== null}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 rounded-xl text-[11px] font-extrabold hover:bg-rose-100 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {sendingFlow === "micro" ? (
+              <Loader2 size={13} className="animate-spin text-rose-500" />
+            ) : (
+              <Sparkles size={13} />
+            )}
+            <span>Enviar Micro</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSendFlowHsm("limpieza")}
+            disabled={sendingFlow !== null}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-pink-50 dark:bg-pink-950/40 border border-pink-200 dark:border-pink-900/50 text-pink-600 dark:text-pink-400 rounded-xl text-[11px] font-extrabold hover:bg-pink-100 transition-all cursor-pointer disabled:opacity-50"
+          >
+            {sendingFlow === "limpieza" ? (
+              <Loader2 size={13} className="animate-spin text-pink-500" />
+            ) : (
+              <Sparkles size={13} />
+            )}
+            <span>Enviar Limpieza</span>
+          </button>
+        </div>
         
         {/* NAVEGACIÓN ENTRE PESTAÑAS (FICHAS ESPECIALISTA / FACIAL / MICROPIGMENTACIÓN / CITAS) */}
         <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
@@ -897,6 +988,15 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
       >
         {loading ? <Loader2 className="animate-spin" size={18} /> : <><Save size={16} /> {editingFichaId ? 'Actualizar Ficha' : 'Guardar Ficha Técnica'}</>}
       </button>
+      {/* 🌸 MODAL DE ALERTA MODERNO Y ESTILIZADO */}
+      <CustomDialog
+        isOpen={dialog.isOpen}
+        type="alert"
+        variant={dialog.variant}
+        title={dialog.title}
+        message={dialog.message}
+        onClose={() => setDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
