@@ -1,14 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
-  Calendar,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  DollarSign,
-  UserCheck,
-  Bot,
+  Calendar as CalendarIcon,
   Sparkles,
   PieChart as PieIcon,
   BarChart3,
@@ -18,8 +12,17 @@ import {
   UserX,
   Tag,
   Users,
-  Filter,
+  X,
+  ChevronDown,
+  Check,
 } from "lucide-react";
+
+import "react-date-range/dist/styles.css";
+import "react-date-range/dist/theme/default.css";
+import { DateRange, RangeKeyDict } from "react-date-range";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+
 import {
   BarChart,
   Bar,
@@ -58,28 +61,178 @@ export interface ReservasReportProps {
 
 const PALETTE = ["#10B981", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"];
 
+/* =========================================================
+   🔹 SUB-COMPONENTE: SELECTOR DE ESPECIALISTAS PERSONALIZADO
+========================================================= */
+function EspecialistaSelect({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedLabel = value === "TODOS" ? "Todos los Especialistas" : value;
+
+  return (
+    <div className="relative w-full sm:w-auto" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs hover:border-rose-400 transition-all text-xs font-bold text-zinc-800 dark:text-zinc-200 cursor-pointer"
+      >
+        <div className="flex items-center gap-2 truncate">
+          <Users size={15} className="text-rose-500 shrink-0" />
+          <span className="truncate">{selectedLabel}</span>
+        </div>
+        <ChevronDown
+          size={14}
+          className={`text-zinc-400 transition-transform duration-200 ${
+            open ? "rotate-180 text-rose-500" : ""
+          }`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-2 z-50 w-60 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="max-h-60 overflow-y-auto space-y-0.5 custom-scrollbar">
+            {/* Opción Todos */}
+            <button
+              type="button"
+              onClick={() => {
+                onChange("TODOS");
+                setOpen(false);
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-left transition-colors cursor-pointer ${
+                value === "TODOS"
+                  ? "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400"
+                  : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              }`}
+            >
+              <span>Todos los Especialistas</span>
+              {value === "TODOS" && <Check size={14} className="text-rose-500" />}
+            </button>
+
+            {/* Opciones individuales */}
+            {options.map((esp) => {
+              const isSelected = value === esp;
+              return (
+                <button
+                  key={esp}
+                  type="button"
+                  onClick={() => {
+                    onChange(esp);
+                    setOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-left transition-colors cursor-pointer ${
+                    isSelected
+                      ? "bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400"
+                      : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  <span className="truncate">{esp}</span>
+                  {isSelected && <Check size={14} className="text-rose-500 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   🔹 COMPONENTE PRINCIPAL DE REPORTES
+========================================================= */
 export default function ReservasReport({ reservasData }: ReservasReportProps) {
-  // 🌸 ESTADOS DE FILTRO POR RANGO DE FECHAS
-  const [fechaInicio, setFechaInicio] = useState<string>("");
-  const [fechaFin, setFechaFin] = useState<string>("");
+  // 🌸 ESTADOS PARA REACT-DATE-RANGE
+  const [showCalendar, setShowCalendar] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  const [dateRange, setDateRange] = useState([
+    {
+      startDate: new Date(),
+      endDate: new Date(),
+      key: "selection",
+    },
+  ]);
+
+  // 🌸 ESTADO PARA FILTRO DE ESPECIALISTA
+  const [selectedEspecialista, setSelectedEspecialista] = useState<string>("TODOS");
 
   // 🌸 ESTADOS DE PAGINACIÓN DE TABLA
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(25);
-  const [activeSubTab, setActiveSubTab] = useState<"todas" | "encuestas" | "recurrencia" | "descuentos" | "faltas">("todas");
 
-  // 1. FILTRADO POR RANGO DE FECHAS
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+        setShowCalendar(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelectRange = (ranges: RangeKeyDict) => {
+    const selection = ranges.selection;
+    setDateRange([
+      {
+        startDate: selection.startDate || new Date(),
+        endDate: selection.endDate || new Date(),
+        key: "selection",
+      },
+    ]);
+  };
+
+  // 📌 1. EXTRAER LISTA ÚNICA DE ESPECIALISTAS DISPONIBLES
+  const especialistasDisponibles = useMemo(() => {
+    const list = new Set<string>();
+    reservasData.forEach((r) => {
+      if (r.especialista && r.especialista.trim() !== "") {
+        list.add(r.especialista.trim());
+      }
+    });
+    return Array.from(list).sort((a, b) => a.localeCompare(b));
+  }, [reservasData]);
+
+  // 📌 2. FILTRADO MULTI-CRITERIO (FECHAS + ESPECIALISTA)
   const filteredReservas = useMemo(() => {
+    const startStr = format(dateRange[0].startDate, "yyyy-MM-dd");
+    const endStr = format(dateRange[0].endDate, "yyyy-MM-dd");
+
     return reservasData.filter((r) => {
+      // 1. Filtro de Especialista
+      if (selectedEspecialista !== "TODOS") {
+        const espVal = (r.especialista || "").trim().toLowerCase();
+        if (espVal !== selectedEspecialista.toLowerCase()) return false;
+      }
+
+      // 2. Filtro de Fechas
       if (!r.appointment_at) return true;
-      const fechaCita = r.appointment_at.slice(0, 10); // Formato YYYY-MM-DD
-      if (fechaInicio && fechaCita < fechaInicio) return false;
-      if (fechaFin && fechaCita > fechaFin) return false;
+      const fechaCita = r.appointment_at.slice(0, 10);
+      if (fechaCita < startStr || fechaCita > endStr) return false;
+
       return true;
     });
-  }, [reservasData, fechaInicio, fechaFin]);
+  }, [reservasData, dateRange, selectedEspecialista]);
 
-  // 2. CÁLCULO DE MÉTRICAS Y ANÁLISIS AVANZADO
+  // 📌 3. CÁLCULO DE MÉTRICAS Y ANÁLISIS
   const stats = useMemo(() => {
     let totalIngresos = 0;
     let totalDescuentosMonto = 0;
@@ -90,7 +243,6 @@ export default function ReservasReport({ reservasData }: ReservasReportProps) {
 
     const serviciosCount: Record<string, number> = {};
     const clientesMap: Record<string, { nombre: string; citas: number; canceladas: number; noPresento: number; totalGastado: number; survey: boolean }> = {};
-    const especialistaStats: Record<string, { citas: number; ingresos: number }> = {};
 
     filteredReservas.forEach((r) => {
       const precioFinal = parseFloat(r.price_final || r.price || "0");
@@ -113,11 +265,9 @@ export default function ReservasReport({ reservasData }: ReservasReportProps) {
       if (isCancelada) canceladas++;
       if (isNoPresento) noPresento++;
 
-      // Conteo de servicios
       const srv = r.servicio || "Otro Servicio";
       serviciosCount[srv] = (serviciosCount[srv] || 0) + 1;
 
-      // Agrupación por cliente (fidelización y faltas)
       if (!clientesMap[clienteKey]) {
         clientesMap[clienteKey] = {
           nombre: clienteNombre,
@@ -133,24 +283,13 @@ export default function ReservasReport({ reservasData }: ReservasReportProps) {
       if (isCancelada) clientesMap[clienteKey].canceladas += 1;
       if (isNoPresento) clientesMap[clienteKey].noPresento += 1;
       if (r.survey) clientesMap[clienteKey].survey = true;
-
-      // Especialistas
-      const esp = r.especialista || "Sin Asignar";
-      if (!especialistaStats[esp]) especialistaStats[esp] = { citas: 0, ingresos: 0 };
-      especialistaStats[esp].citas += 1;
-      especialistaStats[esp].ingresos += precioFinal;
     });
 
     const totalCitas = filteredReservas.length;
-    
-    // Clasificación de Clientes
     const todosClientes = Object.values(clientesMap);
     const clientesRecurrentes = todosClientes.filter((c) => c.citas > 1);
     const clientesUnicaVez = todosClientes.filter((c) => c.citas === 1);
-    const topClientesCancelaciones = [...todosClientes].sort((a, b) => b.canceladas - a.canceladas).filter((c) => c.canceladas > 0);
-    const topClientesFaltas = [...todosClientes].sort((a, b) => b.noPresento - a.noPresento).filter((c) => c.noPresento > 0);
 
-    // Gráficos
     const topServiciosChartData = Object.entries(serviciosCount)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
@@ -175,9 +314,6 @@ export default function ReservasReport({ reservasData }: ReservasReportProps) {
       clientesUnicaVezCount: clientesUnicaVez.length,
       topServiciosChartData,
       fidelizacionChartData,
-      topClientesCancelaciones,
-      topClientesFaltas,
-      especialistaChartData: Object.entries(especialistaStats).map(([name, data]) => ({ name, citas: data.citas })),
     };
   }, [filteredReservas]);
 
@@ -189,9 +325,9 @@ export default function ReservasReport({ reservasData }: ReservasReportProps) {
   }, [filteredReservas, currentPage, itemsPerPage]);
 
   return (
-    <div className="space-y-6 bg-white dark:bg-zinc-900/90 p-5 sm:p-7 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs text-zinc-800 dark:text-zinc-100 font-sans">
+    <div className="space-y-6 bg-white dark:bg-zinc-900/90 p-5 sm:p-7 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs text-zinc-800 dark:text-zinc-100 font-sans antialiased">
       
-      {/* BARRA SUPERIOR: ENCABEZADO Y FILTRO POR RANGO DE FECHAS */}
+      {/* BARRA SUPERIOR: ENCABEZADO Y FILTROS ESTILIZADOS */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-zinc-100 dark:border-zinc-800 pb-5">
         <div>
           <div className="flex items-center gap-2 text-rose-500 font-bold text-xs uppercase tracking-wider mb-1">
@@ -203,33 +339,84 @@ export default function ReservasReport({ reservasData }: ReservasReportProps) {
           </h2>
         </div>
 
-        {/* 🌸 SELECTOR DE RANGO DE FECHAS UNIFICADO */}
-        <div className="flex flex-wrap items-center gap-2 bg-zinc-50 dark:bg-zinc-950 p-2 rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
-          <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-zinc-500">
-            <Filter size={14} className="text-rose-500" />
-            <span>Rango:</span>
-          </div>
-          <input
-            type="date"
-            value={fechaInicio}
-            onChange={(e) => setFechaInicio(e.target.value)}
-            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-bold px-3 py-1.5 rounded-xl outline-none focus:border-rose-500"
+        {/* 🌸 CONTENEDOR DE FILTROS INTEGRADOS CON SELECTOR ELEGANTE */}
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          
+          {/* FILTRO 1: ESPECIALISTA PERSONALIZADO */}
+          <EspecialistaSelect
+            value={selectedEspecialista}
+            onChange={(val) => {
+              setSelectedEspecialista(val);
+              setCurrentPage(1);
+            }}
+            options={especialistasDisponibles}
           />
-          <span className="text-xs text-zinc-400 font-bold">a</span>
-          <input
-            type="date"
-            value={fechaFin}
-            onChange={(e) => setFechaFin(e.target.value)}
-            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-bold px-3 py-1.5 rounded-xl outline-none focus:border-rose-500"
-          />
-          {(fechaInicio || fechaFin) && (
+
+          {/* FILTRO 2: SELECTOR REACT-DATE-RANGE CON MODAL DESPLEGABLE */}
+          <div className="relative flex-1 sm:flex-none" ref={calendarRef}>
             <button
-              onClick={() => { setFechaInicio(""); setFechaFin(""); }}
-              className="text-[11px] font-extrabold text-rose-500 hover:underline px-2 cursor-pointer"
+              type="button"
+              onClick={() => setShowCalendar(!showCalendar)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs hover:border-rose-400 transition-all text-xs font-bold text-zinc-700 dark:text-zinc-200 cursor-pointer"
             >
-              Limpiar
+              <CalendarIcon size={15} className="text-rose-500" />
+              <span>
+                {format(dateRange[0].startDate, "dd MMM yyyy", { locale: es })} —{" "}
+                {format(dateRange[0].endDate, "dd MMM yyyy", { locale: es })}
+              </span>
             </button>
-          )}
+
+            {showCalendar && (
+              <div className="absolute top-14 right-0 z-50 bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200 text-zinc-900 dark:text-zinc-100">
+                <div className="flex justify-between items-center mb-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
+                  <span className="text-xs font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                    Seleccionar Rango
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowCalendar(false)}
+                    className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-zinc-100 dark:border-zinc-800 
+                  [&_.rdrCalendarWrapper]:!bg-transparent 
+                  [&_.rdrMonth]:!bg-transparent 
+                  [&_.rdrDayInRange]:!bg-rose-500/20 
+                  [&_.rdrDayInRange_.rdrDayNumber_span]:!text-rose-600 
+                  [&_.rdrDayStartOfWeek]:!bg-rose-500 
+                  [&_.rdrDayStartOfWeek_.rdrDayNumber_span]:!text-white 
+                  [&_.rdrDayEndOfWeek]:!bg-rose-500 
+                  [&_.rdrDayEndOfWeek_.rdrDayNumber_span]:!text-white 
+                  [&_.rdrSelected]:!bg-rose-500 
+                  [&_.rdrSelected_.rdrDayNumber_span]:!text-white
+                  [&_.rdrDayStartPreview]:!bg-rose-500 
+                  [&_.rdrDayEndPreview]:!bg-rose-500">
+                  <DateRange
+                    editableDateInputs={true}
+                    onChange={handleSelectRange}
+                    moveRangeOnFirstSelection={false}
+                    ranges={dateRange}
+                    locale={es}
+                    rangeColors={["#f43f5e"]}
+                  />
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowCalendar(false)}
+                    className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-500/20 transition-all cursor-pointer"
+                  >
+                    Aplicar Rango
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
 
@@ -351,7 +538,7 @@ export default function ReservasReport({ reservasData }: ReservasReportProps) {
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-2 border-b border-zinc-200 dark:border-zinc-800">
           <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-700 dark:text-zinc-200 flex items-center gap-2">
-            <Calendar size={16} className="text-rose-500" />
+            <CalendarIcon size={16} className="text-rose-500" />
             Detalle de Citas Filtradas ({filteredReservas.length} registros)
           </h3>
 
@@ -391,7 +578,7 @@ export default function ReservasReport({ reservasData }: ReservasReportProps) {
                     <div className="font-semibold text-zinc-800 dark:text-zinc-200">{r.servicio}</div>
                     <div className="text-[10px] text-zinc-400">{r.category}</div>
                   </td>
-                  <td className="py-3 px-3 font-medium text-zinc-700 dark:text-zinc-300">{r.especialista}</td>
+                  <td className="py-3 px-3 font-medium text-zinc-700 dark:text-zinc-300">{r.especialista || "Sin Asignar"}</td>
                   <td className="py-3 px-3 font-black text-emerald-600 dark:text-emerald-400">
                     ${parseFloat(r.price_final || r.price || "0").toLocaleString("es-CO")}
                   </td>

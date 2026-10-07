@@ -411,8 +411,7 @@ export default function ReservationDetails({
       
       {/* PANEL IZQUIERDO DESLIZABLE (FICHA TÉCNICA Y PERFIL) */}
       {showHistory && data.celular && (
-        <div className="w-full md:w-[420px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col h-full shrink-0 custom-scrollbar z-30">
-          
+        <div className="absolute left-0 top-0 z-40 h-full w-full sm:w-[420px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col shadow-2xl custom-scrollbar">          
           {/* 🎯 CABECERA CON BOTÓN DE REGRESO PARA MÓVIL */}
           <div className="sticky top-0 z-20 bg-white/90 p-4 backdrop-blur-md dark:bg-zinc-900/90 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
             <button
@@ -438,7 +437,7 @@ export default function ReservationDetails({
       )}
 
       {/* PANEL DERECHO: DETALLES PRINCIPALES */}
-      <div className="flex-1 flex flex-col gap-5 p-4 sm:p-6 overflow-y-auto h-full custom-scrollbar">
+      <div className="flex-1 flex flex-col gap-5 p-4 sm:p-6 overflow-y-auto h-full custom-scrollbar w-full">
         
         {/* SECCIÓN CLIENTE Y ESTADO DE LA CITA */}
         <div className="flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800 pb-4">

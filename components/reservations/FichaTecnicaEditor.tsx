@@ -575,7 +575,7 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
           </div>
         )}
 
-        {/* TAB 4: HISTORIAL DE CITAS PASADAS */}
+        {/* TAB 4: HISTORIAL DE CITAS PASADAS (DISEÑO RESPONSIVE CORREGIDO) */}
         {tab === 'citas' && (
           <div className="space-y-2.5">
             {historialCitas.length === 0 ? (
@@ -584,10 +584,16 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
               </div>
             ) : (
               historialCitas.map(c => (
-                <div key={c.id} className="p-3.5 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl bg-white dark:bg-zinc-900/90 flex justify-between items-center shadow-2xs">
-                  <div className="flex-1 pr-3">
-                    <p className="text-xs font-extrabold dark:text-white uppercase truncate">{c.servicio}</p>
-                    <div className="flex items-center gap-2 mt-1">
+                <div 
+                  key={c.id} 
+                  className="p-3.5 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl bg-white dark:bg-zinc-900/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs"
+                >
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-xs font-extrabold dark:text-white uppercase leading-snug">
+                      {c.servicio}
+                    </p>
+                    
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
                       <p className="text-[10px] text-zinc-500 font-black uppercase bg-zinc-100 dark:bg-zinc-950 px-2 py-0.5 rounded-lg border border-zinc-200/60 dark:border-zinc-800">
                         {isClient && formatDateShort(c.appointment_at)}
                       </p>
@@ -596,11 +602,13 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
                         {isClient && formatTime12h(c.appointment_at)}
                       </div>
                     </div>
-                    <p className="text-[10px] text-zinc-400 mt-1 font-semibold">
-                      Especialista: <span className="text-zinc-700 dark:text-zinc-300 font-extrabold">{c.especialista}</span>
+
+                    <p className="text-[10px] text-zinc-400 font-semibold">
+                      Especialista: <span className="text-zinc-700 dark:text-zinc-300 font-extrabold">{c.especialista || "Sin asignar"}</span>
                     </p>
                   </div>
-                  <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase border shrink-0 ${
+
+                  <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase border shrink-0 self-start sm:self-center ${
                     c.estado === 'FINALIZADO' || c.estado === 'Cita pagada' 
                       ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30' 
                       : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/30'

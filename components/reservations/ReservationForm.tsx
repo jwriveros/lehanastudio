@@ -210,6 +210,8 @@ function CustomSelect({
    🔹 LISTA COMPLETA DE PAÍSES CON BANDERAS
 ========================================================= */
 const COUNTRIES = [
+  
+  { code: "57", flag: "🇨🇴", name: "Colombia" },
   { code: "93", flag: "🇦🇫", name: "Afganistán" },
   { code: "355", flag: "🇦🇱", name: "Albania" },
   { code: "49", flag: "🇩🇪", name: "Alemania" },
@@ -252,7 +254,6 @@ const COUNTRIES = [
   { code: "56", flag: "🇨🇱", name: "Chile" },
   { code: "86", flag: "🇨🇳", name: "China" },
   { code: "357", flag: "🇨🇾", name: "Chipre" },
-  { code: "57", flag: "🇨🇴", name: "Colombia" },
   { code: "269", flag: "🇰🇲", name: "Comoras" },
   { code: "242", flag: "🇨🇬", name: "Congo" },
   { code: "82", flag: "🇰🇷", name: "Corea del Sur" },
@@ -308,7 +309,6 @@ const COUNTRIES = [
   { code: "1345", flag: "🇰🇾", name: "Islas Caimán" },
   { code: "682", flag: "🇨🇰", name: "Islas Cook" },
   { code: "298", flag: "🇫🇴", name: "Islas Feroe" },
-  { code: "48", flag: "🇵🇱", name: "Polonia" },
   { code: "677", flag: "🇸🇧", name: "Islas Salomón" },
   { code: "972", flag: "🇮🇱", name: "Israel" },
   { code: "39", flag: "🇮🇹", name: "Italia" },
@@ -1022,9 +1022,9 @@ export default function ReservationForm({
   return (
     <div className="flex h-full w-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans antialiased">
       
-      {/* PANEL IZQUIERDO: DETALLES DEL CLIENTE */}
+      {/* PANEL IZQUIERDO: DETALLES DEL CLIENTE (FLOTANTE SUPERPUESTO) */}
       {showDetails && form.celular && (
-        <div className="w-full md:w-[450px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col h-full shrink-0 custom-scrollbar z-30">
+        <div className="absolute left-0 top-0 z-40 h-full w-full sm:w-[450px] border-r border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md overflow-y-auto animate-in slide-in-from-left duration-300 flex flex-col shadow-2xl custom-scrollbar">
           <div className="sticky top-0 z-20 bg-white/90 p-4 backdrop-blur-md dark:bg-zinc-900/90 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
             
             {/* 🎯 BOTÓN DE REGRESO PARA MÓVIL */}
@@ -1063,8 +1063,8 @@ export default function ReservationForm({
         </div>
       )}
 
-      {/* PANEL DERECHO: FORMULARIO */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+      {/* PANEL DERECHO: FORMULARIO (ANCHO COMPLETO) */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative w-full">
         
         {/* 🎯 BOTÓN FLOTANTE ROSADO VISIBLE SIEMPRE QUE HAYA TELÉFONO */}
         {form.celular && (
