@@ -3,21 +3,12 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { 
-  Camera, 
-  Trash2, 
-  Save, 
-  Loader2, 
-  RotateCw, 
-  Plus, 
-  ChevronLeft, 
-  ClipboardList, 
-  History,
-  Clock,
-  Sparkles
+  Camera, Trash2, Save, Loader2, RotateCw, Plus, ChevronLeft, 
+  ClipboardList, History, Clock, FileText, Eye, X, HeartPulse, Sparkles, User
 } from "lucide-react";
 
 /* =========================================================
-   🔹 TIPOS DE DATOS (INTACTOS)
+   🔹 TIPOS DE DATOS
 ========================================================= */
 type FotoFicha = {
   url: string;
@@ -42,15 +33,178 @@ type AppointmentDb = {
   estado: string;
 };
 
+type FacialRecordDb = {
+  id: string;
+  patient_id_doc: number | string;
+  occupation?: string;
+  emergency_contact?: string;
+  sun_exposure?: string;
+  habits_check?: any;
+  diet_info?: string;
+  sleep_info?: string;
+  consult_reason?: string;
+  health_conditions?: any;
+  allergies_meds_details?: string;
+  current_routine?: string;
+  consent_acceptances?: any;
+  additional_notes?: string;
+  patient_signature_name: string;
+  created_at: string;
+  client_phone?: string;
+};
+
+type MicroRecordDb = {
+  id: string;
+  patient_id_doc: number | string;
+  client_phone: string;
+  address?: string;
+  emergency_contact?: string;
+  procedure_reason?: string;
+  procedure_reason_other?: string;
+  selected_services?: string; // 👈 Agregado para compatibilidad
+  medical_history?: string;
+  medical_notes?: string;
+  consent_acceptances?: string;
+  patient_signature_name: string;
+  created_at: string;
+  smokes?: string;
+  pregnant?: string;
+};
+
 interface FichaTecnicaEditorProps {
   celular: string;
 }
 
+function parseJsonField(val: any): string {
+  if (!val) return "Sin especificar";
+  if (Array.isArray(val)) return val.join(", ");
+  if (typeof val === "object") return JSON.stringify(val);
+  
+  try {
+    const parsed = JSON.parse(val);
+    if (Array.isArray(parsed)) return parsed.join(", ");
+    if (typeof parsed === "object") return JSON.stringify(parsed);
+    return String(parsed);
+  } catch {
+    return String(val);
+  }
+}
+
+/* =========================================================
+   🔹 DICCIONARIOS DE TRADUCCIÓN DE FLOW Y PDF CLÍNICO
+========================================================= */
+
+// Mapeo de Motivos de Consulta / Procedimientos
+const PROCEDURES_MAP: Record<string, string> = {
+  cejas_sombreadas: "Cejas sombreadas",
+  cejas_pelo_a_pelo: "Cejas pelo a pelo",
+  labios: "Labios",
+  camuflaje_cicatriz: "Camuflaje de cicatriz",
+  delineado_parpado: "Delineado párpado superior",
+  delineado_parpado_superior: "Delineado párpado superior",
+  otro: "Otro",
+};
+
+// Mapeo de Antecedentes Médicos
+const MEDICAL_MAP: Record<string, string> = {
+  alergia: "Alergia",
+  enfermedad_dermatologica: "Enfermedad dermatológica",
+  tintura_cabello: "Se tintura el cabello",
+  cancer: "Cáncer",
+  enfermedad_hematologica: "Enfermedad hematológica",
+  sida: "Sida",
+  cicatriz_queloide: "Cicatriz queloide",
+  epilepsia: "Epilepsia",
+  usa_acutane: "Usa Acutane",
+  cirugias_recientes: "Cirugías recientes",
+  esta_embarazada: "Está embarazada",
+  usa_lentes_contacto: "Usa lentes de contacto",
+  diabetes: "Diabetes",
+  hemofilia: "Hemofilia",
+  tiene_tatuajes: "Tiene tatuajes",
+  enfermedad_autoinmune: "Enfermedad autoinmune",
+  hepatitis: "Hepatitis",
+  toma_anticoagulante: "Toma anticoagulante",
+  enfermedad_cardiaca: "Enfermedad cardíaca",
+  herpes: "Herpes",
+  tratamiento_medico: "Tratamiento médico",
+};
+
+/* Helper 1: Formateador elegante de Procedimientos / Motivos */
+function formatProcedureLabel(val: any): string {
+  if (!val) return "Sin especificar";
+  
+  let items: string[] = [];
+  try {
+    if (Array.isArray(val)) {
+      items = val;
+    } else {
+      const parsed = JSON.parse(val);
+      items = Array.isArray(parsed) ? parsed : [String(parsed)];
+    }
+  } catch {
+    items = [String(val)];
+  }
+
+  const formatted = items.map((item) => {
+    const cleanKey = String(item).toLowerCase().trim().replace(/["'\[\]]/g, "");
+    if (PROCEDURES_MAP[cleanKey]) return PROCEDURES_MAP[cleanKey];
+    // Convierte guiones bajos en espacios y capitaliza cada palabra
+    return cleanKey
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  });
+
+  return formatted.join(", ");
+}
+
+/* Helper 2: Formateador de Antecedentes Médicos */
+function formatMedicalHistory(val: any): string[] {
+  if (!val) return [];
+  let items: string[] = [];
+  try {
+    if (Array.isArray(val)) {
+      items = val;
+    } else {
+      const parsed = JSON.parse(val);
+      items = Array.isArray(parsed) ? parsed : [String(parsed)];
+    }
+  } catch {
+    items = [String(val)];
+  }
+
+  return items.map((item) => {
+    const cleanKey = String(item).toLowerCase().trim().replace(/["'\[\]]/g, "");
+    return MEDICAL_MAP[cleanKey] || cleanKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  });
+}
+
+/* Helper 3: Evaluación de Consentimiento y Autorización de Fotos */
+function parsePhotoConsent(val: any): { photosAllowed: boolean; termsAccepted: boolean } {
+  if (!val) return { photosAllowed: false, termsAccepted: true };
+  const strVal = String(typeof val === "object" ? JSON.stringify(val) : val).toLowerCase();
+  
+  const photosAllowed = strVal.includes("accept_photos") || strVal.includes("fotos_si") || strVal.includes("autorizo_fotos");
+  const termsAccepted = strVal.includes("accept_terms") || strVal.includes("terminos_si") || true;
+
+  return { photosAllowed, termsAccepted };
+}
+
 export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps) {
   const [view, setView] = useState<'list' | 'edit'>('list');
-  const [tab, setTab] = useState<'fichas' | 'citas'>('fichas');
+  const [tab, setTab] = useState<'fichas' | 'facial_flow' | 'micro_flow' | 'citas'>('fichas');
+  
+  // Estados de datos
   const [historialFichas, setHistorialFichas] = useState<FichaDb[]>([]);
   const [historialCitas, setHistorialCitas] = useState<AppointmentDb[]>([]);
+  const [fichasFaciales, setFichasFaciales] = useState<FacialRecordDb[]>([]);
+  const [fichasMicro, setFichasMicro] = useState<MicroRecordDb[]>([]);
+
+  // Modales de detalle para Fichas de WhatsApp Flow
+  const [selectedFacial, setSelectedFacial] = useState<FacialRecordDb | null>(null);
+  const [selectedMicro, setSelectedMicro] = useState<MicroRecordDb | null>(null);
+
+  // Estados de Formulario de Ficha Técnica Manual
   const [job, setJob] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [fotos, setFotos] = useState<FotoFicha[]>([]);
@@ -88,27 +242,51 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
     const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
     return `${day} ${months[parseInt(month) - 1]}`;
   };
-
+  /* 🌸 FUNCIÓN DE BÚSQUEDA SIMPLIFICADA POR NÚMERO LOCAL */
   const loadData = async () => {
     if (!celular) return;
     setFetching(true);
+
+    // 1. Limpiamos el prop celular para dejar únicamente los dígitos locales (ejemplo: "3181757220")
+    const cleanPhoneDigits = String(celular).replace(/\D/g, "");
+
     try {
+      // 📌 1. Fichas Manuales de Especialistas (Busca por celular numérico local)
       const { data: fichas } = await supabase
         .from('fichas_tecnicas')
         .select('*')
-        .eq('celular', Number(celular))
+        .eq('celular', Number(cleanPhoneDigits))
         .order('created_at', { ascending: false });
       
+      // 📌 2. Historial de Citas (Busca por celular numérico local)
       const { data: citas } = await supabase
         .from('appointments')
         .select('id, servicio, appointment_at, especialista, estado')
-        .eq('celular', Number(celular))
+        .eq('celular', Number(cleanPhoneDigits))
         .order('appointment_at', { ascending: false });
 
+      // 📌 3. Fichas Faciales de WhatsApp Flow (Busca por client_phone numérico en texto)
+      const { data: faciales } = await supabase
+        .from('facial_medical_records')
+        .select('*')
+        .eq('client_phone', cleanPhoneDigits)
+        .order('created_at', { ascending: false });
+
+      // 📌 4. Fichas de Micropigmentación de WhatsApp Flow (Busca por phone_number numérico en texto)
+      const { data: micros } = await supabase
+        .from('micropigmentation_records')
+        .select('*')
+        .eq('client_phone', cleanPhoneDigits)
+        .order('created_at', { ascending: false });
+
+      // Guardamos la información obtenida en los estados locales
       setHistorialFichas(fichas || []);
       setHistorialCitas(citas || []);
+      setFichasFaciales(faciales || []);
+      setFichasMicro(micros || []);
+
     } catch (err) {
-      console.error("Error cargando historial:", err);
+      console.error("Error cargando historial de fichas del cliente:", err);
     } finally {
       setFetching(false);
     }
@@ -201,7 +379,7 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
     <div className="flex flex-col items-center justify-center p-12 gap-3">
       <Loader2 className="animate-spin text-rose-500" size={30} />
       <span className="text-[10px] font-extrabold uppercase text-zinc-400 tracking-wider">
-        Cargando perfil...
+        Cargando historial de cliente...
       </span>
     </div>
   );
@@ -210,33 +388,58 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
     return (
       <div className="space-y-4 font-sans text-zinc-900 dark:text-zinc-100 antialiased">
         
-        {/* NAVEGACIÓN ENTRE PESTAÑAS (FICHAS / CITAS) */}
-        <div className="flex p-1 bg-zinc-100 dark:bg-zinc-950 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
+        {/* NAVEGACIÓN ENTRE PESTAÑAS (FICHAS ESPECIALISTA / FACIAL / MICROPIGMENTACIÓN / CITAS) */}
+        <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-950 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
           <button 
             type="button"
             onClick={() => setTab('fichas')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
               tab === 'fichas' 
                 ? 'bg-white dark:bg-zinc-800 text-rose-500 shadow-2xs' 
                 : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
             }`}
           >
-            <ClipboardList size={14} /> Fichas Técnicas
+            <ClipboardList size={13} /> Especialistas
           </button>
+
+          <button 
+            type="button"
+            onClick={() => setTab('facial_flow')}
+            className={`flex items-center justify-center gap-1.5 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+              tab === 'facial_flow' 
+                ? 'bg-white dark:bg-zinc-800 text-rose-500 shadow-2xs' 
+                : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+            }`}
+          >
+            <Sparkles size={13} /> Ficha Facial ({fichasFaciales.length})
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setTab('micro_flow')}
+            className={`flex items-center justify-center gap-1.5 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+              tab === 'micro_flow' 
+                ? 'bg-white dark:bg-zinc-800 text-rose-500 shadow-2xs' 
+                : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+            }`}
+          >
+            <HeartPulse size={13} /> Micropig. ({fichasMicro.length})
+          </button>
+
           <button 
             type="button"
             onClick={() => setTab('citas')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-2 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
               tab === 'citas' 
                 ? 'bg-white dark:bg-zinc-800 text-rose-500 shadow-2xs' 
                 : 'text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
             }`}
           >
-            <History size={14} /> Historial Citas
+            <History size={13} /> Citas
           </button>
         </div>
 
-        {/* TAB 1: LISTADO DE FICHAS TÉCNICAS */}
+        {/* TAB 1: LISTADO DE FICHAS TÉCNICAS MANUALES DE ESPECIALISTAS */}
         {tab === 'fichas' && (
           <div className="space-y-3">
             <button 
@@ -244,12 +447,12 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
               onClick={() => { setEditingFichaId(null); setJob(""); setObservaciones(""); setFotos([]); setView('edit'); }} 
               className="w-full bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white p-3.5 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-rose-500/20 transition-all cursor-pointer active:scale-95"
             >
-              <Plus size={16} /> Crear Nueva Ficha
+              <Plus size={16} /> Crear Nueva Ficha Manual
             </button>
             
             {historialFichas.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-6">
-                <p className="text-zinc-400 text-xs font-semibold">No hay fichas técnicas registradas aún.</p>
+                <p className="text-zinc-400 text-xs font-semibold">No hay fichas manuales de especialista registradas.</p>
               </div>
             ) : (
               historialFichas.map(f => (
@@ -285,7 +488,94 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
           </div>
         )}
 
-        {/* TAB 2: HISTORIAL DE CITAS PASADAS */}
+        {/* TAB 2: FICHAS FACIALES (WHATSAPP FLOW) */}
+        {tab === 'facial_flow' && (
+          <div className="space-y-3">
+            {fichasFaciales.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-6">
+                <p className="text-zinc-400 text-xs font-semibold">El cliente no ha diligenciado ninguna Ficha Facial.</p>
+              </div>
+            ) : (
+              fichasFaciales.map((f) => (
+                <div 
+                  key={f.id} 
+                  className="p-4 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl bg-white dark:bg-zinc-900/90 shadow-2xs space-y-2.5"
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={16} className="text-indigo-500" />
+                      <h4 className="font-extrabold text-xs uppercase text-zinc-900 dark:text-zinc-100">
+                        Ficha Médica Facial
+                      </h4>
+                    </div>
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 px-2.5 py-0.5 rounded-full">
+                      {isClient && formatDateShort(f.created_at)}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+                    Paciente: <strong className="text-zinc-800 dark:text-zinc-200">{f.patient_signature_name}</strong> (Doc: {f.patient_id_doc})
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFacial(f)}
+                    className="w-full mt-2 bg-zinc-900 dark:bg-zinc-800 hover:bg-rose-500 text-white py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Eye size={14} /> Ver Ficha Completa
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: FICHAS MICROPIGMENTACIÓN (WHATSAPP FLOW) */}
+        {tab === 'micro_flow' && (
+          <div className="space-y-3">
+            {fichasMicro.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-zinc-200/80 dark:border-zinc-800 rounded-3xl p-6">
+                <p className="text-zinc-400 text-xs font-semibold">No se encontraron registros de Micropigmentación de Flow.</p>
+              </div>
+            ) : (
+              fichasMicro.map((m) => (
+                <div 
+                  key={m.id} 
+                  className="p-4 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl bg-white dark:bg-zinc-900/90 shadow-2xs space-y-2.5"
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <HeartPulse size={16} className="text-rose-500" />
+                      <h4 className="font-extrabold text-xs uppercase text-zinc-900 dark:text-zinc-100">
+                        Ficha Micropigmentación
+                      </h4>
+                    </div>
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-500 border border-rose-500/20 px-2.5 py-0.5 rounded-full">
+                      {isClient && formatDateShort(m.created_at)}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+                    Servicio / Motivo:{" "}
+                    <strong className="text-zinc-800 dark:text-zinc-200">
+                      {formatProcedureLabel(m.procedure_reason || m.selected_services)}
+                    </strong>
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMicro(m)}
+                    className="w-full mt-2 bg-zinc-900 dark:bg-zinc-800 hover:bg-rose-500 text-white py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Eye size={14} /> Ver Ficha Completa
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* TAB 4: HISTORIAL DE CITAS PASADAS */}
         {tab === 'citas' && (
           <div className="space-y-2.5">
             {historialCitas.length === 0 ? (
@@ -322,11 +612,216 @@ export default function FichaTecnicaEditor({ celular }: FichaTecnicaEditorProps)
             )}
           </div>
         )}
+
+        {/* 🌸 MODAL FLOTANTE 1: DETALLE DE FICHA FACIAL */}
+        {selectedFacial && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
+              <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                <h3 className="font-extrabold text-sm uppercase text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Sparkles size={18} className="text-rose-500" />
+                  Ficha Médica Facial (Flow)
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setSelectedFacial(null)}
+                  className="p-1 rounded-xl text-zinc-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-100 dark:border-zinc-800 space-y-1">
+                  <p><strong>Paciente:</strong> {selectedFacial.patient_signature_name}</p>
+                  <p><strong>Documento / ID:</strong> {selectedFacial.patient_id_doc}</p>
+                  <p><strong>Ocupación:</strong> {selectedFacial.occupation || "N/A"}</p>
+                  <p><strong>Contacto de Emergencia:</strong> {selectedFacial.emergency_contact || "N/A"}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="font-bold text-zinc-700 dark:text-zinc-300">Motivo de Consulta:</p>
+                  <p className="p-2.5 bg-zinc-50 dark:bg-zinc-950 rounded-xl text-zinc-600 dark:text-zinc-400">
+                    {selectedFacial.consult_reason || "Sin especificar"}
+                  </p>
+                </div>
+
+                {selectedFacial.health_conditions && (
+                  <div className="space-y-1">
+                    <p className="font-bold text-zinc-700 dark:text-zinc-300">Condiciones de Salud:</p>
+                    <pre className="p-2.5 bg-zinc-50 dark:bg-zinc-950 rounded-xl text-[11px] font-mono text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap">
+                      {JSON.stringify(selectedFacial.health_conditions, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <p className="font-bold text-zinc-700 dark:text-zinc-300">Alergias / Medicamentos:</p>
+                  <p className="p-2.5 bg-zinc-50 dark:bg-zinc-950 rounded-xl text-zinc-600 dark:text-zinc-400">
+                    {selectedFacial.allergies_meds_details || "Ninguna especificada"}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="font-bold text-zinc-700 dark:text-zinc-300">Rutina Actual:</p>
+                  <p className="p-2.5 bg-zinc-50 dark:bg-zinc-950 rounded-xl text-zinc-600 dark:text-zinc-400">
+                    {selectedFacial.current_routine || "Sin rutina actual"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedFacial(null)}
+                className="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-2xl transition-all cursor-pointer"
+              >
+                Cerrar Detalle
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 🌸 MODAL FLOTANTE: FICHA CLÍNICA MICROPIGMENTACIÓN (DISEÑO IDÉNTICO AL PDF) */}
+        {selectedMicro && (() => {
+          const medicalList = formatMedicalHistory(selectedMicro.medical_history);
+          const { photosAllowed, termsAccepted } = parsePhotoConsent(selectedMicro.consent_acceptances);
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 font-sans">
+              <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[88vh] overflow-y-auto custom-scrollbar">
+                
+                {/* Encabezado con Estilo de Academia */}
+                <div className="flex justify-between items-start border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                  <div>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-rose-500 block">
+                      Leslie Gutierrez Studio Academy
+                    </span>
+                    <h3 className="font-black text-sm uppercase text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mt-0.5">
+                      <HeartPulse size={17} className="text-rose-500" />
+                      Ficha Clínica Micropigmentación
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMicro(null)}
+                    className="p-1.5 rounded-xl text-zinc-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* BLOQUE 1: DATOS PERSONALES */}
+                <div className="space-y-1.5">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                    <User size={12} className="text-rose-500" /> Datos del Paciente
+                  </h4>
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 text-xs space-y-1 text-zinc-700 dark:text-zinc-300">
+                    <p><strong>Nombre:</strong> {selectedMicro.patient_signature_name || "N/A"}</p>
+                    <p><strong>Cédula (CC):</strong> {selectedMicro.patient_id_doc || "N/A"}</p>
+                    <p><strong>Celular:</strong> {selectedMicro.client_phone || "N/A"}</p>
+                    <p><strong>Dirección:</strong> {selectedMicro.address || "No registrada"}</p>
+                    <p><strong>Contacto de Emergencia:</strong> {selectedMicro.emergency_contact || "No especificado"}</p>
+                  </div>
+                </div>
+
+                {/* BLOQUE 2: MOTIVO DE CONSULTA */}
+                <div className="space-y-1.5">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-rose-500 flex items-center gap-1">
+                    <Sparkles size={12} /> Motivo de Consulta / Procedimiento
+                  </h4>
+                  <div className="p-3 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-2xl font-extrabold text-xs text-rose-600 dark:text-rose-400">
+                    {formatProcedureLabel(selectedMicro.procedure_reason || selectedMicro.selected_services)}
+                    {selectedMicro.procedure_reason_other && (
+                      <span className="block text-[11px] font-normal mt-1 text-zinc-600 dark:text-zinc-400">
+                        Nota: {selectedMicro.procedure_reason_other}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* BLOQUE 3: ANTECENTES MÉDICOS */}
+                <div className="space-y-1.5">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                    Antecedentes Médicos Registrados
+                  </h4>
+                  {medicalList.length === 0 ? (
+                    <div className="p-2.5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-100 dark:border-zinc-800 text-xs text-zinc-500 italic">
+                      Sin antecedentes médicos reportados.
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 p-2.5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-100 dark:border-zinc-800">
+                      {medicalList.map((med, idx) => (
+                        <span key={idx} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-2.5 py-1 rounded-xl text-[10px] font-bold">
+                          • {med}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* HÁBITOS ADICIONALES */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2.5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-100 dark:border-zinc-800">
+                    <span className="text-[9px] text-zinc-400 font-bold block uppercase">Fuma:</span>
+                    <span className="font-black uppercase text-zinc-800 dark:text-zinc-200">{selectedMicro.smokes || "No"}</span>
+                  </div>
+                  <div className="p-2.5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-100 dark:border-zinc-800">
+                    <span className="text-[9px] text-zinc-400 font-bold block uppercase">Embarazada / Lactante:</span>
+                    <span className="font-black uppercase text-zinc-800 dark:text-zinc-200">{selectedMicro.pregnant || "No"}</span>
+                  </div>
+                </div>
+
+                {/* BLOQUE 4: CONSENTIMIENTO INFORMADO Y FOTOGRAFÍAS */}
+                <div className="space-y-1.5 pt-1">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                    Consentimiento Informado & Fotografías
+                  </h4>
+                  <div className="space-y-2 p-3 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 text-xs">
+                    
+                    {/* Autorización de Fotos */}
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-zinc-700 dark:text-zinc-300">¿Acepta toma de fotografías?</span>
+                      {photosAllowed ? (
+                        <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">
+                          ✓ SÍ ACEPTÓ
+                        </span>
+                      ) : (
+                        <span className="bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase">
+                          ✕ NO ACEPTÓ FOTOS
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Firma Digital */}
+                    <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-800 flex justify-between items-center text-[11px]">
+                      <span className="text-zinc-400 font-bold">Firma Digital del Paciente:</span>
+                      <span className="font-black text-zinc-900 dark:text-zinc-100 italic">
+                        {selectedMicro.patient_signature_name}
+                      </span>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* Botón de Cierre */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedMicro(null)}
+                  className="w-full py-3 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all cursor-pointer shadow-md shadow-rose-500/20 active:scale-95"
+                >
+                  Cerrar Ficha
+                </button>
+
+              </div>
+            </div>
+          );
+        })()}
+
       </div>
     );
   }
 
-  {/* MODO EDICIÓN / CREACIÓN DE FICHA */}
+  {/* MODO EDICIÓN / CREACIÓN DE FICHA MANUAL */}
   return (
     <div className="space-y-5 animate-in slide-in-from-right duration-200 font-sans text-zinc-900 dark:text-zinc-100 antialiased">
       <button 
