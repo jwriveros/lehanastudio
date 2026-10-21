@@ -268,7 +268,7 @@ export default function FinanzasPage() {
 
   const calcularIngresosLehana = (citas: any[]) => {
     return citas.reduce((acc, cita) => {
-      const valorBase = Number(cita.price) || 0;
+      const valorBase = Number(cita.price_final) || 0;
       const comision = cita.especialista === "Leslie Gutierrez" ? 1 : 0.5;
       return acc + (valorBase * comision);
     }, 0);
@@ -317,7 +317,7 @@ export default function FinanzasPage() {
 
       const { data: ventas } = await supabase
         .from("appointments")
-        .select("price, especialista")
+        .select("price_final, especialista")
         .gte("appointment_at", `${dateRange.from}T00:00:00Z`)
         .lte("appointment_at", `${dateRange.to}T23:59:59Z`)
         .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA"]);
@@ -357,7 +357,7 @@ export default function FinanzasPage() {
     }
 
     const historicalData = await Promise.all(months.map(async (m) => {
-      const { data: v } = await supabase.from("appointments").select("price, especialista")
+      const { data: v } = await supabase.from("appointments").select("price_final, especialista")
         .gte("appointment_at", m.start).lte("appointment_at", m.end)
         .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA"]);
       const { data: g } = await supabase.from("expenses").select("valor")
