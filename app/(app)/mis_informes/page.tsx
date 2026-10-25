@@ -7,161 +7,15 @@ import { useUIStore } from "@/lib/uiStore";
 import ReservationDrawer from "@/components/reservations/ReservationDrawer";
 import { 
   DollarSign, Loader2, Calendar as CalendarIcon,
-  ChevronLeft, ChevronRight, CalendarDays,
-  TrendingUp, CheckCircle2, Clock, Download, Filter, Sparkles, User,
-  ChevronDown
+  TrendingUp, CheckCircle2, Clock, Filter, Sparkles, User,
+  X
 } from "lucide-react";
 
-const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-
-/* =========================================================
-   🔹 COMPONENTE: DATE PICKER PERSONALIZADO (ZINC / ROSE)
-========================================================= */
-function CustomDatePicker({
-  value,
-  onChange,
-  label,
-}: {
-  value: string;
-  onChange: (val: string) => void;
-  label?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const initialDate = value ? new Date(`${value}T00:00:00`) : new Date();
-  const [currentMonth, setCurrentMonth] = useState(initialDate.getMonth());
-  const [currentYear, setCurrentMonthYear] = useState(initialDate.getFullYear());
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const formatDisplay = (dateStr: string) => {
-    if (!dateStr) return "Seleccionar...";
-    const [y, m, d] = dateStr.split("-");
-    const monthName = MESES_ES[parseInt(m, 10) - 1]?.slice(0, 3);
-    return `${d} ${monthName}, ${y}`;
-  };
-
-  const nextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentMonthYear(currentYear + 1);
-    } else {
-      setCurrentMonth(currentMonth + 1);
-    }
-  };
-
-  const prevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentMonthYear(currentYear - 1);
-    } else {
-      setCurrentMonth(currentMonth - 1);
-    }
-  };
-
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
-
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const paddingDays = Array.from({ length: firstDayIndex }, (_, i) => i);
-
-  const handleSelectDay = (day: number) => {
-    const mm = String(currentMonth + 1).padStart(2, "0");
-    const dd = String(day).padStart(2, "0");
-    const formatted = `${currentYear}-${mm}-${dd}`;
-    onChange(formatted);
-    setOpen(false);
-  };
-
-  return (
-    <div className="relative w-full" ref={ref}>
-      {label && (
-        <span className="text-[9px] font-black text-zinc-400 uppercase mr-1">
-          {label}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-100 p-2.5 rounded-2xl text-xs font-bold flex items-center justify-between shadow-xs hover:border-rose-400 transition-all cursor-pointer"
-      >
-        <div className="flex items-center gap-2 truncate">
-          <CalendarIcon size={14} className="text-rose-500 shrink-0" />
-          <span className="truncate">{formatDisplay(value)}</span>
-        </div>
-        <ChevronDown size={14} className={`text-zinc-400 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open && (
-        <div className="absolute z-50 top-full left-0 mt-2 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl p-4 animate-in fade-in duration-150 text-zinc-900 dark:text-zinc-100">
-          <div className="flex items-center justify-between mb-3 border-b border-zinc-100 dark:border-zinc-800 pb-2">
-            <button
-              type="button"
-              onClick={prevMonth}
-              className="p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-xs font-bold">
-              {MESES_ES[currentMonth]} {currentYear}
-            </span>
-            <button
-              type="button"
-              onClick={nextMonth}
-              className="p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center mb-1">
-            {["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"].map((d) => (
-              <span key={d} className="text-[10px] font-bold text-zinc-400">
-                {d}
-              </span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1">
-            {paddingDays.map((p) => (
-              <div key={`pad-${p}`} />
-            ))}
-            {daysArray.map((d) => {
-              const mm = String(currentMonth + 1).padStart(2, "0");
-              const dd = String(d).padStart(2, "0");
-              const dateKey = `${currentYear}-${mm}-${dd}`;
-              const isSelected = value === dateKey;
-
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => handleSelectDay(d)}
-                  className={`p-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                    isSelected
-                      ? "bg-rose-500 text-white shadow-md shadow-rose-500/20"
-                      : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  }`}
-                >
-                  {d}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+import "react-date-range/dist/styles.css";
+import "react-date-range/dist/theme/default.css";
+import { DateRange, RangeKeyDict } from "react-date-range";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 /* =========================================================
    🔹 PÁGINA PRINCIPAL: MIS INFORMES
@@ -171,9 +25,40 @@ export default function MisInformes() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalPeriodo: 0, hoy: 0, totalCitas: 0, confirmadas: 0 });
   const [appointments, setAppointments] = useState<any[]>([]);
-  
-  const todayStr = new Date().toLocaleDateString('en-CA');
-  const [dateRange, setDateRange] = useState({ start: todayStr, end: todayStr });
+
+  // 🌸 ESTADOS PARA REACT-DATE-RANGE UNIFICADO (ESTILO BOT)
+  const [showCalendar, setShowCalendar] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  const [dateRange, setDateRange] = useState([
+    {
+      startDate: new Date(),
+      endDate: new Date(),
+      key: "selection",
+    },
+  ]);
+
+  // Cierra el menú desplegable del calendario al hacer clic fuera de él
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+        setShowCalendar(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelectRange = (ranges: RangeKeyDict) => {
+    const selection = ranges.selection;
+    setDateRange([
+      {
+        startDate: selection.startDate || new Date(),
+        endDate: selection.endDate || new Date(),
+        key: "selection",
+      },
+    ]);
+  };
 
   // ESTADOS DEL DRAWER LATERAL
   const isReservationDrawerOpen = useUIStore((state) => state.isReservationDrawerOpen);
@@ -181,35 +66,33 @@ export default function MisInformes() {
   const openReservationDrawer = useUIStore((state) => state.openReservationDrawer);
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
 
-  // LÓGICA DE PERIODOS RÁPIDOS
+  // LÓGICA DE PERIODOS RÁPIDOS ADAPTADA A DATE-RANGE
   const setQuickPeriod = (period: 'hoy' | 'semana' | 'mes') => {
     const now = new Date();
     let start = new Date();
     let end = new Date();
 
     if (period === 'hoy') {
-      const str = now.toLocaleDateString('en-CA');
-      setDateRange({ start: str, end: str });
-      return;
-    }
-
-    if (period === 'semana') {
+      start = new Date();
+      end = new Date();
+    } else if (period === 'semana') {
       const day = now.getDay();
       const diff = now.getDate() - day + (day === 0 ? -6 : 1);
       start = new Date(now.setDate(diff));
       end = new Date(start);
       end.setDate(start.getDate() + 6);
-    }
-
-    if (period === 'mes') {
+    } else if (period === 'mes') {
       start = new Date(now.getFullYear(), now.getMonth(), 1);
       end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     }
 
-    setDateRange({ 
-      start: start.toLocaleDateString('en-CA'), 
-      end: end.toLocaleDateString('en-CA') 
-    });
+    setDateRange([
+      {
+        startDate: start,
+        endDate: end,
+        key: "selection",
+      },
+    ]);
   };
 
   const formatTimeSafe = (dateStr: string) => {
@@ -280,36 +163,35 @@ export default function MisInformes() {
   const fetchData = useCallback(async () => {
     if (!session) return;
     setLoading(true);
+
+    const startStr = format(dateRange[0].startDate, "yyyy-MM-dd");
+    const endStr = format(dateRange[0].endDate, "yyyy-MM-dd");
+
     try {
       const { data: citas, error } = await supabase
         .from('appointments')
         .select('*')
         .eq('especialista', session.name)
         .or('estado.eq.Cita pagada,estado.eq.Cita confirmada,estado.eq.Nueva reserva creada,estado.eq.Cita cancelada')
-        .gte('appointment_at', `${dateRange.start} 00:00:00`)
-        .lte('appointment_at', `${dateRange.end} 23:59:59`)
+        .gte('appointment_at', `${startStr} 00:00:00`)
+        .lte('appointment_at', `${endStr} 23:59:59`)
         .order('appointment_at', { ascending: true });
 
       if (citas) {
         let totalP = 0, totalH = 0, countConf = 0;
-        // Obtenemos la fecha de hoy en formato YYYY-MM-DD local
         const currentToday = new Date().toLocaleDateString('en-CA');
 
         citas.forEach(cita => {
           const estadoNorm = cita.estado?.toLowerCase().trim();
 
           if (estadoNorm === 'cita pagada') {
-            // 🎯 1. Obtenemos el porcentaje (Excepción de la especialista o Comisión Base)
             const porcentaje = session.excepciones_comision?.[cita.servicio] ?? session.comision_base ?? 40;
             const comisionFactor = porcentaje / 100;
-
-            // 🎯 2. Priorizamos 'price_final' (con descuento) sobre 'price'
             const valorReal = Number(cita.price_final ?? cita.price) || 0;
             const gananciaEfectiva = valorReal * comisionFactor;
 
             totalP += gananciaEfectiva;
 
-            // 🎯 3. Comparación precisa de la fecha del servicio con la fecha de hoy
             const fechaCitacorta = cita.appointment_at ? cita.appointment_at.split(/[ T]/)[0] : '';
             if (fechaCitacorta === currentToday) {
               totalH += gananciaEfectiva;
@@ -334,7 +216,7 @@ export default function MisInformes() {
   return (
     <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 text-zinc-900 dark:text-zinc-100 font-sans antialiased animate-in fade-in duration-500">
       
-      {/* ENCABEZADO INTEGRADO CON DATEPICKER FLOTANTE */}
+      {/* ENCABEZADO INTEGRADO CON DATEPICKER UNIFICADO */}
       <header className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 border-b border-zinc-200/80 dark:border-zinc-800/80 pb-6">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-rose-500">
@@ -354,20 +236,25 @@ export default function MisInformes() {
 
         {/* SELECTORES DE FECHA Y RANGOS RÁPIDOS */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          
+          {/* BOTONES RÁPIDOS */}
           <div className="flex bg-white dark:bg-zinc-900 rounded-2xl p-1 shadow-xs border border-zinc-200/80 dark:border-zinc-800">
             <button 
+              type="button"
               onClick={() => setQuickPeriod('hoy')} 
               className="px-4 py-2 text-[10px] font-extrabold uppercase hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
             >
               Hoy
             </button>
             <button 
+              type="button"
               onClick={() => setQuickPeriod('semana')} 
               className="px-4 py-2 text-[10px] font-extrabold uppercase hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer"
             >
               Semana
             </button>
             <button 
+              type="button"
               onClick={() => setQuickPeriod('mes')} 
               className="px-4 py-2 text-[10px] font-extrabold uppercase hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer border-l border-zinc-100 dark:border-zinc-800"
             >
@@ -375,21 +262,90 @@ export default function MisInformes() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-1.5 rounded-2xl shadow-xs border border-zinc-200/80 dark:border-zinc-800">
-            <div className="w-36">
-              <CustomDatePicker 
-                value={dateRange.start} 
-                onChange={(val) => setDateRange(prev => ({ ...prev, start: val }))} 
-              />
-            </div>
-            <span className="text-zinc-400 font-bold text-xs">/</span>
-            <div className="w-36">
-              <CustomDatePicker 
-                value={dateRange.end} 
-                onChange={(val) => setDateRange(prev => ({ ...prev, end: val }))} 
-              />
-            </div>
+          {/* 🎯 SELECTOR DE CALENDARIO ÚNICO (ESTILO BOT) */}
+          <div className="relative w-full sm:w-auto" ref={calendarRef}>
+            <button
+              type="button"
+              onClick={() => setShowCalendar(!showCalendar)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs hover:border-rose-400 transition-all text-xs font-bold text-zinc-700 dark:text-zinc-200 cursor-pointer"
+            >
+              <CalendarIcon size={15} className="text-rose-500" />
+              <span>
+                {format(dateRange[0].startDate, "dd MMM yyyy", { locale: es })} —{" "}
+                {format(dateRange[0].endDate, "dd MMM yyyy", { locale: es })}
+              </span>
+            </button>
+
+            {showCalendar && (
+              <div className="absolute top-12 right-0 z-50 bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200 text-zinc-900 dark:text-zinc-100">
+                <div className="flex justify-between items-center mb-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
+                  <span className="text-xs font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                    Seleccionar Rango
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowCalendar(false)}
+                    className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* 🎯 CONTENEDOR ESTILIZADO CON CONTRASTE Y Z-INDEX CORREGIDO */}
+                <div className="overflow-hidden rounded-2xl border border-zinc-100 dark:border-zinc-800 
+                  [&_.rdrCalendarWrapper]:!bg-transparent 
+                  [&_.rdrMonth]:!bg-transparent 
+                  
+                  /* 1. Capa del número: SIEMPRE por encima de los fondos */
+                  [&_.rdrDayNumber]:!relative
+                  [&_.rdrDayNumber]:!z-10
+                  [&_.rdrDayNumber_span]:!relative
+                  [&_.rdrDayNumber_span]:!z-10
+
+                  /* 2. Días dentro del rango seleccionado */
+                  [&_.rdrDayInRange]:!bg-rose-500/20 
+                  [&_.rdrDayInRange_.rdrDayNumber_span]:!text-rose-600 
+
+                  /* 3. Días seleccionados (inicio y fin definitivos) */
+                  [&_.rdrSelected]:!bg-rose-500 
+                  [&_.rdrSelected_.rdrDayNumber_span]:!text-white
+
+                  /* 4. Vistas previas al situar el cursor (Hover y Preview) */
+                  [&_.rdrDayStartPreview]:!bg-rose-500 
+                  [&_.rdrDayEndPreview]:!bg-rose-500 
+                  [&_.rdrDayInPreview]:!bg-rose-500/20
+
+                  /* 5. Texto en blanco cuando el ratón está encima o en previsualización */
+                  [&_.rdrDay:hover_.rdrDayNumber_span]:!text-white
+                  [&_.rdrDayHovered_.rdrDayNumber_span]:!text-white
+                  [&_.rdrDayStartPreview~.rdrDayNumber_span]:!text-white
+                  [&_.rdrDayEndPreview~.rdrDayNumber_span]:!text-white">
+                  <DateRange
+                    editableDateInputs={true}
+                    onChange={handleSelectRange}
+                    moveRangeOnFirstSelection={false}
+                    ranges={dateRange}
+                    locale={es}
+                    rangeColors={["#ec7c8f"]}
+                  />
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCalendar(false);
+                      fetchData();
+                    }}
+                    className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-500/20 transition-all cursor-pointer"
+                  >
+                    Aplicar Rango
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+
         </div>
       </header>
 
@@ -453,10 +409,7 @@ export default function MisInformes() {
                   const badge = getStatusStyles(cita.estado);
                   const esPagada = cita.estado?.toLowerCase().trim() === 'cita pagada';
 
-                  // 🎯 Porcentaje específico o base
                   const porcentaje = session?.excepciones_comision?.[cita.servicio] ?? session?.comision_base ?? 40;
-                  
-                  // 🎯 Precio final con descuento
                   const valorReal = Number(cita.price_final ?? cita.price) || 0;
                   const gananciaCalculada = valorReal * (porcentaje / 100);
 
