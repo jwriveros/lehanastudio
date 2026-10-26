@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Settings
 } from "lucide-react";
+import CustomDialog from "@/components/ui/CustomDIalog";
 
 const DIAS_SEMANA = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"];
 const SEDES_DISPONIBLES = ["Marquetalia", "Buga", "Santa Marta"];
@@ -362,13 +363,61 @@ export default function SettingsPage() {
   const [date, setDate] = useState(getTodayStr());
   const [endDate, setEndDate] = useState("");
   const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("18:00");
+  const [endTime, setEndTime] = useState("19:00");
   const [type, setType] = useState<"blocked" | "available" | "assigned_sede">("blocked");
   const [selectedSede, setSelectedSede] = useState("Marquetalia");
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
 
   const [overrides, setOverrides] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
+  /* 🌸 ESTADO Y CONTROLADOR DE DIÁLOGOS ESTILIZADOS */
+  const [dialog, setDialog] = useState<{
+    isOpen: boolean;
+    type: "alert" | "confirm";
+    variant: "success" | "danger" | "warning" | "info";
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    type: "alert",
+    variant: "info",
+    title: "",
+    message: "",
+  });
+
+  const showAlert = (
+    title: string,
+    message: string,
+    variant: "success" | "danger" | "warning" | "info" = "success"
+  ) => {
+    setDialog({
+      isOpen: true,
+      type: "alert",
+      variant,
+      title,
+      message,
+    });
+  };
+
+  const showConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    confirmText: string = "Eliminar"
+  ) => {
+    setDialog({
+      isOpen: true,
+      type: "confirm",
+      variant: "danger",
+      title,
+      message,
+      confirmText,
+      onConfirm,
+    });
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -485,7 +534,7 @@ export default function SettingsPage() {
             ...currentDay,
             estado: "abierto",
             inicio: currentDay.inicio || "09:00",
-            fin: currentDay.fin || "18:00",
+            fin: currentDay.fin || "19:00",
           },
         };
       }
@@ -500,8 +549,15 @@ export default function SettingsPage() {
       .update({ horario_semanal: JSON.stringify(baseSchedule) })
       .eq("id", selectedSpecId);
 
-    if (!error) alert("¡Horario base actualizado!");
-    else alert("Error: " + error.message);
+    if (!error) {
+      showAlert(
+        "¡Horario Actualizado!",
+        "El horario base recurrente de la especialista ha sido guardado exitosamente.",
+        "success"
+      );
+    } else {
+      showAlert("Error al Guardar", error.message, "danger");
+    }
     setLoading(false);
   };
 
@@ -537,24 +593,35 @@ export default function SettingsPage() {
     const { error } = await supabase.from("specialist_overrides").insert(rows);
 
     if (!error) {
-      alert(
+      const msg =
         datesToInsert.length > 1
-          ? `Se han guardado ${datesToInsert.length} días de novedad correctamente`
-          : "Novedad registrada exitosamente"
-      );
+          ? `Se han registrado ${datesToInsert.length} días de novedad en la agenda correctamente.`
+          : "La novedad ha sido registrada exitosamente en la agenda.";
+      showAlert("Novedad Guardada", msg, "success");
       setDate(getTodayStr());
       setEndDate("");
       setSelectedServices([]);
       reloadOverrides();
     } else {
-      alert("Error guardando novedad: " + error.message);
+      showAlert("Error al Guardar", error.message, "danger");
     }
     setLoading(false);
   };
 
-  const deleteOverride = async (id: number) => {
-    await supabase.from("specialist_overrides").delete().eq("id", id);
-    reloadOverrides();
+  const deleteOverride = (id: number) => {
+    showConfirm(
+      "¿Eliminar novedad?",
+      "Esta novedad o bloqueo será eliminada de la agenda y la especialista volverá a su horario base para esta fecha.",
+      async () => {
+        const { error } = await supabase.from("specialist_overrides").delete().eq("id", id);
+        if (!error) {
+          showAlert("Novedad Eliminada", "El registro fue retirado exitosamente.", "success");
+          reloadOverrides();
+        } else {
+          showAlert("Error", "No se pudo eliminar la novedad: " + error.message, "danger");
+        }
+      }
+    );
   };
 
   return (
@@ -889,6 +956,17 @@ export default function SettingsPage() {
           )}
         </div>
       </section>
+      {/* 🌸 MODAL DE DIÁLOGOS ESTILIZADO */}
+      <CustomDialog
+        isOpen={dialog.isOpen}
+        type={dialog.type}
+        variant={dialog.variant}
+        title={dialog.title}
+        message={dialog.message}
+        confirmText={dialog.confirmText}
+        onClose={() => setDialog((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={dialog.onConfirm}
+      />
     </div>
   );
 }
