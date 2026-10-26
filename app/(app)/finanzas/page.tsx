@@ -4,168 +4,23 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { 
   Plus, Trash2, Receipt, Calendar as CalendarIcon, User, 
-  Loader2, X, DollarSign, Repeat, Bell, ChevronDown, 
+  Loader2, X, DollarSign, Repeat, ChevronDown, 
   TrendingDown, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, RefreshCcw, Save,
-  BarChart3, FileSpreadsheet, Sparkles, ChevronLeft, ChevronRight, Check, CreditCard
+  BarChart3, Sparkles, Check
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+
+import "react-date-range/dist/styles.css";
+import "react-date-range/dist/theme/default.css";
+import { DateRange, RangeKeyDict } from "react-date-range";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 import DailyPaymentsReports from "@/components/DailyPaymentsReports";
 import ComparativeReports from "@/components/ComparativeReports";
 
-const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-
 /* =========================================================
-   🔹 DATE PICKER PERSONALIZADO (FLOTANTE Y ADAPTATIVO)
-========================================================= */
-function CustomDatePicker({
-  value,
-  onChange,
-  label,
-}: {
-  value: string;
-  onChange: (val: string) => void;
-  label?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const initialDate = value ? new Date(`${value}T00:00:00`) : new Date();
-  const [currentMonth, setCurrentMonth] = useState(initialDate.getMonth());
-  const [currentYear, setCurrentMonthYear] = useState(initialDate.getFullYear());
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const formatDisplay = (dateStr: string) => {
-    if (!dateStr) return "Seleccionar...";
-    const [y, m, d] = dateStr.split("-");
-    const monthName = MESES_ES[parseInt(m, 10) - 1]?.slice(0, 3);
-    return `${d} ${monthName}, ${y}`;
-  };
-
-  const nextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentMonthYear(currentYear + 1);
-    } else {
-      setCurrentMonth(currentMonth + 1);
-    }
-  };
-
-  const prevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentMonthYear(currentYear - 1);
-    } else {
-      setCurrentMonth(currentMonth - 1);
-    }
-  };
-
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
-
-  const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const paddingDays = Array.from({ length: firstDayIndex }, (_, i) => i);
-
-  const handleSelectDay = (day: number) => {
-    const mm = String(currentMonth + 1).padStart(2, "0");
-    const dd = String(day).padStart(2, "0");
-    const formatted = `${currentYear}-${mm}-${dd}`;
-    onChange(formatted);
-    setOpen(false);
-  };
-
-  return (
-    <div className="relative w-full" ref={ref}>
-      {label && (
-        <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 mb-1 block tracking-wider">
-          {label}
-        </label>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-100 p-3 rounded-2xl text-xs font-bold flex items-center justify-between shadow-xs hover:border-rose-400 transition-all cursor-pointer"
-      >
-        <div className="flex items-center gap-2">
-          <CalendarIcon size={14} className="text-rose-500 shrink-0" />
-          <span className="truncate">{formatDisplay(value)}</span>
-        </div>
-        <ChevronDown size={14} className={`text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open && (
-        <div className="absolute z-50 top-full left-0 mt-2 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl p-4 animate-in fade-in duration-150">
-          <div className="flex items-center justify-between mb-3 border-b border-zinc-100 dark:border-zinc-800 pb-2">
-            <button
-              type="button"
-              onClick={prevMonth}
-              className="p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-              {MESES_ES[currentMonth]} {currentYear}
-            </span>
-            <button
-              type="button"
-              onClick={nextMonth}
-              className="p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center mb-1">
-            {["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sá"].map((d) => (
-              <span key={d} className="text-[10px] font-bold text-zinc-400">
-                {d}
-              </span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1">
-            {paddingDays.map((p) => (
-              <div key={`pad-${p}`} />
-            ))}
-            {daysArray.map((d) => {
-              const mm = String(currentMonth + 1).padStart(2, "0");
-              const dd = String(d).padStart(2, "0");
-              const dateKey = `${currentYear}-${mm}-${dd}`;
-              const isSelected = value === dateKey;
-
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => handleSelectDay(d)}
-                  className={`p-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                    isSelected
-                      ? "bg-rose-500 text-white shadow-md shadow-rose-500/20"
-                      : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  }`}
-                >
-                  {d}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================
-   🔹 SELECTOR DESPLEGABLE PERSONALIZADO
+   🔹 SELECTOR DESPLEGABLE PERSONALIZADO (SELECT RESPONSABLE)
 ========================================================= */
 function CustomSelect({
   options,
@@ -256,20 +111,52 @@ export default function FinanzasPage() {
   const [totalVentas, setTotalVentas] = useState(0);
   const [chartData, setChartData] = useState<any[]>([]);
 
-  const [dateRange, setDateRange] = useState({
-    from: new Date(new Date().setDate(1)).toISOString().split('T')[0],
-    to: new Date().toISOString().split('T')[0]
-  });
+  // 🌸 SELECTOR DE RANGO UNIFICADO (REACT-DATE-RANGE)
+  const [showCalendar, setShowCalendar] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  const [dateRange, setDateRange] = useState([
+    {
+      startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      endDate: new Date(),
+      key: "selection",
+    },
+  ]);
+
+  // Cierra el menú desplegable del calendario al hacer clic afuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (calendarRef.current && !calendarRef.current.contains(event.target as Node)) {
+        setShowCalendar(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelectRange = (ranges: RangeKeyDict) => {
+    const selection = ranges.selection;
+    setDateRange([
+      {
+        startDate: selection.startDate || new Date(),
+        endDate: selection.endDate || new Date(),
+        key: "selection",
+      },
+    ]);
+  };
 
   const [form, setForm] = useState({
     concepto: "", notas: "", fecha: new Date().toISOString().split('T')[0],
     especialista: "", metodo_pago: "Efectivo", valor: "", es_fijo: false, dia_pago: "1"
   });
 
+  // 🌸 CÁLCULO DE COMISIÓN 50% LEHANA STUDIO
   const calcularIngresosLehana = (citas: any[]) => {
+    if (!Array.isArray(citas)) return 0;
     return citas.reduce((acc, cita) => {
-      const valorBase = Number(cita.price_final) || 0;
-      const comision = cita.especialista === "Leslie Gutierrez" ? 1 : 0.5;
+      const valorBase = Number(cita.price_final || cita.price || 0);
+      const nombreEspecialista = String(cita.especialista || "").trim().toLowerCase();
+      const comision = nombreEspecialista === "leslie gutierrez" ? 1.0 : 0.5;
       return acc + (valorBase * comision);
     }, 0);
   };
@@ -315,11 +202,14 @@ export default function FinanzasPage() {
       const { data: users } = await supabase.from("app_users").select("name").order("name");
       if (users) setSpecialists(users);
 
+      const startStr = format(dateRange[0].startDate, "yyyy-MM-dd");
+      const endStr = format(dateRange[0].endDate, "yyyy-MM-dd");
+
       const { data: ventas } = await supabase
         .from("appointments")
-        .select("price_final, especialista")
-        .gte("appointment_at", `${dateRange.from}T00:00:00Z`)
-        .lte("appointment_at", `${dateRange.to}T23:59:59Z`)
+        .select("price, price_final, especialista, estado")
+        .gte("appointment_at", `${startStr}T00:00:00Z`)
+        .lte("appointment_at", `${endStr}T23:59:59Z`)
         .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA"]);
       
       setTotalVentas(calcularIngresosLehana(ventas || []));
@@ -327,8 +217,8 @@ export default function FinanzasPage() {
       const { data: exp } = await supabase
         .from("expenses")
         .select("*")
-        .gte("fecha", dateRange.from)
-        .lte("fecha", dateRange.to)
+        .gte("fecha", startStr)
+        .lte("fecha", endStr)
         .order("fecha", { ascending: false });
       if (exp) setExpenses(exp);
 
@@ -338,7 +228,7 @@ export default function FinanzasPage() {
       if (recur) setRecurringRules(recur);
 
     } catch (err) {
-      console.error(err);
+      console.error("Error al cargar finanzas:", err);
     } finally {
       setLoading(false);
     }
@@ -357,9 +247,12 @@ export default function FinanzasPage() {
     }
 
     const historicalData = await Promise.all(months.map(async (m) => {
-      const { data: v } = await supabase.from("appointments").select("price_final, especialista")
-        .gte("appointment_at", m.start).lte("appointment_at", m.end)
+      const { data: v } = await supabase.from("appointments")
+        .select("price, price_final, especialista, estado")
+        .gte("appointment_at", m.start)
+        .lte("appointment_at", m.end)
         .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA"]);
+
       const { data: g } = await supabase.from("expenses").select("valor")
         .gte("fecha", m.start.split('T')[0]).lte("fecha", m.end.split('T')[0]);
 
@@ -450,26 +343,100 @@ export default function FinanzasPage() {
           </div>
         </div>
 
-        {/* CONTROLES Y RANGOS DE FECHA */}
+        {/* 🎯 CONTROLES: SELECTOR DE RANGO UNIFICADO ESTILO BOT */}
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           
-          <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xs">
-            <div className="w-36">
-              <CustomDatePicker value={dateRange.from} onChange={(val) => setDateRange({ ...dateRange, from: val })} />
-            </div>
-            <span className="text-zinc-400 font-bold text-xs">/</span>
-            <div className="w-36">
-              <CustomDatePicker value={dateRange.to} onChange={(val) => setDateRange({ ...dateRange, to: val })} />
-            </div>
-            <button 
-              onClick={() => setRefreshKey(k => k + 1)} 
-              className="p-2 hover:rotate-180 transition-all text-zinc-400 hover:text-rose-500 cursor-pointer rounded-xl"
+          <div className="relative flex-1 sm:flex-none" ref={calendarRef}>
+            <button
+              type="button"
+              onClick={() => setShowCalendar(!showCalendar)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs hover:border-rose-400 transition-all text-xs font-bold text-zinc-700 dark:text-zinc-200 cursor-pointer"
             >
-              <RefreshCcw size={14}/>
+              <CalendarIcon size={15} className="text-rose-500" />
+              <span>
+                {format(dateRange[0].startDate, "dd MMM yyyy", { locale: es })} —{" "}
+                {format(dateRange[0].endDate, "dd MMM yyyy", { locale: es })}
+              </span>
             </button>
+
+            {showCalendar && (
+              <div className="absolute top-14 right-0 z-50 bg-white dark:bg-zinc-900 p-5 rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200 text-zinc-900 dark:text-zinc-100">
+                <div className="flex justify-between items-center mb-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
+                  <span className="text-xs font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                    Seleccionar Rango
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowCalendar(false)}
+                    className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* 🎯 CONTENEDOR ESTILIZADO CON CONTRASTE Y Z-INDEX CORREGIDO */}
+                <div className="overflow-hidden rounded-2xl border border-zinc-100 dark:border-zinc-800 
+                  [&_.rdrCalendarWrapper]:!bg-transparent 
+                  [&_.rdrMonth]:!bg-transparent 
+                  
+                  /* 1. Capa del número: SIEMPRE por encima de los fondos */
+                  [&_.rdrDayNumber]:!relative
+                  [&_.rdrDayNumber]:!z-10
+                  [&_.rdrDayNumber_span]:!relative
+                  [&_.rdrDayNumber_span]:!z-10
+
+                  /* 2. Días dentro del rango seleccionado */
+                  [&_.rdrDayInRange]:!bg-rose-500/20 
+                  [&_.rdrDayInRange_.rdrDayNumber_span]:!text-rose-600 
+
+                  /* 3. Días seleccionados */
+                  [&_.rdrSelected]:!bg-rose-500 
+                  [&_.rdrSelected_.rdrDayNumber_span]:!text-white
+
+                  /* 4. Vistas previas al situar el cursor (Hover y Preview) */
+                  [&_.rdrDayStartPreview]:!bg-rose-500 
+                  [&_.rdrDayEndPreview]:!bg-rose-500 
+                  [&_.rdrDayInPreview]:!bg-rose-500/20
+
+                  /* 5. Texto en blanco cuando el ratón está encima */
+                  [&_.rdrDay:hover_.rdrDayNumber_span]:!text-white
+                  [&_.rdrDayHovered_.rdrDayNumber_span]:!text-white
+                  [&_.rdrDayStartPreview~.rdrDayNumber_span]:!text-white
+                  [&_.rdrDayEndPreview~.rdrDayNumber_span]:!text-white">
+                  <DateRange
+                    editableDateInputs={true}
+                    onChange={handleSelectRange}
+                    moveRangeOnFirstSelection={false}
+                    ranges={dateRange}
+                    locale={es}
+                    rangeColors={["#f5647c"]}
+                  />
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCalendar(false);
+                      loadData();
+                    }}
+                    className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-500/20 transition-all cursor-pointer"
+                  >
+                    Aplicar Rango
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+
+          <button 
+            onClick={() => setRefreshKey(k => k + 1)} 
+            className="p-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-rose-400 rounded-2xl shadow-xs transition-all text-zinc-400 hover:text-rose-500 cursor-pointer"
+          >
+            <RefreshCcw size={15}/>
+          </button>
           
-          {/* BOTÓN DE LIQUIDACIONES CORREGIDO Y CON TAMAÑO HOMOGÉNEO */}
+          {/* BOTÓN DE LIQUIDACIONES */}
           <div className="[&_button]:!py-3 [&_button]:!px-5 [&_button]:!rounded-2xl [&_button]:!text-xs [&_button]:!font-bold [&_button]:!shadow-xs [&_button]:!bg-zinc-100 dark:[&_button]:!bg-zinc-900 [&_button]:!text-zinc-800 dark:[&_button]:!text-zinc-100 [&_button]:!border [&_button]:!border-zinc-200 dark:[&_button]:!border-zinc-800 hover:[&_button]:!border-rose-400 transition-all">
             <DailyPaymentsReports />
           </div>
@@ -484,7 +451,7 @@ export default function FinanzasPage() {
         </div>
       </header>
 
-      {/* METRICAS FINANCIERAS CON SOPORTE ADAPTATIVO DUAL */}
+      {/* METRICAS FINANCIERAS */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
         {/* Ingresos */}
@@ -523,7 +490,7 @@ export default function FinanzasPage() {
           </div>
         </div>
 
-        {/* Balance Final / Utilidad Neta (Totalmente Adaptativo Claro/Oscuro) */}
+        {/* Balance Final / Utilidad Neta */}
         <div className="bg-white dark:bg-zinc-900/90 p-6 sm:p-7 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs relative overflow-hidden transition-all hover:border-zinc-300 dark:hover:border-zinc-700">
           <div className="flex justify-between items-start">
             <div className="p-3 bg-rose-500/10 text-rose-500 rounded-2xl border border-rose-500/20">
@@ -545,12 +512,12 @@ export default function FinanzasPage() {
 
       </section>
 
-      {/* REPORTES COMPARATIVOS ENVOLVENTE ADAPTATIVO */}
+      {/* REPORTES COMPARATIVOS */}
       <section className="w-full rounded-3xl bg-white dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800 p-6 sm:p-8 shadow-xs [&_*]:!text-zinc-900 dark:[&_*]:!text-zinc-100">
         <ComparativeReports />
       </section>
 
-      {/* GRÁFICO HISTÓRICO RECHARTS DE 5 MESES */}
+      {/* GRÁFICO HISTÓRICO DE 5 MESES */}
       <section className="bg-white dark:bg-zinc-900/90 p-6 sm:p-8 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs space-y-6">
         <div className="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-100 border-b border-zinc-100 dark:border-zinc-800 pb-4">
           <div className="p-2 bg-rose-500/10 text-rose-500 rounded-xl">
@@ -586,7 +553,7 @@ export default function FinanzasPage() {
         </div>
       </section>
 
-      {/* LISTADO DE GASTOS */}
+      {/* HISTORIAL Y GESTIÓN DE GASTOS */}
       <div className="bg-white dark:bg-zinc-900/90 rounded-3xl p-6 sm:p-8 border border-zinc-200/80 dark:border-zinc-800 shadow-xs space-y-6">
         <div className="flex justify-between items-center px-1 border-b border-zinc-100 dark:border-zinc-800 pb-4">
           <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
@@ -655,7 +622,7 @@ export default function FinanzasPage() {
         </div>
       </div>
 
-      {/* MODAL FLOTANTE DE REGISTRO DE GASTO */}
+      {/* MODAL DE NUEVO GASTO */}
       {isAdding && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in text-zinc-900 dark:text-zinc-100">
           <div className="bg-white dark:bg-zinc-900 w-full max-w-lg rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200 overflow-hidden">
@@ -727,11 +694,15 @@ export default function FinanzasPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <CustomDatePicker 
-                  label="Fecha" 
-                  value={form.fecha} 
-                  onChange={(val) => setForm({ ...form, fecha: val })} 
-                />
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 ml-1 block tracking-wider">Fecha</label>
+                  <input
+                    type="date"
+                    value={form.fecha}
+                    onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+                    className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-100 p-3 rounded-2xl text-xs font-bold outline-none focus:border-rose-500 transition-colors"
+                  />
+                </div>
 
                 <CustomSelect 
                   label="Responsable"

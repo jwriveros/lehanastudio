@@ -193,27 +193,42 @@ export default function BotDashboard() {
                 </button>
               </div>
 
-              {/* 🎯 CORRECCIÓN ESTÍLICA PARA REACT-DATE-RANGE SIN BARRAS NEGRAS */}
+              {/* 🎯 CONTENEDOR ESTILIZADO CON CONTRASTE Y Z-INDEX CORREGIDO */}
               <div className="overflow-hidden rounded-2xl border border-zinc-100 dark:border-zinc-800 
                 [&_.rdrCalendarWrapper]:!bg-transparent 
                 [&_.rdrMonth]:!bg-transparent 
+                
+                /* 1. Capa del número: SIEMPRE por encima de los fondos */
+                [&_.rdrDayNumber]:!relative
+                [&_.rdrDayNumber]:!z-10
+                [&_.rdrDayNumber_span]:!relative
+                [&_.rdrDayNumber_span]:!z-10
+
+                /* 2. Días dentro del rango seleccionado */
                 [&_.rdrDayInRange]:!bg-rose-500/20 
                 [&_.rdrDayInRange_.rdrDayNumber_span]:!text-rose-600 
-                [&_.rdrDayStartOfWeek]:!bg-rose-500 
-                [&_.rdrDayStartOfWeek_.rdrDayNumber_span]:!text-white 
-                [&_.rdrDayEndOfWeek]:!bg-rose-500 
-                [&_.rdrDayEndOfWeek_.rdrDayNumber_span]:!text-white 
+
+                /* 3. Días seleccionados (inicio y fin definitivos) */
                 [&_.rdrSelected]:!bg-rose-500 
                 [&_.rdrSelected_.rdrDayNumber_span]:!text-white
+
+                /* 4. Vistas previas al situar el cursor (Hover y Preview) */
                 [&_.rdrDayStartPreview]:!bg-rose-500 
-                [&_.rdrDayEndPreview]:!bg-rose-500">
+                [&_.rdrDayEndPreview]:!bg-rose-500 
+                [&_.rdrDayInPreview]:!bg-rose-500/20
+
+                /* 5. Texto en blanco cuando el ratón está encima o en previsualización */
+                [&_.rdrDay:hover_.rdrDayNumber_span]:!text-white
+                [&_.rdrDayHovered_.rdrDayNumber_span]:!text-white
+                [&_.rdrDayStartPreview~.rdrDayNumber_span]:!text-white
+                [&_.rdrDayEndPreview~.rdrDayNumber_span]:!text-white">
                 <DateRange
                   editableDateInputs={true}
                   onChange={handleSelectRange}
                   moveRangeOnFirstSelection={false}
                   ranges={dateRange}
                   locale={es}
-                  rangeColors={["#f43f5e"]}
+                  rangeColors={["#f394a3"]}
                 />
               </div>
 
