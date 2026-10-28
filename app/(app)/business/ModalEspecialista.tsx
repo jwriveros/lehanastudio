@@ -15,6 +15,7 @@ export type EspecialistaPayload = {
   telefono?: string;
   color?: string;
   comision_base: number;
+  excepciones_comision?: Record<string, number>;
   role?: string;
   permissions?: Record<string, boolean>;
 };
@@ -75,6 +76,7 @@ const EMPTY_ESPECIALISTA: EspecialistaPayload = {
   telefono: "57",
   color: "#F687B3",
   comision_base: 50,
+  excepciones_comision: {},
   role: "ESPECIALISTA",
   permissions: DEFAULT_PERMISSIONS_ESPECIALISTA,
 };
@@ -109,6 +111,7 @@ export default function ModalEspecialista({
           telefono: formData.telefono || "57",
           color: formData.color || "#F687B3",
           comision_base: formData.comision_base || 50,
+          excepciones_comision: formData.excepciones_comision || {},
           role: formData.role || "ESPECIALISTA",
           permissions: formData.permissions || DEFAULT_PERMISSIONS_ESPECIALISTA,
         });
@@ -206,6 +209,17 @@ export default function ModalEspecialista({
       setSelectedServiceIds(Array.from(newSelections));
     }
   };
+  const handleServiceCommissionChange = (serviceName: string, percentage: number) => {
+  setForm((prev) => {
+    const updated = { ...(prev.excepciones_comision || {}) };
+    if (percentage <= 0 || isNaN(percentage)) {
+      delete updated[serviceName]; // Si es 0 o vacío, usa la comisión base por defecto
+    } else {
+      updated[serviceName] = percentage;
+    }
+    return { ...prev, excepciones_comision: updated };
+  });
+};
 
   // Sincronizar la columna 'especialistas' en la tabla 'services'
   const syncServicesEspecialistas = async (specName: string) => {
@@ -527,22 +541,46 @@ export default function ModalEspecialista({
                       <div className="space-y-2 pt-1">
                         {services.map((srv) => {
                           const isChecked = selectedServiceIds.includes(srv.id);
+                          const customCommission = form.excepciones_comision?.[srv.Servicio] ?? "";
+
                           return (
-                            <button
+                            <div
                               key={srv.id}
-                              type="button"
-                              onClick={() => handleToggleService(srv.id)}
-                              className={`w-full p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+                              className={`w-full p-2.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${
                                 isChecked
                                   ? "bg-rose-500/10 border-rose-500/50 text-white"
                                   : "bg-zinc-900 border-zinc-800/80 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
                               }`}
                             >
-                              <span className="text-xs font-bold">{srv.Servicio}</span>
-                              <div className={`w-4 h-4 rounded-md flex items-center justify-center border ${isChecked ? "bg-rose-500 border-rose-500 text-white" : "border-zinc-700"}`}>
-                                {isChecked && <Check size={10} />}
-                              </div>
-                            </button>
+                              {/* Botón de Selección del Servicio */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleService(srv.id)}
+                                className="flex-1 text-left flex items-center justify-between cursor-pointer"
+                              >
+                                <span className="text-xs font-bold">{srv.Servicio}</span>
+                                <div className={`w-4 h-4 rounded-md flex items-center justify-center border ${isChecked ? "bg-rose-500 border-rose-500 text-white" : "border-zinc-700"}`}>
+                                  {isChecked && <Check size={10} />}
+                                </div>
+                              </button>
+
+                              {/* Input de Comisión Especial para este Servicio */}
+                              {isChecked && (
+                                <div className="flex items-center gap-1 shrink-0 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800">
+                                  <span className="text-[10px] font-bold text-zinc-400">%</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    placeholder={`${form.comision_base}%`}
+                                    value={customCommission}
+                                    onChange={(e) => handleServiceCommissionChange(srv.Servicio, Number(e.target.value))}
+                                    className="w-12 bg-transparent text-xs font-bold text-emerald-400 outline-none text-right"
+                                    title="Comisión específica para este servicio (Dejar vacío para usar la comisión base)"
+                                  />
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
                       </div>

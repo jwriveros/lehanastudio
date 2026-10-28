@@ -10,7 +10,7 @@ const supabaseAdmin = createClient(
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.json();
-    const { id, name, email, role, telefono, color, comision_base, permissions } = payload;
+    const { id, name, email, role, telefono, color, comision_base, excepciones_comision, permissions } = payload;
 
     if (!id) {
       return NextResponse.json(
@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
         telefono,
         color,
         comision_base,
+        excepciones_comision,
         permissions: typeof permissions === "object" ? JSON.stringify(permissions) : permissions,
       })
       .eq("id", id)
