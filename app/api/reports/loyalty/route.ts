@@ -17,11 +17,14 @@ export async function POST(req: Request) {
       sede = "",
     } = body;
 
-    // 1. Consultar citas pagadas dentro del rango
+    const target = Number(targetVisits) || 5;
+    const thresholdPrevio = target - 1; // Ej: 4 si la meta es 5
+
+    // 1. Consultar citas completadas o pagadas
     let query = supabaseAdmin
       .from("appointments")
       .select("id, cliente, celular, appointment_at, servicio, price_final, price, estado, sede")
-      .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA"])
+      .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA", "Completada", "completada"])
       .order("appointment_at", { ascending: true });
 
     if (startDate) query = query.gte("appointment_at", `${startDate}T00:00:00Z`);
@@ -31,87 +34,111 @@ export async function POST(req: Request) {
     const { data: appointments, error: appErr } = await query;
     if (appErr) throw appErr;
 
-    // 2. Agrupar citas por celular de cliente
-    const clientsMap: Record<string, any> = {};
+    // 2. Agrupar citas por celular normalizado (últimos 10 dígitos)
+    const clientsMap: Record<
+      string,
+      {
+        celular: string;
+        cliente: string;
+        citas: any[];
+        uniqueDates: Set<string>;
+      }
+    > = {};
 
     (appointments || []).forEach((apt) => {
-      const cleanPhone = String(apt.celular || "").replace(/\D/g, "");
-      if (!cleanPhone) return;
+      const rawDigits = String(apt.celular || "").replace(/\D/g, "");
+      if (!rawDigits) return;
+
+      // Normalizar a los últimos 10 dígitos estándar
+      const cleanPhone = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
 
       if (!clientsMap[cleanPhone]) {
         clientsMap[cleanPhone] = {
           celular: cleanPhone,
-          cliente: apt.cliente,
+          cliente: apt.cliente || "Cliente",
           citas: [],
+          uniqueDates: new Set<string>(),
         };
       }
+
       clientsMap[cleanPhone].citas.push(apt);
+
+      // Agrupar solo la fecha YYYY-MM-DD para contar visitas reales únicas
+      if (apt.appointment_at) {
+        const dateStr = String(apt.appointment_at).split("T")[0];
+        clientsMap[cleanPhone].uniqueDates.add(dateStr);
+      }
     });
 
     const phonesList = Object.keys(clientsMap);
 
-    // 3. Obtener el número completo numberc desde la tabla clients
+    // 3. Consultar datos de contacto desde la tabla clients
     const { data: clientsData } = await supabaseAdmin
       .from("clients")
-      .select("celular, numberc, nombre")
-      .in("celular", phonesList);
+      .select("celular, numberc, nombre");
 
     const numbercMap: Record<string, string> = {};
+    const nameMap: Record<string, string> = {};
+
     (clientsData || []).forEach((c) => {
-      const clean = String(c.celular || "").replace(/\D/g, "");
-      numbercMap[clean] = c.numberc || `+57${clean}`;
+      const raw = String(c.celular || "").replace(/\D/g, "");
+      const clean = raw.length >= 10 ? raw.slice(-10) : raw;
+      if (clean) {
+        numbercMap[clean] = c.numberc ? (c.numberc.startsWith("+") ? c.numberc : `+${c.numberc}`) : `+57${clean}`;
+        if (c.nombre) nameMap[clean] = c.nombre;
+      }
     });
 
-    // 4. Evaluar el estado de fidelización de cada cliente
+    // 4. Evaluar el estado de fidelización de cada cliente según VISITAS REALES
     const closeToReward: any[] = [];
     const rewardAchieved: any[] = [];
 
-    const thresholdPrevio = Number(targetVisits) - 1; // Ej: 4 si la meta es 5
-
     phonesList.forEach((phone) => {
       const item = clientsMap[phone];
-      const totalCitas = item.citas.length;
+      // Conteo de visitas únicas (fechas distintas)
+      const totalVisitas = item.uniqueDates.size;
       const fullPhone = numbercMap[phone] || `+57${phone}`;
+      const resolvedName = nameMap[phone] || item.cliente;
 
-      let currentCycleVisits = totalCitas;
+      let currentCycleVisits = totalVisitas;
       let cyclesCompleted = 0;
 
       if (cycleAction === "restart") {
-        cyclesCompleted = Math.floor(totalCitas / targetVisits);
-        currentCycleVisits = totalCitas % targetVisits;
+        cyclesCompleted = Math.floor(totalVisitas / target);
+        currentCycleVisits = totalVisitas % target;
       }
 
       const lastApt = item.citas[item.citas.length - 1];
 
       const clientSummary = {
-        cliente: item.cliente,
+        cliente: resolvedName,
         celular: phone,
         fullPhone,
-        totalCitasHistoricas: totalCitas,
-        currentCycleVisits: currentCycleVisits === 0 && totalCitas >= targetVisits ? targetVisits : currentCycleVisits,
-        targetVisits: Number(targetVisits),
+        totalCitasHistoricas: totalVisitas,
+        currentCycleVisits: currentCycleVisits === 0 && totalVisitas >= target ? target : currentCycleVisits,
+        targetVisits: target,
         ultimaCita: lastApt?.appointment_at || null,
         ultimoServicio: lastApt?.servicio || "General",
         ultimaSede: lastApt?.sede || "Marquetalia",
         cyclesCompleted,
       };
 
-      // Si le falta exactamente 1 cita para el beneficio
+      // Si le falta exactamente 1 visita para cumplir la meta
       if (currentCycleVisits === thresholdPrevio) {
         closeToReward.push({
           ...clientSummary,
-          mensajeSugerido: `¡Hola ${item.cliente}! Ya completaste ${thresholdPrevio} citas en Lehana Studio. Tu próxima cita número ${targetVisits} tendrá un beneficio especial.`,
+          mensajeSugerido: `¡Hola ${resolvedName}! Ya completaste ${thresholdPrevio} citas en Lehana Studio. Tu próxima cita número ${target} tendrá un beneficio especial.`,
         });
       }
 
-      // Si ya cumplió la meta de visitas
+      // Si alcanzó la meta de visitas
       if (
-        (cycleAction === "restart" && (currentCycleVisits === 0 && totalCitas >= targetVisits)) ||
-        (cycleAction === "once" && totalCitas >= targetVisits)
+        (cycleAction === "restart" && (currentCycleVisits === 0 && totalVisitas >= target)) ||
+        (cycleAction === "once" && totalVisitas >= target)
       ) {
         rewardAchieved.push({
           ...clientSummary,
-          citaBeneficioNumero: totalCitas,
+          citaBeneficioNumero: totalVisitas,
         });
       }
     });

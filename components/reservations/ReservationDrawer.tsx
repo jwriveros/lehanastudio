@@ -91,9 +91,14 @@ const ReservationDrawer = ({
       setServicesToEdit([]);
     }
 
-    // Si la cita tiene un número celular asociado, consultamos su fidelización
-    if (appointmentData?.celular) {
-      checkLoyaltyBenefit(appointmentData.celular);
+    // 🌸 Extraemos el celular sin importar si viene directo o dentro del objeto "raw"
+    const phoneToCheck = 
+      appointmentData?.celular || 
+      appointmentData?.raw?.celular || 
+      appointmentData?.clientPhone;
+
+    if (phoneToCheck) {
+      checkLoyaltyBenefit(String(phoneToCheck));
     } else {
       setLoyaltyBenefit(null);
     }
