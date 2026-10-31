@@ -14,7 +14,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Celular requerido" }, { status: 400 });
     }
 
-    const cleanPhone = String(celular).replace(/\D/g, "");
+    // Extraemos solo los dígitos numéricos
+    const rawDigits = String(celular).replace(/\D/g, "");
+    // Tomamos los últimos 10 dígitos para evitar discrepancias de indicativo (+57)
+    const phoneSearch = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
 
     // 1. Obtener la campaña activa
     const { data: campaign, error: campErr } = await supabaseAdmin
@@ -26,16 +29,22 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (campErr || !campaign) {
-      // Si no hay campaña activa, no hay beneficio
-      return NextResponse.json({ ok: true, hasReward: false });
+      return NextResponse.json({ ok: true, hasReward: false, reason: "No hay campaña activa" });
     }
 
-    // 2. Contar citas finalizadas dentro del rango de vigencia de la campaña
+    // 2. Consultar citas completadas del cliente con búsqueda flexible
     let query = supabaseAdmin
       .from("appointments")
-      .select("id", { count: "exact", head: true })
-      .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA"])
-      .ilike("celular", `%${cleanPhone}%`);
+      .select("id, appointment_at, estado", { count: "exact" })
+      .in("estado", [
+        "FINALIZADO", 
+        "Finalizado", 
+        "Cita pagada", 
+        "CITA PAGADA", 
+        "Completada", 
+        "completada"
+      ])
+      .ilike("celular", `%${phoneSearch}%`);
 
     if (campaign.start_date) {
       query = query.gte("appointment_at", `${campaign.start_date}T00:00:00Z`);
@@ -48,13 +57,14 @@ export async function POST(req: Request) {
     if (countErr) throw countErr;
 
     const totalCitas = count || 0;
-    const target = campaign.target_visits || 5;
+    const target = Number(campaign.target_visits) || 5;
 
-    // Evaluamos si su próxima cita es la cita meta
-    // (Ejemplo: si lleva 4 citas, la próxima cita que está agendando es la 5ª)
-    const isRewardAppointment = (totalCitas % target) === (target - 1);
+    // 3. Evaluar elegibilidad de recompensa:
+    // Aplica si esta nueva cita es la cita meta (ej: lleva 4 y va para la 5ª)
+    // O si ya tiene 5 o más citas en ciclo continuo
+    const currentVisitsInCycle = totalCitas % target;
+    const isRewardAppointment = currentVisitsInCycle === (target - 1) || (totalCitas >= target && campaign.cycle_action !== "once");
 
-    // Texto descriptivo del beneficio
     let benefitDescription = "";
     if (campaign.benefit_type === "percent") {
       benefitDescription = `${campaign.benefit_value}% de descuento`;
@@ -72,9 +82,10 @@ export async function POST(req: Request) {
       benefitType: campaign.benefit_type,
       benefitValue: campaign.benefit_value,
       benefitDescription,
-      campaignName: campaign.nombre,
+      campaignName: campaign.nombre || "Citas Frecuentes",
     });
   } catch (err: any) {
+    console.error("Error en check-client:", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
