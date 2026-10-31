@@ -6,6 +6,7 @@ import ClientesReport, { ClientRecord } from "@/components/reports/ClientesRepor
 import PagosReport, { PagoRecord } from "@/components/reports/PagosReport";
 import ReservasReport, { ReservaRecord } from "@/components/reports/ReservasReport";
 import AIChatReportes from "@/components/reports/AIChatReportes";
+import LoyaltyReport from "@/components/reports/LoyaltyReport";
 
 import { 
   BarChart3, 
@@ -14,10 +15,12 @@ import {
   Calendar,
   Bot, 
   Loader2, 
-  RefreshCw 
+  RefreshCw,
+  Gift 
 } from "lucide-react";
 
-type ReportTabKey = "clientes" | "pagos" | "reservas" | "bot";
+// 🌸 1. Incluimos "fidelizacion" en las claves válidas de pestañas
+type ReportTabKey = "clientes" | "pagos" | "reservas" | "bot" | "fidelizacion";
 
 interface ReportTab {
   id: ReportTabKey;
@@ -26,6 +29,7 @@ interface ReportTab {
   icon: React.ElementType;
 }
 
+// 🌸 2. Añadimos la pestaña de Fidelización con su icono Gift y descripción
 const REPORT_TABS: ReportTab[] = [
   {
     id: "clientes",
@@ -46,8 +50,14 @@ const REPORT_TABS: ReportTab[] = [
     icon: Calendar,
   },
   {
+    id: "fidelizacion",
+    name: "Fidelización",
+    description: "Metas de citas, clientas a un paso y premios activos.",
+    icon: Gift,
+  },
+  {
     id: "bot",
-    name: "Asistente IA del Bot", // 👈 Nombre actualizado
+    name: "Asistente IA del Bot",
     description: "Pregunta a la IA sobre citas, clientes y métricas.",
     icon: Bot,
   },
@@ -62,6 +72,12 @@ export default function ReportesPage() {
   const [loading, setLoading] = useState<boolean>(true);
 
   const loadActiveData = async () => {
+    // Si estamos en la pestaña de fidelización o bot, estos componentes gestionan sus propias peticiones
+    if (activeTab === "fidelizacion" || activeTab === "bot") {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       if (activeTab === "clientes") {
@@ -85,7 +101,6 @@ export default function ReportesPage() {
         if (error) throw error;
         setPagos(data || []);
       } else if (activeTab === "reservas") {
-        // Consulta a la tabla appointments
         const { data, error } = await supabase
           .from("appointments")
           .select("*")
@@ -107,6 +122,8 @@ export default function ReportesPage() {
 
   return (
     <main className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 text-zinc-800 dark:text-zinc-100 font-sans antialiased">
+      
+      {/* ENCABEZADO */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-zinc-800/80 pb-6">
         <div>
           <div className="flex items-center gap-2 text-rose-500 font-bold text-xs uppercase tracking-wider mb-1">
@@ -118,17 +135,20 @@ export default function ReportesPage() {
           </h1>
         </div>
 
-        <button
-          onClick={loadActiveData}
-          disabled={loading}
-          className="flex items-center gap-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xs hover:border-rose-400 cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? "animate-spin text-rose-500" : "text-zinc-400"} />
-          <span>Actualizar Datos</span>
-        </button>
+        {activeTab !== "fidelizacion" && activeTab !== "bot" && (
+          <button
+            onClick={loadActiveData}
+            disabled={loading}
+            className="flex items-center gap-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xs hover:border-rose-400 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin text-rose-500" : "text-zinc-400"} />
+            <span>Actualizar Datos</span>
+          </button>
+        )}
       </div>
 
-      <nav className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* 🌸 3. NAVEGACIÓN EN CUADRÍCULA (Ajustado a lg:grid-cols-5 para 5 tarjetas) */}
+      <nav className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {REPORT_TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -161,7 +181,7 @@ export default function ReportesPage() {
         })}
       </nav>
 
-      {/* 🌸 AQUÍ VA COLOCADO EL CÓDIGO DE LAS PESTAÑAS */}
+      {/* CONTENEDOR DE REPORTES ACTIVOS */}
       <section className="pt-2">
         {/* Pestaña de Clientes */}
         {activeTab === "clientes" && (
@@ -199,9 +219,16 @@ export default function ReportesPage() {
           )
         )}
 
-        {/* 🌸 2. AQUÍ VA EXACTAMENTE TU BLOQUE PARA LA IA */}
+        {/* 🌸 4. Pestaña de Fidelización Integrada */}
+        {activeTab === "fidelizacion" && (
+          <div className="animate-in fade-in duration-300">
+            <LoyaltyReport />
+          </div>
+        )}
+
+        {/* Pestaña del Asistente IA del Bot */}
         {activeTab === "bot" && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-in fade-in duration-300">
             <AIChatReportes />
           </div>
         )}
