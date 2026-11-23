@@ -1,5 +1,6 @@
 "use client";
 
+import InactiveClientsReport from "@/components/reports/InactiveClientsReport";
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import ClientesReport, { ClientRecord } from "@/components/reports/ClientesReport";
@@ -16,11 +17,12 @@ import {
   Bot, 
   Loader2, 
   RefreshCw,
-  Gift 
+  Gift,
+  UserX
 } from "lucide-react";
 
 // 🌸 1. Incluimos "fidelizacion" en las claves válidas de pestañas
-type ReportTabKey = "clientes" | "pagos" | "reservas" | "bot" | "fidelizacion";
+type ReportTabKey = "clientes" | "pagos" | "reservas" | "bot" | "fidelizacion" | "inactivos";
 
 interface ReportTab {
   id: ReportTabKey;
@@ -61,6 +63,12 @@ const REPORT_TABS: ReportTab[] = [
     description: "Pregunta a la IA sobre citas, clientes y métricas.",
     icon: Bot,
   },
+  {
+    id: "inactivos",
+    name: "Retención & Inactivos",
+    description: "Clientas sin volver por días/servicio y contactos sin citas.",
+    icon: UserX,
+  },
 ];
 
 export default function ReportesPage() {
@@ -73,7 +81,7 @@ export default function ReportesPage() {
 
   const loadActiveData = async () => {
     // Si estamos en la pestaña de fidelización o bot, estos componentes gestionan sus propias peticiones
-    if (activeTab === "fidelizacion" || activeTab === "bot") {
+    if (activeTab === "fidelizacion" || activeTab === "bot" || activeTab === "inactivos") {
       setLoading(false);
       return;
     }
@@ -135,7 +143,7 @@ export default function ReportesPage() {
           </h1>
         </div>
 
-        {activeTab !== "fidelizacion" && activeTab !== "bot" && (
+        {activeTab !== "fidelizacion" && activeTab !== "bot" && activeTab !== "inactivos" && (
           <button
             onClick={loadActiveData}
             disabled={loading}
@@ -148,7 +156,7 @@ export default function ReportesPage() {
       </div>
 
       {/* 🌸 3. NAVEGACIÓN EN CUADRÍCULA (Ajustado a lg:grid-cols-5 para 5 tarjetas) */}
-      <nav className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+     <nav className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {REPORT_TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -230,6 +238,12 @@ export default function ReportesPage() {
         {activeTab === "bot" && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <AIChatReportes />
+          </div>
+        )}
+        {/* Pestaña de Retención e Inactivos */}
+        {activeTab === "inactivos" && (
+          <div className="animate-in fade-in duration-300">
+            <InactiveClientsReport />
           </div>
         )}
       </section>
