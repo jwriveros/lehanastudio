@@ -8,6 +8,7 @@ import "react-day-picker/dist/style.css";
 import { FilterDropdown } from "./FilterDropdown";
 import CreateBookingDrawer from "./CreateBookingDrawer";
 import UnpaidBookingsModal from "./UnpaidBookingsModal";
+import CustomizeAgendaButton from "./CustomizeAgendaButton";
 import {
   ChevronLeft,
   ChevronRight,
@@ -283,6 +284,7 @@ export function AgendaHeader({
               onChange={handleSpecialistChange}
             />
           </div>
+          <CustomizeAgendaButton />
         </div>
 
         {/* 2. BANDA INFERIOR: Botones para conmutar entre Bloque 1 y Bloque 2 */}

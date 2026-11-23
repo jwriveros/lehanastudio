@@ -299,10 +299,29 @@ export default function WeeklyAgendaGrid({
                     const height = isNaN(calculatedHeight) ? SLOT_HEIGHT : calculatedHeight;
 
                     // 1. Citas en conflicto exacto dentro de la MISMA especialista
+                    // Helper para detectar citas canceladas o inactivas
+                    const isInactive = (item: CalendarAppointment) => {
+                      const st = String(item.raw?.estado || "").toLowerCase();
+                      return (
+                        st.includes("cancelad") ||
+                        st.includes("no se presentó") ||
+                        st.includes("no se presento") ||
+                        st.includes("anulado")
+                      );
+                    };
+
+                    const apptIsInactive = isInactive(appt);
+
+                    // 1. Citas en conflicto exacto: las inactivas van PRIMERO (al fondo)
                     const collidingAppts = dayAppointments
                       .filter((a) => a.raw?.especialista === appt.raw?.especialista)
                       .filter((a) => appt.start < a.end && a.start < appt.end)
-                      .sort((a, b) => a.start.getTime() - b.start.getTime());
+                      .sort((a, b) => {
+                        const aInact = isInactive(a);
+                        const bInact = isInactive(b);
+                        if (aInact !== bInact) return aInact ? -1 : 1;
+                        return a.start.getTime() - b.start.getTime();
+                      });
 
                     const collisionIndex = Math.max(
                       0,
@@ -335,14 +354,16 @@ export default function WeeklyAgendaGrid({
                     return (
                       <div
                         key={appt.id}
-                        className="absolute pointer-events-auto transition-all duration-200 hover:z-50 hover:scale-[1.02]"
+                        className={`absolute pointer-events-auto transition-all duration-200 ${
+                          apptIsInactive ? "hover:z-10" : "hover:z-50 hover:scale-[1.02]"
+                        }`}
                         style={{
                           top,
                           height,
                           width: `${cardWidthPercent}%`,
                           left: `calc(${itemLeft}% + 2px)`,
                           maxWidth: `calc(${baseWidth}% - 4px)`,
-                          zIndex: 10 + collisionIndex,
+                          zIndex: apptIsInactive ? 1 : 20 + collisionIndex,
                         }}
                       >
                         <AgendaEventCard
