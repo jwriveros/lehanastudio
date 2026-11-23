@@ -20,19 +20,35 @@ export async function POST(req: Request) {
     const target = Number(targetVisits) || 5;
     const thresholdPrevio = target - 1; // Ej: 4 si la meta es 5
 
-    // 1. Consultar citas completadas o pagadas
-    let query = supabaseAdmin
-      .from("appointments")
-      .select("id, cliente, celular, appointment_at, servicio, price_final, price, estado, sede")
-      .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA", "Completada", "completada"])
-      .order("appointment_at", { ascending: true });
+    // 1. Consultar TODAS las citas completadas o pagadas (paginando de 1,000 en 1,000)
+    const appointments: any[] = [];
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
 
-    if (startDate) query = query.gte("appointment_at", `${startDate}T00:00:00Z`);
-    if (endDate) query = query.lte("appointment_at", `${endDate}T23:59:59Z`);
-    if (sede) query = query.eq("sede", sede);
+    while (hasMore) {
+      let query = supabaseAdmin
+        .from("appointments")
+        .select("id, cliente, celular, appointment_at, servicio, price_final, price, estado, sede")
+        .in("estado", ["FINALIZADO", "Cita pagada", "Finalizado", "CITA PAGADA", "Completada", "completada"])
+        .order("appointment_at", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
 
-    const { data: appointments, error: appErr } = await query;
-    if (appErr) throw appErr;
+      if (startDate) query = query.gte("appointment_at", `${startDate}T00:00:00Z`);
+      if (endDate) query = query.lte("appointment_at", `${endDate}T23:59:59-05:00`);
+      if (sede) query = query.eq("sede", sede);
+
+      const { data: batch, error: appErr } = await query;
+      if (appErr) throw appErr;
+
+      if (batch && batch.length > 0) {
+        appointments.push(...batch);
+        from += PAGE_SIZE;
+        hasMore = batch.length === PAGE_SIZE;
+      } else {
+        hasMore = false;
+      }
+    }
 
     // 2. Agrupar citas por celular normalizado (últimos 10 dígitos)
     const clientsMap: Record<
@@ -41,11 +57,10 @@ export async function POST(req: Request) {
         celular: string;
         cliente: string;
         citas: any[];
-        uniqueDates: Set<string>;
       }
     > = {};
 
-    (appointments || []).forEach((apt) => {
+    appointments.forEach((apt) => {
       const rawDigits = String(apt.celular || "").replace(/\D/g, "");
       if (!rawDigits) return;
 
@@ -57,17 +72,10 @@ export async function POST(req: Request) {
           celular: cleanPhone,
           cliente: apt.cliente || "Cliente",
           citas: [],
-          uniqueDates: new Set<string>(),
         };
       }
 
       clientsMap[cleanPhone].citas.push(apt);
-
-      // Agrupar solo la fecha YYYY-MM-DD para contar visitas reales únicas
-      if (apt.appointment_at) {
-        const dateStr = String(apt.appointment_at).split("T")[0];
-        clientsMap[cleanPhone].uniqueDates.add(dateStr);
-      }
     });
 
     const phonesList = Object.keys(clientsMap);
@@ -84,19 +92,23 @@ export async function POST(req: Request) {
       const raw = String(c.celular || "").replace(/\D/g, "");
       const clean = raw.length >= 10 ? raw.slice(-10) : raw;
       if (clean) {
-        numbercMap[clean] = c.numberc ? (c.numberc.startsWith("+") ? c.numberc : `+${c.numberc}`) : `+57${clean}`;
+        numbercMap[clean] = c.numberc
+          ? c.numberc.startsWith("+")
+            ? c.numberc
+            : `+${c.numberc}`
+          : `+57${clean}`;
         if (c.nombre) nameMap[clean] = c.nombre;
       }
     });
 
-    // 4. Evaluar el estado de fidelización de cada cliente según VISITAS REALES
+    // 4. Evaluar el estado de fidelización contando CADA CITA (sin importar si fueron el mismo día)
     const closeToReward: any[] = [];
     const rewardAchieved: any[] = [];
 
     phonesList.forEach((phone) => {
       const item = clientsMap[phone];
-      // Conteo de visitas únicas (fechas distintas)
-      const totalVisitas = item.uniqueDates.size;
+      // Conteo directo por cantidad de citas completadas/pagadas
+      const totalVisitas = item.citas.length;
       const fullPhone = numbercMap[phone] || `+57${phone}`;
       const resolvedName = nameMap[phone] || item.cliente;
 
@@ -123,7 +135,7 @@ export async function POST(req: Request) {
         cyclesCompleted,
       };
 
-      // Si le falta exactamente 1 visita para cumplir la meta
+      // Si le falta exactamente 1 cita para cumplir la meta (ej: lleva 4 de 5)
       if (currentCycleVisits === thresholdPrevio) {
         closeToReward.push({
           ...clientSummary,
@@ -133,7 +145,7 @@ export async function POST(req: Request) {
 
       // Si alcanzó la meta de visitas
       if (
-        (cycleAction === "restart" && (currentCycleVisits === 0 && totalVisitas >= target)) ||
+        (cycleAction === "restart" && currentCycleVisits === 0 && totalVisitas >= target) ||
         (cycleAction === "once" && totalVisitas >= target)
       ) {
         rewardAchieved.push({

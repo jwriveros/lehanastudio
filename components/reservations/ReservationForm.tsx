@@ -951,15 +951,83 @@ export default function ReservationForm({
         // 🌸 Separar las filas que ya existen en Supabase (tienen id) de las nuevas agregadas (sin id)
         const existingLines = lines.filter((l) => l.id);
         const newLines = lines.filter((l) => !l.id);
+        const sortedLines = [...lines].sort((a, b) =>
+          String(a.appointment_at || "").localeCompare(String(b.appointment_at || ""))
+        );
+        const firstAppointmentAt = sortedLines[0]?.appointment_at
+          ? localDateTimeToUTC(sortedLines[0].appointment_at)
+          : "";
 
-        // 🌸 1. Actualizar cada servicio existente de forma individual
-        for (const line of existingLines) {
+        // 🌸 1. Construir el resumen consolidado de TODOS los servicios (existentes + nuevos)
+        const servicesList = sortedLines.map((l) => {
+          const dateObj = new Date(localDateTimeToUTC(l.appointment_at));
+          const horaFormateada = !isNaN(dateObj.getTime())
+            ? dateObj
+                .toLocaleTimeString("es-CO", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                  timeZone: "UTC",
+                })
+                .toUpperCase()
+            : "";
+
+          return {
+            servicio: l.servicio.trim(),
+            hora: horaFormateada,
+            especialista: l.especialista.trim(),
+          };
+        });
+
+        const totalServicesCount = servicesList.length;
+        const isMultiple = totalServicesCount > 1;
+
+        // 🌸 2. Insertar primero los nuevos servicios añadidos en Supabase (si existen)
+        if (newLines.length > 0) {
+          const newRecordsToInsert = newLines.map((line) => {
+            const baseP = Number(line.precio || 0);
+            const discountPct = Number(line.descuento || 0);
+            const finalP = calculatePriceFinal(baseP, discountPct);
+
+            return {
+              cliente: form.cliente.trim(),
+              celular: cleanPhone,
+              indicativo: cleanIndicativo,
+              servicio: line.servicio.trim(),
+              especialista: line.especialista.trim(),
+              duration: String(line.duracion || "60"),
+              appointment_at: localDateTimeToUTC(line.appointment_at),
+              estado: form.estado,
+              sede: form.sede,
+              price: baseP,
+              descuento: discountPct,
+              price_final: finalP,
+              abono: Number(line.abono || 0),
+              created_by: "SISTEMA",
+              last_synced_at: new Date().toISOString(),
+            };
+          });
+
+          const { error: insertError } = await supabase
+            .from("appointments")
+            .insert(newRecordsToInsert);
+
+          if (insertError) {
+            throw new Error(`Error al registrar el nuevo servicio: ${insertError.message}`);
+          }
+        }
+
+        // 🌸 3. Actualizar cada servicio existente y enviar el HSM una sola vez en el último
+        for (let i = 0; i < existingLines.length; i++) {
+          const line = existingLines[i];
+          const isLastExisting = i === existingLines.length - 1;
+
           const baseP = Number(line.precio || 0);
           const discountPct = Number(line.descuento || 0);
           const finalP = calculatePriceFinal(baseP, discountPct);
 
           const updatePayload = {
-            appointmentId: line.id, // ID específico de esta cita en la tabla
+            appointmentId: line.id,
             cliente: form.cliente.trim(),
             celular: cleanPhone,
             indicativo: cleanIndicativo,
@@ -974,6 +1042,12 @@ export default function ReservationForm({
             price_final: finalP,
             abono: Number(line.abono || 0),
             notifyOnEdit: notifyOnEdit,
+            // Parámetros para consolidar el HSM múltiple
+            isMultiple,
+            totalServicesCount,
+            servicesList,
+            firstAppointmentAt,
+            skipWebhook: !isLastExisting, // Solo el último dispara el mensaje de WhatsApp
           };
 
           const res = await fetch("/api/bookings/notify-update", {
